@@ -10,6 +10,7 @@ import com.fitmate.backend.repository.PtProfileRepository;
 import com.fitmate.backend.repository.UserProfileRepository;
 import com.fitmate.backend.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final UserProfileRepository userProfileRepository;
     private final PtProfileRepository ptProfileRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -32,10 +34,10 @@ public class AuthService {
 
         String userRole = (request.getRole() != null && request.getRole().equalsIgnoreCase("pt")) ? "PT" : "USER";
 
-        // Save User
+        // Save User with BCrypt Encrypted Password
         User user = User.builder()
                 .email(request.getEmail())
-                .password(request.getPassword()) // Note: Can add BCryptPasswordEncoder later
+                .password(passwordEncoder.encode(request.getPassword())) // BCrypt hashing!
                 .fullName(request.getName() != null ? request.getName() : "Người dùng FitMate")
                 .role(userRole)
                 .build();
@@ -76,7 +78,7 @@ public class AuthService {
                 .email(savedUser.getEmail())
                 .name(savedUser.getFullName())
                 .role(savedUser.getRole())
-                .message("Đăng ký tài khoản thành công! 🎉")
+                .message("Đăng ký tài khoản thành công! 🎉 (Mật khẩu đã mã hóa BCrypt)")
                 .build();
     }
 
@@ -89,7 +91,8 @@ public class AuthService {
 
         User user = userOpt.get();
 
-        if (!user.getPassword().equals(request.getPassword())) {
+        // Check password using BCrypt matches
+        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new RuntimeException("Mật khẩu không chính xác! ⚠️");
         }
 
