@@ -64,14 +64,16 @@
 | FID | Client | Vai trò | Màn hình / Luồng | File nguồn | Input | Output | Endpoint | Quyền | BR / State | BE hiện | Task | Test | Blocker |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | FP-BK-01 | App | member | Hold slot | marketplace | pt_id, service_id, slot_start | hold{id, expires_at} | POST `/api/v1/bookings/holds` | member | TTL 5 phút, unique (pt_id, slot_start) khi hold active | Chưa có | BE-130 | duplicate slot | — |
-| FP-BK-02 | App | member | Confirm booking (after payment) | app booking | hold_id, payment_id | appointment | POST `/api/v1/bookings/confirm` | member owner | chỉ confirm khi payment=paid | Chưa có | BE-130 | hold expired, payment not paid | Payment |
+| FP-BK-02 | App | member | Confirm booking (after payment) | app booking | hold_id, payment_id | appointment | POST `/api/v1/bookings/confirm` | member owner | `AppointmentStatus` Held/Pending → Pending; chỉ confirm khi `PaymentStatus = Paid` | Chưa có | BE-130 | hold expired, `PaymentStatus != Paid` | Payment |
 | FP-BK-03 | App | member | List my bookings | `mobile/app/(tabs)/dashboard.tsx` (recent) | filter status, page | page<appointment> | GET `/api/v1/me/bookings` | member owner | — | Chưa có | BE-131 | status filter | — |
 | FP-BK-04 | App | pt | List my bookings | `mobile/app/(modals)/appointments.tsx` | filter status, page | page<appointment> | GET `/api/v1/me/trainer-bookings` | pt owner | — | Chưa có | BE-131 | — | — |
-| FP-BK-05 | App | member | Cancel booking (trước hoàn thành) | appointment | id, reason | appointment | POST `/api/v1/me/bookings/{id}/cancel` | member owner | status → cancelled; refund policy xem `domain-rules.md` §3 | Chưa có | BE-132 | already completed | — |
-| FP-BK-06 | App | pt | Confirm completion | appointment | id | appointment | POST `/api/v1/me/bookings/{id}/complete` | pt owner | status → completed; trigger PT earning | Chưa có | BE-133 | not PT của booking | — |
-| FP-BK-07 | Admin | admin | List bookings | `BookingManagement.jsx` | filter status, pt, page | page<appointment> | GET `/api/v1/admin/bookings` | admin | server filter/sort | Chưa có | BE-134 | page size | — |
-| FP-BK-08 | Admin | admin | Force refund | `BookingManagement.jsx` | id, amount, reason | refund + ledger | POST `/api/v1/admin/bookings/{id}/refund` | admin | audit; partial/full; ledger adjust | Chưa có | BE-134 | already refunded | Payment |
-| FP-BK-09 | App | member | Reschedule booking | appointment | id, new_slot_start | appointment | POST `/api/v1/me/bookings/{id}/reschedule` | member owner | hạn reschedule xem `domain-rules.md` §3; release old slot | Chưa có | BE-135 | too late | — |
+| FP-BK-05 | App | member | Cancel booking (trước hoàn thành) | appointment | id, reason | appointment | POST `/api/v1/me/bookings/{id}/cancel` | member owner | `AppointmentStatus` → Cancelled; refund policy xem `domain-rules.md` §3 | Chưa có | BE-132 | already completed | — |
+| FP-BK-06 | App | pt | Accept pending booking | appointment | id | appointment | POST `/api/v1/me/bookings/{id}/accept` | pt owner | Pending → Confirmed | Chưa có | BE-133 | không phải PT của booking | — |
+| FP-BK-07 | App | pt | Confirm completion | appointment | id | appointment | POST `/api/v1/me/bookings/{id}/complete` | pt owner | InProgress → Completed; cần `PaymentStatus = Paid` | Chưa có | BE-133 | not PT của booking, payment chưa paid | — |
+| FP-BK-08 | Admin | admin | List bookings | `BookingManagement.jsx` | filter status, pt, page | page<appointment> | GET `/api/v1/admin/bookings` | admin | server filter/sort theo `AppointmentStatus` mới + `PaymentStatus` | Chưa có | BE-134 | page size | — |
+| FP-BK-09 | Admin | admin | Force refund | `BookingManagement.jsx` | id, amount, reason | refund + ledger | POST `/api/v1/admin/bookings/{id}/refund` | admin | audit; partial/full; ledger adjust; `RefundStatus` enum | Chưa có | BE-134 | already refunded | Payment |
+| FP-BK-10 | App | member | Reschedule booking | appointment | id, new_slot_start | appointment | POST `/api/v1/me/bookings/{id}/reschedule` | member owner | tạo `BookingRescheduleEvent`; transaction check slot mới; release cũ an toàn | Chưa có | BE-135 | too late | — |
+| FP-BK-11 | App | member | Set late attendance flag | appointment | id, late=true/false | appointment | POST `/api/v1/me/bookings/{id}/late` | member owner | flag `is_late_attendee`; server KHÔNG tự set quá giờ | Chưa có | BE-135a | — | — |
 
 ---
 
@@ -79,7 +81,7 @@
 
 | FID | Client | Vai trò | Màn hình / Luồng | File nguồn | Input | Output | Endpoint | Quyền | BR / State | BE hiện | Task | Test | Blocker |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| FP-PAY-01 | App | member | Create payment intent | booking | hold_id, method=vnpay | payment{id, redirect_url} | POST `/api/v1/payments` | member owner | method whitelist; idempotency | Chưa có | BE-140 | invalid method | VNPay |
+| FP-PAY-01 | App | member | Create payment intent | booking | hold_id, method=`vnpay` | payment{id, redirect_url} | POST `/api/v1/payments` | member owner | method whitelist (chỉ `vnpay` ở release đầu — DEC-027); idempotency | Chưa có | BE-140 | method != vnpay → 400 PROVIDER_NOT_SUPPORTED | VNPay |
 | FP-PAY-02 | Public (VNPay) | public | Return URL | — | query | redirect | GET `/api/v1/payments/vnpay/return` | public | verify signature; status | Chưa có | BE-141 | bad signature | VNPay |
 | FP-PAY-03 | Public (VNPay webhook) | public | IPN | — | body | 200 | POST `/api/v1/payments/vnpay/ipn` | public | verify HMAC; idempotent; chỉ nhận 1 lần | Chưa có | BE-141 | duplicate, bad sig | VNPay |
 | FP-PAY-04 | Member | owner | Get my payment | — | id | payment | GET `/api/v1/me/payments/{id}` | owner | — | Chưa có | BE-142 | unknown id | — |
@@ -95,8 +97,9 @@
 | FP-FN-01 | Admin | admin | Overview KPIs | `Overview.jsx` | time range (7d/30d/all) | KPIs + chart | GET `/api/v1/admin/finance/overview` | admin | GMV (paid), Platform fee 10% (paid complete + paid not yet complete?), trainer share, refunds; theo `domain-rules.md` §3 | Chưa có | BE-150 | empty, all refunded | — |
 | FP-FN-02 | Admin | admin | Finance ledger | `FinanceManagement.jsx` | filter status, page | page<ledger> | GET `/api/v1/admin/finance/ledger` | admin | sort by date desc | Chưa có | BE-150 | page size | — |
 | FP-FN-03 | Admin | admin | PT earnings | `FinancialReports.jsx` | pt_id, date range | sum, list | GET `/api/v1/admin/finance/pt/{id}/earnings` | admin | — | Chưa có | BE-150 | unknown pt | — |
-| FP-FN-04 | App | pt | My revenue | `mobile/app/(modals)/revenue/` | time range | KPIs + history | GET `/api/v1/me/revenue` | pt owner | chỉ booking paid+completed mới ghi nhận; refund là điều chỉnh | Chưa có | BE-151 | empty | — |
+| FP-FN-04 | App | pt | My revenue | `mobile/app/(modals)/revenue/` | time range | KPIs + history | GET `/api/v1/me/revenue` | pt owner | chỉ booking với `PaymentStatus = Paid` + `AppointmentStatus = Completed` mới ghi nhận; refund là điều chỉnh | Chưa có | BE-151 | empty | — |
 | FP-FN-05 | App | pt | My revenue detail (per booking) | revenue | booking_id | detail | GET `/api/v1/me/revenue/{bookingId}` | pt owner | breakdown fee/pt/refund | Chưa có | BE-151 | unknown booking | — |
+| FP-FN-06 | Admin | admin | Read platform policy (read-only) | `Settings.jsx` | — | policy | GET `/api/v1/admin/platform-policy` | admin | DEC-029: read-only. Trả `platform_fee_rate_bps` + `policy_version` + `effective_from` + `editable=false` | Chưa có | BE-150 | — | — |
 
 ---
 
@@ -134,7 +137,7 @@
 | FP-SC-03 | App | owner | Get post detail | social | id | post + comments | GET `/api/v1/social/posts/{id}` | member | privacy | Chưa có | BE-180 | unknown id | — |
 | FP-SC-04 | App | owner | Comment | social | post_id, text | comment | POST `/api/v1/social/posts/{id}/comments` | member | — | Chưa có | BE-181 | unknown post | — |
 | FP-SC-05 | App | owner | React | social | post_id, type | 204 | POST `/api/v1/social/posts/{id}/reactions` | member | one reaction per user per post | Chưa có | BE-181 | duplicate | — |
-| FP-SC-06 | App | owner | Report post/comment/user | social | target_id, target_type, reason | report | POST `/api/v1/social/reports` | member | reason bắt buộc | Chưa có | BE-182 | — | — |
+| FP-SC-06 | App | owner | Report post/comment/user/certificate | social | target_id, target_type∈{post,comment,user,certificate}, reason | report | POST `/api/v1/social/reports` | member | DEC-028: 4 value, PT map sang user; reporter visibility-check; reason `minLength=5, maxLength=500`; idempotent (cùng reporter+target+status=Open → 409); không auto-lock user | Chưa có | BE-182 | — | — |
 | FP-SC-07 | App | owner | Send friend request | social | to_email | friend_request | POST `/api/v1/social/friends/requests` | member | idempotent | Chưa có | BE-183 | already friend | — |
 | FP-SC-08 | App | owner | Accept/reject friend request | social | id, action | friend | POST `/api/v1/social/friends/requests/{id}` | member owner | — | Chưa có | BE-183 | — | — |
 | FP-SC-09 | App | owner | List friends | social | — | user[] | GET `/api/v1/social/friends` | member owner | — | Chưa có | BE-183 | — | — |
@@ -213,19 +216,20 @@
 
 ### Phát hiện từ mobile domain.ts
 
-- `Appointment.status` có **6 state** (mobile) ↔ **7 state** (BE OpenAPI) ↔ **4 state** (web mock).
+- `Appointment.status` mobile 6 ↔ web 4 ↔ BE 7 đã chốt ở DEC-026 (tách `AppointmentStatus` + `PaymentStatus` + `RefundStatus`). Mapping chi tiết: `api-contract.md §2.1`.
 - `Appointment.timeSlot` mobile là string, cần tách thành `slotStartUtc` + `durationMinutes` ở BE.
 - `WorkoutSession.status` mobile có `completed|endedEarly|skipped` ↔ BE ✅ match.
-- **Cần chốt**: UA-018 (AppointmentStatus enum), UA-019 (payment method), UA-020 (report target type).
+- `Cần chốt`: UA-018 (AppointmentStatus enum), UA-019 (payment method), UA-020 (report target type).
+- **UA-018, UA-019, UA-020 đã chốt**: xem `decisions.md DEC-026/027/028` + `api-contract.md §2.1`. Matrix cập nhật với enum mới + transition matrix.
 
 ### Phát hiện từ web mockData.js
 
-- `Booking.paymentMethod` (web) có 4 method (`FitMate Pay / QR / MoMo / Napas`) ↔ BE chỉ có enum `Vnpay`. Lệch.
+- `Booking.paymentMethod` (web) có 4 method (`FitMate Pay / QR / MoMo / Napas`) ↔ BE OpenAPI chỉ hỗ trợ `vnpay` ở release đầu (DEC-027). FE cần rút gọn chip về 1 ("Thanh toán qua VNPay"). Xem TODO `out-of-scope`.
 - `Booking.location` (web) có sẵn ↔ BE chưa có field.
 - `Booking.sessionSchedule` (web) là denormalized từ Service.schedule.
 - `aiAnalyticsSummary` (web) có thống kê AI tokens, cost ↔ FP-AD-05 chưa rõ scope.
-- `platformPolicy.platformFeeRate=10` (web, cố định) ↔ chưa có endpoint admin đổi.
-- `ViolationReports.targetType` web: `post|user|pt` ↔ mobile: `post|comment|user|certificate`.
+- `platformPolicy.platformFeeRate=10` (web, cố định) → BE thêm `GET /admin/platform-policy` (read-only, FP-FN-06 theo DEC-029). Không có POST để sửa ở release đầu.
+- `ViolationReports.targetType` web: `post|user|pt` ↔ mobile: `post|comment|user|certificate` ↔ BE canonical 4 value (DEC-028); PT map sang user.
 - `UserStatus` web: `active|suspended` ↔ BE OpenAPI: `Active|Suspended|PendingDeletion`. ✅ match.
 
 ### Endpoint cần thêm (chưa có trong matrix)

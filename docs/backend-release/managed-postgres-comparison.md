@@ -1,6 +1,13 @@
 # So sánh Managed PostgreSQL — cho production Fitmate
 
-> Viết 2026-09-18. So sánh theo tiêu chí: **chi phí, region, connection limits, backup/PITR, restore, khả năng mở rộng**. Đây là **đề xuất**, không tự tạo tài khoản trả phí. User/operator duyệt trước khi áp dụng.
+> Viết 2026-09-18. Cập nhật 2026-09-18 (phiên 7) theo DEC-030.
+>
+> **Phạm vi**:
+> - Baseline kỹ thuật để lấy báo giá + kiểm thử (đã chốt ở DEC-030).
+> - Cập nhật các nguyên tắc khi so sánh: bỏ số liệu chưa được xác minh chính thức (giá list, latency, connection limit); không kết luận provider không phù hợp chỉ vì secret dự án cũ bị lộ; phân biệt standby HA vs read replica.
+> - So sánh vẫn giữ để team có thể revisit sau khi có budget/credentials; không thay thế việc xác minh SKU/giá từ nguồn chính thức.
+>
+> **KHÔNG tự tạo tài nguyên trả phí** trên bất kỳ provider nào (rule AGENTS.md + UA-023 chưa chốt credentials).
 
 ## 1. Bối cảnh Fitmate
 
@@ -14,94 +21,72 @@
 
 ## 2. Ứng viên
 
-> Số liệu **tra cứu 2026-09-18** từ trang chính thức. Sẽ cần verify lại khi chốt và **lấy báo giá chính thức từ sales** (không dùng giá list công khai làm budget).
+> Số liệu trong bảng dưới ghi chú là **ước tính từ trang chính thức tại ngày viết**. **Phải xác minh lại SKU, pricing, region availability, connection limits, backup/PITR/PITR window tại nguồn chính thức của provider** trước khi cấp phát tài nguyên trả phí — giá list công khai không phải budget cuối.
 
-### A. Supabase (self-host hoặc managed)
+### A. Supabase (managed Postgres)
 
-- **Region**: Singapore, Mumbai, Frankfurt, US East/West. Có `asia-southeast1` (Singapore).
-- **Connection limit**: 
-  - Free: 60 connections.
-  - Pro (~$25/mo): 200 connections.
-  - Team/custom: cao hơn.
-- **Backup**:
-  - Free: không có PITR.
-  - Pro: 7-day PITR.
-  - Team: 14-day PITR.
-- **Storage**: tối đa theo plan; auto-scale.
-- **Ưu**: có Auth, Storage, Realtime tích hợp nếu muốn dùng (Fitmate KHÔNG dùng — đã chốt JWT custom). Dashboard quản trị dễ.
-- **Nhược**: đã có vết lộ secret trong lịch sử Git. Migration từ Supabase project hiện sang project mới cần export/import.
-- **Phù hợp**: nếu team đã quen Supabase workflow và muốn tiết kiệm effort quản trị.
+- **Region**: có region Singapore (Asia).
+- **Connection limit / pricing / backup**: **chưa xác minh** tại ngày viết. Cần sales / pricing page chính thức.
+- **Ưu (chung)**: Auth, Storage, Realtime tích hợp sẵn.
+- **Nhược (chung)**: vendor lock-in trung bình; tùy thuộc dashboard của họ.
+- **Quan trọng**: secret Supabase cũ đã lộ trong Git history của project cũ. Theo `decisions.md` DEC-024 + DEC-031: **secret lộ phải rotate/revoke bất kể provider mới** — việc này là UA-001, không phải lý do loại provider. Supabase hoàn toàn có thể là ứng viên nếu tạo project mới, không migrate data từ project cũ.
 
 ### B. Neon (serverless Postgres)
 
-- **Region**: US East/West, Frankfurt, Singapore (đầu 2026), Sydney. Có `aws-ap-southeast-1` (Singapore).
-- **Connection limit**: 
-  - Free: 100 connections.
-  - Launch: 500 connections.
-  - Scale: custom.
-- **Backup**:
-  - Free: 7-day retention.
-  - Launch: 30-day retention.
-  - Scale: custom.
-- **PITR**: 7 ngày (Launch+), rewind window.
-- **Ưu**: serverless — tự scale compute theo query. Auto-suspend khi không dùng. Free tier cho dev.
-- **Nhược**: 
-  - Cold start có thể 500-2000 ms khi wake từ suspend — ảnh hưởng UX nếu traffic thấp.
-  - PITR bị giới hạn window.
-  - Latency từ Việt Nam tới Singapore OK (~30-60 ms).
-- **Phù hợp**: nếu traffic không đều và muốn tiết kiệm chi phí off-peak.
+- **Region**: có region Singapore (aws-ap-southeast-1).
+- **Connection limit / pricing / backup retention / PITR window**: **chưa xác minh**.
+- **Ưu**: serverless — auto-scale compute theo query; tier free cho dev.
+- **Nhược**: có cơ chế auto-suspend → có thể có cold start khi wake. **Chưa xác minh** độ trễ cold-start.
+- **Không kết luận "không phù hợp"** chỉ vì lo ngại cold start — cần benchmark thực tế.
 
 ### C. AWS RDS for PostgreSQL
 
-- **Region**: đầy đủ ap-southeast-1 (Singapore), ap-southeast-2 (Sydney). Cần check ap-southeast-3 (Jakarta) cho Việt Nam.
-- **Connection limit**: tùy instance class. `db.t4g.medium` (2 vCPU, 4 GB) = ~300 connections pool.
-- **Backup**:
-  - Automated backup 7-35 ngày free.
-  - PITR trong window backup.
-  - Snapshot manual theo yêu cầu.
-- **Storage**: gp3/gp2, auto-scale.
-- **Ưu**: enterprise-grade, IAM auth, encryption at rest, VPC private, đã có kinh nghiệm nếu dùng AWS cho phần khác. Read replica dễ.
-- **Nhược**: giá cao hơn (~$50-100/mo cho production nhỏ). Cần VPC, subnet, security group setup.
-- **Phù hợp**: nếu Fitmate đã chọn AWS cho domain/email/storage/CDN.
+- **Region**: ap-southeast-1 (Singapore), ap-southeast-2 (Sydney).
+- **Connection / pricing / backup window**: tùy instance class — **chưa xác minh** tại ngày viết.
+- **Ưu**: enterprise-grade, IAM auth, encryption at rest, VPC private, integration với AWS ecosystem.
+- **Nhược**: giá cao hơn các lựa chọn khác; cần VPC/subnet/SG setup.
+- **Phù hợp** nếu Fitmate dùng AWS cho domain/email/CDN — chưa quyết định.
 
 ### D. DigitalOcean Managed Postgres
 
-- **Region**: Singapore, Bangalore, Sydney, Amsterdam, NY, SF. Có `sgp1` (Singapore).
-- **Connection limit**: tùy plan. Basic 1 GB = 22 connections; General Purpose 4 GB = 100 connections; General Purpose 8 GB = 197 connections.
-- **Backup**: daily backup 7 ngày free; PITR 7 ngày ở higher tier.
-- **Storage**: 10 GB → 1 TB+, auto-scale.
-- **Ưu**: giá hợp lý ($15-60/mo cho production nhỏ), dashboard đơn giản. Không cần VPC riêng.
-- **Nhược**: ít region ở Asia (chỉ Singapore + Bangalore + Sydney), không có VPC peering sâu.
-- **Phù hợp**: nếu budget gọn và workload vừa phải.
+- **Region**: có `sgp1` (Singapore).
+- **Connection limit / pricing / backup retention / PITR / HA**: **chưa xác minh** tại ngày viết. Tier Basic có connection limit thấp hơn các plan cao hơn.
+- **Ưu**: dashboard đơn giản; phù hợp workload vừa.
+- **Nhược**: ít region ở Asia (Singapore, Bangalore, Sydney); không có VPC peering sâu.
+- **Đã chốt ở DEC-030** là baseline production target.
 
-### E. Self-host Postgres trên VPS (phương án hiện tại)
+### E. Self-host Postgres trên VPS
 
-- **Region**: tùy VPS provider (Singapore, Tokyo, Mumbai đều có).
-- **Connection limit**: tùy VPS — `db.t3.small` (2 vCPU, 4 GB) chịu được ~150 connection pool.
-- **Backup**: tự setup `pg_dump` nightly + upload S3-compatible. PITR cần `wal-g` + WAL archive (phức tạp hơn).
-- **Ưu**: kiểm soát 100%, giá rẻ nhất ($5-20/mo VPS), không phụ thuộc vendor.
-- **Nhược**: 
-  - **Single point of failure**: 1 VPS = 1 instance = downtime khi node fail hoặc disk đầy.
-  - **Phải tự vận hành**: monitoring, backup verify, security patch, WAL archive, replication.
-  - **Không có HA tự động**: cần tự setup `patroni` hoặc replica failover.
-  - **Quy trình restore chưa được test** (xem `runbooks/db-failover.md`).
-- **Phù hợp**: dev/staging. Production: cần ít nhất 1 replica + monitoring đầy đủ + restore test mỗi quý.
+- **Region**: tùy VPS provider.
+- **Connection / backup**: tự setup.
+- **Ưu**: kiểm soát 100%, giá thấp nhất.
+- **Nhược**:
+  - SPOF (single point of failure) — 1 VPS = 1 instance, downtime khi node fail hoặc disk đầy.
+  - Phải tự vận hành: monitoring, backup verify, security patch, WAL archive, replication.
+  - Không có HA tự động — cần tự setup `patroni` hoặc replica failover.
+  - Chưa có runbook restore đã test.
+- **Phù hợp**: dev / staging. Production cần ít nhất 1 replica + monitoring đầy đủ + restore test mỗi quý.
+- **Không kết luận "không phù hợp production"** — chỉ là lựa chọn cần thêm công sức vận hành.
 
-## 3. Bảng so sánh nhanh
+## 3. Bảng so sánh nhanh (ước tính — phải xác minh)
 
-| Tiêu chí | Supabase Pro | Neon Launch | AWS RDS gp | DO Managed | Self-host VPS |
+| Tiêu chí | Supabase | Neon | AWS RDS | DO Managed | Self-host VPS |
 |---|---|---|---|---|---|
-| Region Asia gần VN | ✅ SG | ✅ SG | ✅ SG | ✅ SG | ✅ Tùy |
-| Giá (1 GB RAM equiv) | ~$25/mo | ~$20/mo | ~$60/mo | ~$15/mo | ~$10/mo |
-| Connection limit (small plan) | 200 | 500 | ~150 | 100 | 150 |
-| Backup mặc định | 7d PITR | 7d PITR | 7d automated + PITR | 7d daily | Tự setup |
-| PITR | ✅ | ✅ | ✅ | ⚠️ higher tier | ⚠️ Tự setup |
-| Read replica dễ | ✅ | ✅ | ✅ | ⚠️ cao cấp | ⚠️ Tự setup |
-| HA tự động | ✅ | ✅ | ✅ (Multi-AZ) | ✅ | ❌ |
+| Region Asia gần VN | Có (SG) | Có (SG) | Có (SG) | Có (SG) | Tùy |
+| Connection limit (chưa xác minh theo tier) | ❓ | ❓ | ❓ | ❓ | ❓ |
+| Backup retention (chưa xác minh theo tier) | ❓ | ❓ | ❓ | ❓ | Tự setup |
+| PITR window | Có (paid) | Có (paid) | Có | Có (higher tier) | Tự setup |
+| HA tự động | Có | Có | Có (Multi-AZ) | Có | ❌ — phải tự setup |
+| **Standby HA** (failover, không query) | Có | Có | Có | Có | Tự setup |
+| **Read replica** (scale read) | Có | Có | Có | Có (higher tier) | Tự setup |
 | Effort vận hành | Thấp | Thấp | Trung bình | Thấp | Cao |
-| Cold start risk | Không | ⚠️ Có | Không | Không | Không |
-| Đã có vết lộ secret trong Git | ⚠️ Có | Không | Không | Không | Không |
-| Vendor lock-in | Trung bình | Trung bình | Cao (nếu dùng AWS) | Thấp | Không |
+| Cold start risk | Không | Có thể (chưa benchmark) | Không | Không | Không |
+| Giá list public (chưa dùng làm budget) | (chưa xác minh) | (chưa xác minh) | (chưa xác minh) | (chưa xác minh) | (rẻ nhất) |
+
+> **Quan trọng**:
+> - Hai khái niệm **Standby HA** và **Read replica** là KHÁC NHAU. Standby chỉ chạy khi primary fail; read replica dùng để scale read traffic.
+> - Việc ghi "phù hợp / không phù hợp" dựa trên evidence chưa xác minh là kết luận sớm — chỉ ghi nhận provider CÓ option đó; pricing riêng từng tier phải verify trên trang chính thức hoặc sales.
+> - **Không dùng secret lộ làm lý do loại provider**. Secret lộ → rotate bất kể provider. (Quyết định loại provider phải dựa cost/HA/region/operations.)
 
 ## 4. Khuyến nghị cho từng môi trường
 
@@ -110,20 +95,18 @@
 - Mount volume local, xóa là reset. Không cần backup.
 
 ### Staging
-- **Self-host Postgres trên 1 VPS staging** riêng (`staging-db.fitmate.vn`).
-- Backup nightly `pg_dump` → S3 bucket (`fitmate-staging-backup`).
-- Retain 7 ngày. Không cần PITR.
+- **Môi trường tách biệt**, không dùng credentials/dữ liệu production.
+- Phương án A: self-host 1 droplet Postgres + `pg_dump` nightly → S3 bucket staging. Retain 7 ngày. Không cần PITR.
+- Phương án B: managed cluster staging riêng (DigitalOcean staging tier thấp hơn prod) — chốt khi có budget cụ thể.
 - Lý do: staging cần reset/rebuild thường xuyên, không cần HA, chi phí thấp.
 
-### Production
-- **Khuyến nghị chính**: **DigitalOcean Managed Postgres** (Singapore) — General Purpose 4 GB + 1 read replica.
-  - Giá ước tính ~$60-80/mo (cần lấy quote chính thức).
-  - Connection limit ~100, dùng PgBouncer để multiplex.
-  - HA cơ bản (standby).
-  - Backup 7 ngày + PITR.
-  - Latency từ Việt Nam ~30-50 ms tới Singapore.
-- **Phương án dự phòng**: **AWS RDS** nếu Fitmate đã dùng AWS (S3, SES, CloudFront). Đắt hơn 2x nhưng tích hợp tốt.
-- **Không khuyến nghị**: Supabase Pro (đã có vết lộ secret, cần migrate sạch), Neon (cold start risk), self-host (SPOF + effort vận hành cao cho production).
+### Production (baseline đã chốt ở DEC-030)
+- **DigitalOcean Managed Postgres** (`sgp1` Singapore).
+- Primary: **2 vCPU / 4 GiB RAM**, storage ~30 GiB.
+- **1 standby HA** (failover, không query).
+- **Chưa có read replica** — phân biệt rõ với standby.
+- Cấu hình này là **baseline kỹ thuật**, không phải cam kết số user chịu được. Điều chỉnh theo load test + budget được duyệt.
+- **Không tự tạo cluster** — chờ UA-023 (credentials qua secret manager).
 
 ## 5. Điều kiện cần chốt với user
 

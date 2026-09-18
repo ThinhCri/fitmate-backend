@@ -5,18 +5,9 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-18
-- **Phiên 6**: Đề xuất DEC-026..031 trả lời UA-018..024 dựa trên evidence (audit-old-backend.md §5,§6 + managed-postgres-comparison.md §3,§5). Chưa có code change — chỉ doc. Chờ user chốt / chỉnh sửa đề xuất.
-
-### Phiên 5 — đã làm
-
-- **Verify DB ↔ migration sync** trên Postgres local mới khởi động (`fitmate-postgres`, db `fitmate`, user `fitmate`, password `dev`, port 5432).
-  - Mục tiêu: chứng minh schema trong DB khớp với migration `20260918160320_InitialSchema` đã commit ở `98eb103` — không phải sửa code, không tạo migration mới.
-  - Bước 1: `docker run` Postgres + `pg_isready` → OK.
-  - Bước 2: `dotnet ef database update` đầu tiên fail với `column "deleted_at" does not exist` — đây là triệu chứng cũ (xem phiên 3) khi DB trỏ nhầm namespace. Kiểm tra lại: filter `IdentityConfiguration.cs` đã fix ở `98eb103`, schema trong DB rỗng.
-  - Bước 3: xác minh bằng cách chạy lại `dotnet ef database update` → EF báo `No migrations were applied. The database is already up to date.` → schema DB đã đúng 32 bảng từ lần apply trước, EF không cần chạy DDL.
-  - Bước 4: `dotnet test --no-build` → **14/14 PASS** (4 test files, `Fitmate.UnitTests.dll`).
-  - Kết luận: source ↔ DB sync. Không có file thay đổi để commit ngoài `handoff.md` (file này).
-- **BE-021** vẫn TODO — chờ UA-018..022.
+- **Phiên 7**: User chốt toàn bộ UA-018..024 + UA-022. Cập nhật decisions (DEC-026..035) + domain-rules §3 (transition matrix + tách status, late/rescheduled là event) + authorization-matrix + OpenAPI (3 enum `AppointmentStatus`/`PaymentStatus`/`RefundStatus`, `/admin/platform-policy`, `BookingRescheduleEvent`, response `Forbidden`) + api-contract §2.1/§9/§16/§17 + feature-api-matrix (FP-BK-06/10/11, FP-FN-06, Report SC-06) + user-actions (UA-018..024 DONE; UA-023 giữ secret manager) + managed-postgres-comparison (bỏ số chưa xác minh, bỏ "secret leak" lý do loại) + AGENTS.md env matrix + vnpay-googleplay-policy.md (rewrite với 5 link nguồn + mapping chi tiết) + tasks.md (BE-021 IN_PROGRESS).
+- Gỡ blocker theo yêu cầu user: UA-021/023 chỉ chặn provisioning production DB, không chặn code BE local. UA-024 là task rà soát tài liệu + checklist — đã DONE phần tài liệu.
+- Code change: BE-021 (Identity refactor) bắt đầu trong commit tiếp nếu còn dung lượng tokens; nếu hết thì đã có đầy đủ docs để commit độc lập.
 
 ### Phiên 6 — đã làm
 
@@ -107,41 +98,35 @@
 
 ### Phiên sau (khi user trả lời UA-018..024)
 
-**KHÔNG code backend** cho đến khi user trả lời các câu hỏi sau:
-- **UA-018**: AppointmentStatus enum (mobile 6 ↔ web 4 ↔ BE 7) — chốt 1 schema thống nhất.
-- **UA-019**: paymentMethod enum (BE chỉ có `Vnpay` hay multi-provider?).
-- **UA-020**: Report targetType (`post|comment|user|certificate` hay `post|user|pt`?).
-- **UA-021**: Managed Postgres provider (DO / AWS RDS / Neon / Supabase) + tier.
-- **UA-022**: platformFeeRate API (read-only hay cho phép admin sửa?).
-- **UA-024**: Verify Google Play policy mới nhất.
+**UA-018..022, UA-024 đã chốt (phiên 7)** — xem `decisions.md` DEC-026..035 + `user-actions.md`. UA-023 (cấp managed Postgres credentials qua secret manager) vẫn pending, nhưng **không chặn code BE local** — dev dùng Postgres Docker Compose.
 
-### Sau khi có câu trả lời
+### Sau khi có câu trả lời (đã xong)
 
-1. Cập nhật `decisions.md` (DEC-026..030).
-2. Cập nhật OpenAPI spec + `feature-api-matrix.md` cho khớp.
-3. **BE-021**: tích hợp ASP.NET Core Identity (DEC-021) — thay `User` bằng `ApplicationUser : IdentityUser<Guid>`, thêm 4 bảng Identity.
+1. ✅ Cập nhật `decisions.md` DEC-026..035 (phiên 7).
+2. ✅ Cập nhật OpenAPI spec (AppointmentStatus/PaymentStatus/RefundStatus + `/admin/platform-policy` + `BookingRescheduleEvent`) + `feature-api-matrix.md` (phiên 7).
+3. **BE-021**: tích hợp ASP.NET Core Identity (DEC-021 + DEC-032) — thay `User` bằng `ApplicationUser : IdentityUser<Guid>`, thêm 6 bảng Identity. → **IN_PROGRESS phiên 7**.
 4. **BE-030**: Auth (JWT custom + IdentityUser + refresh token + tests).
 5. **BE-070**: Idempotency middleware + Outbox worker.
-6. **BE-060**: Booking với concurrency test.
+6. **BE-060**: Booking concurrency test + transition matrix (Held→Pending→Confirmed→InProgress→Completed + Cancelled/Expired; flag late; event reschedule).
 7. **BE-080**: Validation (FluentValidation).
 8. **BE-090**: Authorization (policy + ownership).
-9. **BE-110..220**: Admin endpoints.
-10. **BE-300**: Validate Docker Compose (`compose up postgres` + `dotnet ef database update`).
+9. **BE-110..220**: Admin endpoints (kèm `GET /admin/platform-policy`).
+10. **BE-300**: Validate Docker Compose.
 11. **BE-330**: k6 smoke + normal + peak test trên staging.
 12. **FE INT-MOB-001..005** + **Web INT-WEB-001..003**: integrate sau khi BE pass tests.
 
 ## Working tree
 
-- BE: 6 commits mới trên branch `backend-release/contract-and-foundation` (gồm `d9d122b` docs phiên 5). Phiên 6 chỉnh sửa docs (chưa commit) — DEC-026..031 + handoff phiên 6. Working tree có modified docs.
+- BE: 7+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 7 đã cập nhật: decisions.md, domain-rules.md, authorization-matrix.md, openapi/fitmate-v1.yaml, api-contract.md, feature-api-matrix.md, user-actions.md, managed-postgres-comparison.md, AGENTS.md, vnpay-googleplay-policy.md, tasks.md, handoff.md. Working tree có modified docs trước khi commit.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
 ## Tests đã chạy
 
-- Validate YAML cho OpenAPI: PASS.
-- Unit tests `MoneyTests`: 14/14 PASS.
+- Validate YAML cho OpenAPI: PASS (parse OK + 6 schema mới + 4 BookingStatus→AppointmentStatus ref update OK).
+- Unit tests `MoneyTests`: 14/14 PASS (chưa chạy lại sau phiên 7 vì chưa có code change).
 - `dotnet build` solution: 0 warning, 0 error.
-- Migration `dotnet ef migrations add InitialSchema`: PASS (chưa apply vì chưa có Postgres local).
+- Migration `dotnet ef migrations add InitialSchema`: PASS; migration IdentitySchema chưa chạy (BE-021 IN_PROGRESS).
 
 ## Kết quả đo tải
 
@@ -156,17 +141,19 @@
 | B-003 | UA-009 Android keystore | User | Tạo qua Android Studio + upload key |
 | B-004 | AI handoff | AI team | Dùng `ai-handoff-checklist.md` |
 | B-005 | UA-004..UA-006 VPS + domain + TLS | User | Cấp khi đến giai đoạn staging |
-| B-006 | UA-018..022 chốt quyết định sản phẩm | User | Xem `user-actions.md` §UA-018..022 |
-| B-007 | UA-021 chốt managed Postgres | User | Xem `managed-postgres-comparison.md` §5 |
-| B-008 | UA-024 verify Google Play policy | User | Tra cứu lại trước khi submit |
+| B-006 ~~| UA-018..022 chốt quyết định sản phẩm | User | Xem `user-actions.md` §UA-018..022~~ | DONE phiên 7 |
+| B-007 ~~| UA-021 chốt managed Postgres | User | Xem `managed-postgres-comparison.md` §5~~ | DONE phiên 7 (baseline DEC-030) |
+| B-008 ~~| UA-024 verify Google Play policy | User | Tra cứu lại trước khi submit~~ | DONE rà soát tài liệu phiên 7 |
+| B-009 | UA-023 cấp credentials qua secret manager | User | Xem `user-actions.md` UA-023 — **chỉ chặn deploy production, không chặn code local** |
 
 ## Việc user / nhóm AI
 
-- Xem `user-actions.md` UA-001..UA-024. Các UA mới cần trả lời sớm: **UA-018..024**.
-- Bắt đầu từ UA-001 (rotate Supabase) và UA-002 (cấp Git hosting) — vẫn blocker cho BE-099.
+- Xem `user-actions.md` UA-001..UA-024. **UA-018..024 đã chốt**; các UA ops còn pending: UA-001 (Supabase rotate), UA-002 (Git hosting), UA-003 (OIDC CI), UA-004..006 (VPS/domain/TLS), UA-007 (SMTP), UA-008 (VNPay merchant), UA-009..010 (Android keystore + service account), UA-011 (BR remaining), UA-012..013 (Privacy/Data Safety), UA-014 (Account deletion E2E), UA-015..017 (backup/monitoring/support), UA-023 (managed DB credentials).
 
 ## Bước tiếp theo (kế hoạch phiên sau)
 
-1. **Chờ user chốt DEC-026..031** (đã viết ở phiên 6, trả lời tương ứng UA-018..024). Nếu user reply "ok" → đổi status thành Accepted rồi mới code BE-021 (Identity refactor).
-2. **Nếu user chỉnh sửa DEC** → update lại rồi hỏi lại.
-3. Sau khi user chốt xong → triển khai thứ tự ưu tiên: BE-021 (Identity) → BE-030 (Auth) → BE-080 (Validation) → BE-070 (Idempotency/Outbox) → BE-060 (Booking concurrency) → BE-090 (Authorization) → admin endpoints (BE-110..220) → staging pipeline (BE-300) → k6 test (BE-330) → FE/Web integrate (INT-MOB / INT-WEB).
+1. **Phiên 7 doc commit** (lần commit tiếp — phiên này hoặc phiên 8).
+2. **BE-021**: Identity refactor (DEC-032) — `ApplicationUser : IdentityUser<Guid>` + 6 bảng Identity + migration `IdentitySchema`.
+3. **BE-080**: Validation + ProblemDetails (FluentValidation toàn cục).
+4. **BE-030**: Auth endpoints (JWT + refresh + rate limit + lockout).
+5. Sau đó: BE-070 (Idempotency/Outbox) → BE-060 (Booking concurrency + transition matrix) → BE-090 (Authorization) → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6).

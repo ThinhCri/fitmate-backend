@@ -178,18 +178,14 @@
 - **Chi tiết**: [`identity-evaluation.md`](identity-evaluation.md).
 - **Trạng thái**: ✅ Accepted.
 
-## DEC-022 — Managed PostgreSQL cho production
+## DEC-022 — Managed PostgreSQL cho production (baseline kỹ thuật)
 
 - **Ngày**: 2026-09-18
-- **Người chốt**: User (yêu cầu so sánh)
-- **Bối cảnh**: User muốn managed Postgres để giảm gánh nặng vận hành. Supabase không phải lựa chọn bắt buộc.
-- **Quyết định đề xuất**: DigitalOcean Managed Postgres Singapore (General Purpose 4 GB + 1 read replica), ~$70/mo. Phương án dự phòng: AWS RDS nếu đã dùng AWS. KHÔNG dùng Supabase project (đã có vết lộ secret).
-- **Hệ quả**:
-  - Cần TLS bắt buộc, `sslmode=require`.
-  - Backup 7 ngày + PITR 24h.
-  - Cần user cấp credentials hoặc tự cấp nếu có quyền.
-- **Chi tiết**: [`managed-postgres-comparison.md`](managed-postgres-comparison.md).
-- **Trạng thái**: ⏳ Proposed — chờ user chốt câu hỏi § 5 trong `managed-postgres-comparison.md`.
+- **Người chốt**: User (xác nhận qua UA-021 → chi tiết ở DEC-030)
+- **Bối cảnh**: DEC-030 đã chốt provider + tier + region. DEC-022 giữ baseline ngắn gọn, chi tiết kỹ thuật ở DEC-030.
+- **Quyết định**: Production target = DigitalOcean Managed PostgreSQL, Singapore region, primary 2 vCPU / 4 GiB RAM + 1 standby HA (chưa có read replica). Local = Docker Compose. Staging = môi trường tách biệt (chốt sau khi có budget).
+- **Hệ quả**: xem DEC-030.
+- **Trạng thái**: ✅ Accepted (baseline).
 
 ## DEC-023 — Google Play: Booking PT là dịch vụ vật lý → không bắt buộc Play Billing
 
@@ -231,127 +227,214 @@
 - **Hệ quả**: Downtime khi droplet fail — acceptable cho staging.
 - **Trạng thái**: ✅ Accepted.
 
-## DEC-026 — AppointmentStatus: 7-state + late/rescheduled là trạng thái phụ
+## DEC-026 — AppointmentStatus: 7-state, tách khỏi Payment/Refund
 
 - **Ngày**: 2026-09-18
-- **Người đề xuất**: AI (chờ user chốt)
-- **Bối cảnh**: 3 client có 3 schema lệch nhau — mobile 6 (`pending|confirmed|completed|cancelled|late|rescheduled`), web 4 (`in_progress|completed|pending|cancelled`), BE OpenAPI 7 (`Held|AwaitingPayment|Paid|Completed|Cancelled|Refunded|Expired`). Xem `audit-old-backend.md §5`.
-- **Quyết định đề xuất**:
-  - **Canonical state machine (BE OpenAPI, 7 state)**: giữ nguyên `Held|AwaitingPayment|Paid|Completed|Cancelled|Refunded|Expired` (đủ lifecycle: hold → chờ thanh toán → đã trả → hoàn thành → hủy → hoàn tiền → hết hạn).
-  - **`late` và `rescheduled` không phải status riêng** — là **flag** trên booking:
-    - `Booking.isLateAttendee: boolean` (mobile set khi member đến trễ).
-    - `Reschedule` = cancel + tạo booking mới (giữ audit trail qua `Booking.previousBookingId`).
-  - **Mapping 2 chiều**:
-    | Mobile | Web | BE canonical |
-    |---|---|---|
-    | pending (chờ PT xác nhận) | pending | Held |
-    | confirmed (PT xác nhận) | in_progress | Paid |
-    | completed | completed | Completed |
-    | cancelled | cancelled | Cancelled |
-    | (rescheduled = flag) | — | (Cancelled → tạo mới) |
-    | (late = flag) | — | (giữ Paid + `isLateAttendee=true`) |
-    | — | — | Refunded (sau refund) |
-    | — | — | Expired (TTL qua mà không thanh toán) |
+- **Người chốt**: User
+- **Bối cảnh**: Mobile có 6 trạng thái lịch, web admin có 4, BE OpenAPI cũ gộp trạng thái lịch + thanh toán + hoàn tiền thành `BookingStatus` 7 value. Dữ liệu cũ mơ hồ — nhiều record không đủ dữ kiện để suy ra mapping an toàn. Xem `audit-old-backend.md §5,§6`.
+- **Quyết định**:
+  - **Không gộp** trạng thái lịch hẹn / thanh toán / hoàn tiền vào một enum.
+  - **AppointmentStatus** (mới, thay cho `BookingStatus`) — **7 value** ổn định, dùng đúng casing PascalCase trong OpenAPI:
+    - `Held`: giữ chỗ tạm thời, có TTL.
+    - `Pending`: đang chờ PT xác nhận.
+    - `Confirmed`: PT đã xác nhận.
+    - `InProgress`: buổi tập đã bắt đầu.
+    - `Completed`: buổi tập đã hoàn thành.
+    - `Cancelled`: đã hủy.
+    - `Expired`: giữ chỗ/yêu cầu đã hết hạn.
+  - **PaymentStatus** (enum riêng): `Pending | Paid | Failed | Refunded | PartialRefunded`.
+  - **RefundStatus** (enum riêng): `Pending | Succeeded | Failed`.
+  - **`Paid` / `Refunded` không phải AppointmentStatus** — đó là trạng thái của payment/refund. Read API có thể trả cả ba trên cùng response.
+  - **`Confirmed` chỉ nghĩa là lịch được xác nhận** — không đồng nghĩa đã thanh toán. Bắt đầu buổi tập / ghi nhận doanh thu phải kiểm tra cả `AppointmentStatus` + `PaymentStatus`.
+  - **Late là thông tin attendance/arrival**, không phải trạng thái lịch hẹn. Không tự kết luận no-show chỉ vì quá giờ.
+  - **Rescheduled là sự kiện có audit**, không phải trạng thái kết thúc. Giữ lịch sử giờ cũ + giờ mới + người yêu cầu + người chấp nhận qua `previous_booking_id` + `BookingRescheduleEvent`. Không mất slot cũ nếu đổi lịch thất bại (transaction có check slot mới).
+- **Mapping 2 chiều (FE adapter)**:
+  | Mobile (6) | Web (4) | AppointmentStatus (BE mới) |
+  |---|---|---|
+  | `pending` | `pending` | `Held` hoặc `Pending` |
+  | `confirmed` | — | `Confirmed` |
+  | `completed` | `completed` | `Completed` |
+  | `cancelled` | `cancelled` | `Cancelled` |
+  | — | `in_progress` | `InProgress` |
+  | — | — | `Expired` |
+  | (late = flag) | — | (giữ status, flag `is_late_attendee`) |
+  | (rescheduled = event) | — | (Cancelled → new booking) |
 - **Hệ quả**:
-  - Mobile cần update `Appointment.status` từ 6 enum → dùng 4 (`pending|confirmed|completed|cancelled`) + 2 flag `isLateAttendee` + `rescheduledFromId`.
-  - Web cần update `BookingManagement.jsx` mapping filter chip.
-  - OpenAPI `Appointment.status` enum giữ 7 giá trị.
-  - FE viết adapter `mapStatus(be→mobile)` và `mapStatus(mobile→be)` trong `mobile/src/adapters/booking.ts`.
-- **Trạng thái**: ⏳ Proposed — chờ user (học sinh cấp 2 theo AGENTS.md) chốt. Có thể dùng Proposed làm accepted nếu user reply "ok".
+  - OpenAPI: schema `BookingStatus` → `AppointmentStatus`, enum đổi sang PascalCase 7 value trên.
+  - Appointment schema thêm field `payment_status` + `refund_status` + `is_late_attendee` + `previous_booking_id?`.
+  - Bảng `booking_reschedule_events` mới để audit reschedule (audit trail: old slot, new slot, requested_by, accepted_by, reason).
+  - **Dữ liệu cũ mơ hồ**: BE mới là greenfield — không có data migration (DEC-024). Mock FE vẫn hoạt động qua adapter. Bất kỳ record FE nào gặp data thiếu dữ kiện — render "—" chứ không suy luận.
+  - Viết `mobile/src/adapters/booking-status.ts` để map 2 chiều mobile ↔ BE.
+- **Trạng thái**: ✅ Accepted.
 
-## DEC-027 — PaymentMethod MVP: VNPay-only, enum mở 4 value cho web hiển thị
+## DEC-027 — Payment MVP: chỉ VNPay
 
 - **Ngày**: 2026-09-18
-- **Người đề xuất**: AI
-- **Bối cảnh**: Web mock có 4 method (FitMate Pay / QR / MoMo / Napas), BE OpenAPI chỉ có `Vnpay`. Xem `audit-old-backend.md §6`.
-- **Quyết định đề xuất**:
-  - **Provider thật (MVP)**: chỉ **VNPay** — đã chốt ở DEC-002.
-  - **API enum**: mở rộng `PaymentMethod` thành 4 value cho khớp web mock: `Vnpay | FitmatePay | Qr | Momо | Napas`. Trong MVP **chỉ `Vnpay` được enable**; 3 value còn lại trả 503 `PROVIDER_NOT_CONFIGURED`.
-  - **Lý do giữ enum rộng**: tránh breaking change khi bổ sung MoMo/Napas sau; web admin UI đã hiển thị 4 chip.
-  - **`FitmatePay`**: giữ tên trong enum nhưng map sang `Vnpay` ở adapter (VNPay = cổng thanh toán, FitmatePay là wallet branding cho user). Khi user chọn FitmatePay trên UI → BE redirect tới VNPay.
+- **Người chốt**: User
+- **Bối cảnh**: Web admin mock có 4 method (FitMate Pay / QR / MoMo / Napas), BE OpenAPI cũ enum `Vnpay`. Các provider ngoài chưa có merchant credentials, việc giữ các lựa chọn ảo trong API chỉ vì frontend mock có là sai lý do.
+- **Quyết định**:
+  - **Release đầu tiên chỉ triển khai VNPay**. Chưa triển khai MoMo, Stripe, ví FitMate Pay, provider khác.
+  - **`Payment.method` enum trong OpenAPI: 1 value `Vnpay`** (không mở rộng enum rộng cho tương lai).
+  - **Giữ `IPaymentProvider` interface** trong Application layer (`CreatePaymentAsync`, `VerifySignature`, `QueryTransactionAsync`, `RefundAsync`, `ParseProviderReturn`) để mở rộng sau khi có merchant thật. **Không viết nhiều adapter giả** không dùng đến — YAGNI.
+  - **Phân biệt `provider` ↔ `method/channel`**: provider = `Vnpay` (enum). `method/channel` (QR / card / bank) là thông tin phụ nếu VNPay sandbox/production trả về và model nào đó thực sự cần hiển thị — không phải enum API.
+  - **QR / NAPAS không phải provider ngang VNPay**. Nếu sau này cần thêm phương thức → đăng ký provider thật, viết adapter, đẩy OpenAPI enum.
+  - **Fake payment chỉ ở local/test**. Production fail-fast nếu cấu hình sandbox — adapter throw `InvalidOperationException` ở startup nếu `ASPNETCORE_ENVIRONMENT=Production` mà config payment là sandbox.
 - **Hệ quả**:
-  - OpenAPI `PaymentMethod` → 5 enum.
-  - Web không cần đổi UI chip, BE adapter xử lý.
-  - Thêm test "POST /payments MoMo → 503 provider_not_configured".
-- **Trạng thái**: ⏳ Proposed.
+  - OpenAPI `Payment.method` enum = `Vnpay`. Schema enum rút gọn từ 5 value (proposed) về 1.
+  - FE cần đổi payment UI: các chip "Fitmate Pay / QR / Momo / Napas" thay bằng 1 nút "Thanh toán qua VNPay". Đây là việc trong integration guide (FE), không tự sửa FE ở giai đoạn backend.
+  - Integration guide bổ sung: FE thay các lựa chọn mock bằng provider đang được BE hỗ trợ.
+  - Test `POST /payments` với `method != vnpay` → 400 `FITMATE.PAYMENT.PROVIDER_NOT_SUPPORTED`.
+  - Adapter VNPay fail-fast nếu secret rỗng ở Production.
+  - Sandbox E2E + IPN verify + idempotency + reconcile phải pass (xem `vnpay-googleplay-policy.md §3.7`).
+- **Trạng thái**: ✅ Accepted.
 
-## DEC-028 — Report targetType: 4 value (post|comment|user|certificate)
+## DEC-028 — ReportTargetType: 4 value; PT map sang User
 
 - **Ngày**: 2026-09-18
-- **Người đề xuất**: AI
-- **Bối cảnh**: Mobile 4 (`post|comment|user|certificate`), web mock 3 (`post|user|pt`). Xem `audit-old-backend.md §6`.
-- **Quyết định đề xuất**:
-  - **Enum canonical (BE)**: `post | comment | user | certificate` — **dùng union của mobile + 1 field từ web**.
-  - **Web hiện có `pt`**: là alias của `user` (PT cũng là user với role=PT). Backend chấp nhận cả `pt` lúc parse, normalize thành `user`. Web adapter `mapTargetType('pt' → 'user')`.
-  - **Bỏ `user` vs `pt` ở BE**: 1 bảng `users` đã có `role`. Khi report `targetType=user`, admin resolve target user → check role → render "PT bị report" hoặc "Member bị report".
+- **Người chốt**: User
+- **Bối cảnh**: Mobile có 4 (`post|comment|user|certificate`), web mock 3 (`post|user|pt`). PT là một vai trò của User, không tạo targetType riêng.
+- **Quyết định**:
+  - **Enum canonical: `Post | Comment | User | Certificate`** (PascalCase, 4 value).
+  - **PT** được report → `targetType=user`, `targetId=userId của PT`. Response có thêm field `target_user_role` (read-only) để admin hiển thị/lọc.
+  - **Certificate** report phải trỏ đúng `certificateId`. Phân biệt với luồng nộp/xét duyệt certificate.
+  - **Server kiểm tra khi accept report**:
+    - Target tồn tại và reporter được phép biết/truy cập.
+    - **Không làm lộ certificate riêng tư** qua report API — target visibility check giống Get Certificate.
+    - `reason` bắt buộc, giới hạn `minLength=5, maxLength=500`.
+    - Rate limit per user: không cho spam.
+    - **Idempotency**: không tạo report trùng `Open` từ cùng reporter cho cùng `targetType+targetId` → 409.
+  - **Chat message**: nếu release sau cần report message riêng → viết enum `ChatMessage` riêng, **không ép** enum 4 value hiện tại phải cover. Ghi TODO `out-of-scope` để triển khai trước release chat.
+  - **Số lượng reports là tín hiệu ưu tiên kiểm duyệt**, không phải bằng chứng tự động khóa tài khoản / xóa nội dung. Admin resolve từng case.
+  - **`Block user` là chức năng riêng** (`POST /admin/users/{id}/lock`) — không coi report user đã đáp ứng block.
+  - **Auto-actions không có trong release đầu** (ví dụ: N reports → auto-hide) — đó là feature sau cần A/B test.
 - **Hệ quả**:
-  - OpenAPI `Report.targetType` → 4 enum.
-  - Web adapter trong `BookingManagement` / `ViolationReports.jsx` cần update khi integrate.
-  - Khuyến nghị mobile nên giữ nguyên 4 value (đã match).
-- **Trạng thái**: ⏳ Proposed.
+  - OpenAPI `Report.target_type` enum giữ 4 value.
+  - `ReportInput.target_type` enum giữ 4 value.
+  - `Report` schema thêm `target_user_role` optional.
+  - Test case mới: reporter không có quyền xem certificate private → 403.
+  - Test case mới: cùng reporter + target + status=Open → 409 conflict.
+  - Bảng `reports` thêm `IdempotencyKey` column (nullable cho future-proof).
+- **Trạng thái**: ✅ Accepted.
 
-## DEC-029 — platformFeeRate: cố định 10%, không có API admin sửa (MVP)
+## DEC-029 — PlatformFeeRate: read-only 10% trong release đầu
 
 - **Ngày**: 2026-09-18
-- **Người đề xuất**: AI
-- **Bối cảnh**: Web có `platformPolicy.platformFeeRate=10` cố định. BE OpenAPI chưa có endpoint quản lý. Xem `audit-old-backend.md §6` (Q-05), web `Settings.jsx` "Chính sách phí 10% (read-only)".
-- **Quyết định đề xuất**:
-  - **MVP**: cố định `platformFeeRateBps = 1000` (10.00%) trong config (`appsettings.json` + env override `PLATFORM_FEE_BPS`). **Không có endpoint admin sửa** ở MVP.
-  - **Lý do**: DEC-008 đã chốt "phí nền tảng 10% trên actual_paid_vnd". Thay đổi phí qua admin API cần audit trail, versioning, A/B test — quá sớm cho MVP.
-  - **Tuy nhiên, BE vẫn trả GET `/admin/platform-policy`** read-only (currentRateBps + effectiveFrom) để web render label "đang áp dụng 10% (cố định)".
-  - **Khi scale (post-MVP)**: thêm `POST /admin/platform-policy` với `Idempotency-Key` + audit log + bắt buộc preview diff + cool-down 24h. Không MVP.
+- **Người chốt**: User
+- **Bối cảnh**: Web có `platformPolicy.platformFeeRate=10` cố định. BE OpenAPI cũ chưa có endpoint quản lý policy.
+- **Quyết định**:
+  - **Release đầu tiên: read-only**. Phí nền tảng cố định **10%**, lưu chính xác dạng basis points: `platform_fee_rate_bps = 1000`.
+  - **`PlATFORM_FEE_BPS`** trong config (appsettings + env override). Không nhận `fee_rate` từ client khi tạo booking/payment — giá trị từ server-side config.
+  - **GET `/api/v1/admin/platform-policy`** trả:
+    - `platform_fee_rate_bps` (number, e.g. `1000`).
+    - `policy_version` (string, e.g. `v1`).
+    - `effective_from` (ISO-8601, khi policy có hiệu lực).
+    - `display_hint` (read-only text: "10.00% — cố định, chưa hỗ trợ chỉnh từ admin trong release này").
+  - **Không tạo endpoint admin tùy ý sửa phí** ở release này. Toàn bộ thay đổi policy phải qua deploy (config + version tăng).
+  - **Booking lưu snapshot tỷ lệ/phí theo chính sách áp dụng**: `booking.platform_fee_rate_bps`, `booking.platform_fee_vnd`, `booking.trainer_share_vnd`, `booking.policy_version`. Thay cấu hình tương lai không tính lại booking lịch sử.
+  - **Frontend**: convert `1000 bps → "10.00%"` cho hiển thị. OpenAPI ghi rõ đơn vị `basis_points`, kèm `description: "1000 bps = 10.00%"` để tránh nhầm 10 vs 0.10.
+  - **Khi scale (post-MVP)**: cần `POST /admin/platform-policy` với permission riêng + audit + version + `effective_from` preview + cool-down. Chưa triển khai ở giai đoạn này.
 - **Hệ quả**:
-  - Web `Settings.jsx` "read-only" label đúng — không cần thêm field "edit".
-  - Thêm endpoint GET cho web nhưng không có POST.
-  - Giữ integer VND × BPS, không float (DEC-006).
-- **Trạng thái**: ⏳ Proposed.
+  - OpenAPI: thêm endpoint `GET /admin/platform-policy` + schema `PlatformPolicyResponse` + enum/alias rõ đơn vị.
+  - Web `Settings.jsx` label "read-only, 10.00%" đúng — không thêm field sửa.
+  - Migration `InitialSchema` không đổi (đã lưu `PlatformFeeRate` integer ở `bookings`).
+  - Adapter `Money.PlatFee(priceBilledVnd, bps)` đã có (`Fitmate.Domain/Money.cs`), test cũ 14/14 PASS.
+  - Test mới: `GET /admin/platform-policy` → 200 + đúng đơn vị. Test: client gửi `fee_rate` trong booking request → bị ignore (server dùng config).
+- **Trạng thái**: ✅ Accepted.
 
-## DEC-030 — Production DB: DigitalOcean Managed Postgres Singapore (GP 4 GB)
+## DEC-030 — Production DB: DigitalOcean Managed Postgres Singapore (mục tiêu)
 
 - **Ngày**: 2026-09-18
-- **Người đề xuất**: AI
-- **Bối cảnh**: 4 ứng viên (DO / RDS / Neon / Supabase) đã so sánh ở `managed-postgres-comparison.md`. DEC-022 đã đề xuất DO nhưng chờ user trả lời 4 câu § 5.
-- **Quyết định đề xuất**:
-  - **Production DB**: **DigitalOcean Managed Postgres** — `sgp1` (Singapore), plan **General Purpose 4 GB / 2 vCPU**, **1 read replica**, ~$70-90/mo.
-  - **Lý do** (dựa trên evidence §3 của `managed-postgres-comparison.md`):
-    1. Fitmate chưa dùng AWS cho domain/email/CDN → RDS thừa chi phí.
-    2. Budget MVP target $50-100/mo DB → DO GP 4 GB nằm giữa.
-    3. **Supabase loại**: đã có vết lộ secret (§3 "Đã có vết lộ secret trong Git"). DEC-024 migration từ Supabase = greenfield, chọn provider sạch.
-    4. **Neon loại**: cold start 500-2000 ms (§4 "Không khuyến nghị") ảnh hưởng UX thanh toán.
-    5. Self-host loại vì production cần HA + effort vận hành.
-  - **Postgres 16** (khớp với schema migration hiện tại `20260918160320_InitialSchema`, đã test OK ở local docker).
-  - **Connection**: PgBouncer transaction mode, 100 connection multiplex.
-  - **SSL**: bắt buộc `sslmode=require`.
-  - **Backup**: 7-day PITR, daily snapshot, 30-day retention (higher tier).
-  - **Migration từ local docker**: `pg_dump` → restore (xem §6 `managed-postgres-comparison.md`). Downtime ước tính 10-30 phút cho DB < 1 GB.
-- **Câu trả lời cho 4 câu § 5** (`managed-postgres-comparison.md`):
-  | Câu hỏi | Trả lời |
-  |---|---|
-  | Fitmate có dùng AWS không? | Không (chưa có domain/CDN/email ở AWS). → DO. |
-  | Budget monthly cho DB? | $50-100 OK. → DO GP 4 GB. |
-  | Chấp nhận cold start 500-2000 ms? | Không (payment flow cần latency thấp). → DO/RDS, không Neon. |
-  | Cần read replica MVP không? | Có (admin dashboard + analytics tách khỏi OLTP). → DO GP 4 GB+ kèm replica. |
+- **Người chốt**: User
+- **Bối cảnh**: 4 ứng viên managed Postgres đã so sánh. User chọn DO làm baseline kỹ thuật để lấy báo giá và kiểm thử.
+- **Quyết định**:
+  - **Production target**: DigitalOcean Managed PostgreSQL.
+  - **Local**: PostgreSQL Docker Compose (giữ nguyên — đã làm ở phiên 3-5).
+  - **Staging**: môi trường tách biệt, không dùng credentials/dữ liệu production. Có thể chạy self-host 1 droplet hoặc 1 managed cluster staging riêng — chốt sau khi có budget.
+  - **Region**: ưu tiên Singapore. BE nên đặt cùng region và dùng private networking khi khả dụng.
+  - **Cấu hình mục tiêu** (baseline kỹ thuật, không phải cam kết số người dùng):
+    - Primary khoảng **2 vCPU / 4 GiB RAM**.
+    - **1 standby node** phục vụ HA cùng cấu hình.
+    - Storage khởi đầu khoảng **30 GiB** hoặc mức tối thiểu của tier.
+    - **Chưa cần read replica** phục vụ đọc.
+  - **Phân biệt rõ**:
+    - **Standby HA**: phục vụ failover (chỉ chạy khi primary down, không query).
+    - **Read replica**: phục vụ read scaling (có thể query, async replication).
+    - Hai khái niệm **không thay thế nhau**.
+  - **Quy trình SKU/pricing/limits/backup**: xác minh lại trên nguồn chính thức trước khi cấp phát. Điều chỉnh theo load test và ngân sách được duyệt.
+  - **Không tự tạo tài nguyên trả phí**. Không chặn việc code BE / migration / integration test local — vì môi trường dev dùng compose Postgres.
 - **Hệ quả**:
-  - DEC-022 chuyển từ "Proposed" → "Accepted" với provider + tier cụ thể.
-  - UA-023 (cấp managed Postgres credentials) có provider rõ để user thao tác.
-  - `.env.example` bổ sung `DB_SSLMODE=require`, comment hướng dẫn tạo cluster.
-  - `deployment-runbook.md` thêm connection string pattern + restore test gate.
-  - **KHÔNG tự tạo cluster** — chờ user/operator cấp (rule AGENTS.md "Không gọi API production hoặc dịch vụ trả phí").
-- **Trạng thái**: ⏳ Proposed — DEC-022 update thành Accepted sau khi user reply UA-021.
+  - DEC-022 chuyển từ Proposed → **Accepted** với provider + tier + region cụ thể như trên.
+  - `managed-postgres-comparison.md` sẽ sửa: bỏ số liệu giá / latency / connection chưa xác minh, bỏ việc dùng secret-leak để loại Supabase, phân biệt Standby vs Read replica.
+  - `AGENTS.md` BE cập nhật: local self-host, prod target managed.
+  - `.env.example` thêm `DB_SSLMODE=require` (managed bắt buộc TLS).
+  - **UA-023 vẫn pending**: cấp credentials qua secret manager, không yêu cầu gửi connection string thật qua chat.
+- **Trạng thái**: ✅ Accepted (baseline). UA-023 (cấp credentials) vẫn chờ user khi deploy.
 
-## DEC-031 — Google Play policy: đã tra cứu 2026-09-18, không cần update thêm
+## DEC-031 — Google Play policy: tra cứu lại + mapping, không khẳng định "compliant"
 
 - **Ngày**: 2026-09-18
-- **Người đề xuất**: AI
-- **Bối cảnh**: UA-024 yêu cầu verify Google Play policy mới nhất. `vnpay-googleplay-policy.md` đã viết ở phiên 2.
-- **Quyết định đề xuất**:
-  - File `vnpay-googleplay-policy.md` ghi ngày tra cứu: `2026-09-18`.
-  - Tóm tắt:
-    - Booking PT = dịch vụ vật lý → VNPay OK (không qua Play Billing).
-    - Health declaration: lifestyle/fitness, không claim chẩn đoán/điều trị.
-    - Account deletion: bắt buộc có flow DELETE `/users/me` (đã có trong OpenAPI).
-    - UGC: cần report + moderation flow (BE-210 đã plan).
-    - Data Safety form: tự khai trên Play Console (UA-013).
-  - Action: user tra cứu lại lần cuối trước khi submit (UA-024), không cần update file thêm ở giai đoạn code.
-- **Hệ quả**: DEC-023 giữ nguyên. UA-024 chỉ là bước verify thủ công.
-- **Trạng thái**: ⏳ Proposed — chờ user xác nhận đã tra cứu.
+- **Người chốt**: User
+- **Bối cảnh**: UA-024 yêu cầu verify Google Play policy mới nhất. File cũ có một số khẳng định sai (24h xử lý report, auto-block theo N reports, Health Declaration chỉ khi claim chẩn đoán/điều trị).
+- **Quyết định**:
+  - **Đây là task nghiên cứu + checklist release**, không phải lý do chặn toàn bộ backend.
+  - `vnpay-googleplay-policy.md` được rewrite với mapping chính xác theo nguồn chính thức:
+    - **PAYMENTS**: Booking PT gặp trực tiếp = dịch vụ vật lý → VNPay OK. **PT online 1:1 KHÔNG được mặc định giống offline** — phải kiểm tra ngoại lệ Google (giữa hai cá nhân + không có bản ghi phát lại trong app). Gói AI / video / digital features phải qua Play Billing. **Không tuyên bố VNPay dùng được cho mọi sản phẩm Fitmate**.
+    - **HEALTH**: không ghi "chỉ app chẩn đoán/điều trị mới cần Health declaration". Khai chức năng fitness/dinhưỡng/dữ liệu sức khỏe đúng. Không khai `medical functionality` nếu sản phẩm không có.
+    - **UGC**: cần Terms + moderation + report + block user. Có endpoint trong OpenAPI không đồng nghĩa đã đáp ứng — phải có implementation truy cập được. Bỏ khẳng định "Google bắt buộc xử lý report trong 24h" nếu không có nguồn chính thức. Không coi auto-lock theo N reports là yêu cầu Google. Nếu Fitmate chọn SLA 24h nội bộ → ghi đó là chính sách Fitmate, không trích Google.
+    - **ACCOUNT DELETION**: có đường xóa trong app + web công khai. Xác định rõ dữ liệu xóa / ẩn danh / giữ lại với lý do hợp lệ. **Không bịa** Google bắt buộc confirmation email hoặc thời hạn purge cụ thể cho mọi app.
+    - **DATA SAFETY**: đối chiếu code, SDK, data flow thật. Không mặc định mọi truyền dữ liệu cho provider đều khai giống nhau. Đọc định nghĩa collection/sharing + ngoại lệ chính thức. Không đánh dấu hoàn tất biểu mẫu Play Console khi chưa thao tác.
+  - **Outcome**: hoàn thành phần rà soát tài liệu khi có nguồn + mapping. Khai báo / xác minh trong Console là user actions riêng (UA-010..014).
+  - **KHÔNG ghi "Google Play compliant"** chỉ từ việc đọc chính sách. Xác minh lại trước ngày submit.
+  - Ngày kiểm tra ghi rõ trong file.
+- **Hệ quả**:
+  - File `vnpay-googleplay-policy.md` viết lại với ngày kiểm tra + 5 link nguồn chính thức user liệt kê.
+  - UA-024 đánh dấu done cho "rà soát tài liệu"; giữ "user verify trước submit" là riêng.
+  - Không ảnh hưởng code/release/UA khác.
+- **Trạng thái**: ✅ Accepted.
+
+## DEC-032 — Bootstrap Identity: dùng ASP.NET Core Identity
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User (qua việc yêu cầu tiếp tục triển khai)
+- **Bối cảnh**: BE-021 đang chờ UA-021/UA-018. UA-018 đã chốt; UA-021 đã chốt baseline DO nhưng credentials (UA-023) vẫn pending — không block dev local vì dev dùng Postgres compose. `identity-evaluation.md` đã so sánh Phương án A (Identity) vs B (tự viết) và khuyến nghị A.
+- **Quyết định**: triển khai **BE-021** ngay trong phiên này, dùng `ApplicationUser : IdentityUser<Guid>` + 6 bảng Identity (`Users`, `Roles`, `UserRoles`, `UserClaims`, `RoleClaims`, `UserTokens`, `UserLogins`).
+- **Hệ quả**:
+  - Migration mới: `20260918170000_IdentitySchema` (8 bảng Identity, drop `users`/`user_profiles` cũ hoặc rename).
+  - Giữ nguyên `RefreshToken`, `Device`, `AuditLog`, `IdempotencyRecord`, `OutboxMessage`.
+  - Refactor `User` → `ApplicationUser` extends `IdentityUser<Guid>` (xem `identity-evaluation.md §4 Phương án A`).
+  - CLI `seed-admin` hiện tại dùng `User` entity → refactor sang `ApplicationUser` + `UserManager.CreateAsync`.
+  - `dotnet build` solution + `dotnet test` phải xanh trước khi commit.
+- **Trạng thái**: ✅ Accepted (BE-021 → IN_PROGRESS ngay trong phiên 7).
+
+## DEC-033 — Không viết nhiều adapter giả
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User
+- **Bối cảnh**: AGENTS.md gốc đã có rule "Không fake payment / fake AI trong production. Adapter phải fail khi cấu hình sai". User nhắc lại rõ trong UA-019.
+- **Quyết định**:
+  - `IPaymentProvider` interface giữ, nhưng chỉ có **1 implementation thật** là `VnpayPaymentProvider`.
+  - `FakePaymentProvider` chỉ tồn tại ở `Development` env và được `DI` skip ở tất cả env khác. Production: nếu config thiếu → **fail-fast** lúc startup, không có fallback.
+  - Tương tự cho AI (`IAiAdapter`, `IDomain` etc) — chỉ 1 impl thật, 1 fake chỉ dev.
+- **Trạng thái**: ✅ Accepted.
+
+## DEC-034 — Dữ liệu cũ không map an toàn → render "—"
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User
+- **Bối cảnh**: User quyết định rõ "Không map dữ liệu cũ mơ hồ bằng suy đoán" (UA-018 cuối).
+- **Quyết định**:
+  - Khi FE mock hoặc data thiếu dữ kiện (ví dụ: mobile có `late` mà BE không có trạng thái tương ứng) → render `"—"` chứ không suy luận mapping.
+  - FE adapter trả về enum canonical nếu record đủ dữ kiện; nếu không đủ → trả `null`/`"—"`.
+  - Backend không tự chọn default cho field lịch sử không rõ.
+- **Trạng thái**: ✅ Accepted.
+
+## DEC-035 — Mock FE chỉ render option BE hỗ trợ
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User
+- **Bối cảnh**: UA-019 — web mock có 4 payment method, BE chỉ hỗ trợ 1. User yêu cầu cập nhật integration guide để FE thay mock bằng option thật; không tự sửa FE trong phạm vi BE release.
+- **Quyết định**:
+  - `mobile-integration-guide.md` bổ sung: payment UI trên mobile chỉ hiển thị "Thanh toán qua VNPay" trong release đầu. Sau release sau mở rộng provider mới.
+  - `admin-integration-guide.md` bổ sung: web admin `BookingManagement.jsx` payment filter chip chỉ hiển thị `VNPay` (1 chip), không hiển thị 4 chip như mock hiện tại.
+  - Việc sửa FE mock thực tế nằm ngoài scope backend release. Ghi TODO `out-of-scope` trong tasks.md.
+- **Trạng thái**: ✅ Accepted.

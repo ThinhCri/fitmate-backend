@@ -625,7 +625,7 @@ paths:
         - in: query
           name: status
           schema:
-            $ref: '#/components/schemas/BookingStatus'
+            $ref: '#/components/schemas/AppointmentStatus'
         - in: query
           name: page
           schema:
@@ -667,7 +667,7 @@ paths:
         - in: query
           name: status
           schema:
-            $ref: '#/components/schemas/BookingStatus'
+            $ref: '#/components/schemas/AppointmentStatus'
         - in: query
           name: page
           schema:
@@ -1723,7 +1723,7 @@ paths:
         - in: query
           name: status
           schema:
-            $ref: '#/components/schemas/BookingStatus'
+            $ref: '#/components/schemas/AppointmentStatus'
         - in: query
           name: ptId
           schema:
@@ -2017,6 +2017,28 @@ paths:
                   total:
                     type: integer
 
+  /admin/platform-policy:
+    get:
+      tags: [Admin]
+      summary: Đọc platform policy (read-only theo DEC-029)
+      description: |
+        Trả chính sách hiện hành của nền tảng. Release đầu KHÔNG có endpoint
+        POST để admin sửa (cần audit + versioning + effective_from khi scale).
+        Phí nền tảng lưu theo basis points (bps); frontend convert sang %
+        cho hiển thị (1000 bps = 10.00%).
+      operationId: getPlatformPolicy
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPolicyResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /admin/metrics/overview:
     get:
       tags: [Admin]
@@ -2095,6 +2117,14 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ProblemDetails'
+
+    Forbidden:
+      description: Forbidden (không đủ quyền)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ProblemDetails'
+
     NotFound:
       description: Not Found
       content:
@@ -2479,12 +2509,32 @@ components:
           type: string
           format: date-time
 
-    BookingStatus:
+    AppointmentStatus:
       type: string
-      enum: [held, awaiting_payment, paid, completed, cancelled, refunded, expired]
+      description: |
+        Vòng đời của buổi hẹn. Theo DEC-026 — KHÔNG gộp với PaymentStatus hay RefundStatus.
+        Enum string ổn định, PascalCase. Client không được PATCH trực tiếp; mỗi transition đi qua endpoint riêng.
+      enum: [Held, Pending, Confirmed, InProgress, Completed, Cancelled, Expired]
+
+    PaymentStatus:
+      type: string
+      description: |
+        Vòng đời của payment intent. Tách khỏi AppointmentStatus (DEC-026).
+      enum: [Pending, Paid, Failed, Refunded, PartialRefunded]
+
+    RefundStatus:
+      type: string
+      description: |
+        Vòng đời của refund request. Tách khỏi AppointmentStatus (DEC-026).
+      enum: [Pending, Succeeded, Failed]
 
     Appointment:
       type: object
+      description: |
+        Booking record. Theo DEC-026, tách 3 status:
+        - appointment.status: AppointmentStatus
+        - appointment.payment_status: PaymentStatus
+        - refund.status: RefundStatus
       properties:
         id:
           type: string
@@ -2503,13 +2553,27 @@ components:
         duration_minutes:
           type: integer
         status:
-          $ref: '#/components/schemas/BookingStatus'
+          $ref: '#/components/schemas/AppointmentStatus'
+        payment_status:
+          $ref: '#/components/schemas/PaymentStatus'
+        is_late_attendee:
+          type: boolean
+          description: |
+            Flag attendance (DEC-026). KHÔNG tự kết luận no-show. KHÔNG dùng để tính reward.
+          default: false
+        previous_booking_id:
+          type: string
+          nullable: true
+          description: Trỏ tới booking trước nếu được reschedule (audit trail).
         price_listed_vnd:
           type: integer
         discount_vnd:
           type: integer
         actual_paid_vnd:
           type: integer
+        platform_fee_rate_bps:
+          type: integer
+          description: Basis points (1000 = 10.00%). Snapshot tại thời điểm thanh toán.
         platform_fee_vnd:
           type: integer
         trainer_share_vnd:
@@ -2522,10 +2586,6 @@ components:
         note:
           type: string
 
-    PaymentStatus:
-      type: string
-      enum: [pending, paid, failed, refunded, partial_refunded]
-
     Payment:
       type: object
       properties:
@@ -2535,6 +2595,9 @@ components:
           type: string
         method:
           type: string
+          description: |
+            Theo DEC-027 — release đầu chỉ triển khai VNPay. Enum cố định 1 value.
+            Provider bổ sung sau cần migration OpenAPI + DI adapter.
           enum: [vnpay]
         status:
           $ref: '#/components/schemas/PaymentStatus'
@@ -2569,7 +2632,7 @@ components:
           type: string
         status:
           type: string
-          enum: [pending, succeeded, failed]
+          $ref: '#/components/schemas/RefundStatus'
         created_at:
           type: string
           format: date-time
@@ -2620,7 +2683,7 @@ components:
         net_trainer_share_vnd:
           type: integer
         status:
-          $ref: '#/components/schemas/BookingStatus'
+          $ref: '#/components/schemas/AppointmentStatus'
 
     FinanceOverview:
       type: object
@@ -3281,6 +3344,63 @@ components:
         created_at:
           type: string
           format: date-time
+
+    PlatformPolicyResponse:
+      type: object
+      description: |
+        Theo DEC-029 — read-only platform policy. Đơn vị platform_fee_rate_bps:
+        1000 bps = 10.00%. FE convert sang phần trăm để hiển thị.
+      properties:
+        platform_fee_rate_bps:
+          type: integer
+          example: 1000
+        policy_version:
+          type: string
+          example: v1
+        effective_from:
+          type: string
+          format: date-time
+        display_hint:
+          type: string
+          example: "10.00% — cố định, chưa hỗ trợ chỉnh từ admin trong release đầu"
+        editable:
+          type: boolean
+          example: false
+
+    BookingRescheduleEvent:
+      type: object
+      description: |
+        Theo DEC-026 — sự kiện đổi lịch có audit. KHÔNG phải trạng thái kết thúc.
+        Booking có previous_booking_id trỏ về event này.
+      properties:
+        id:
+          type: string
+        booking_id:
+          type: string
+        requested_by:
+          type: string
+        requested_at:
+          type: string
+          format: date-time
+        old_slot_start_utc:
+          type: string
+          format: date-time
+        new_slot_start_utc:
+          type: string
+          format: date-time
+        accepted_by:
+          type: string
+          nullable: true
+        accepted_at:
+          type: string
+          format: date-time
+          nullable: true
+        status:
+          type: string
+          enum: [Pending, Accepted, Rejected, Cancelled]
+        reason:
+          type: string
+          nullable: true
 
 security:
   - bearerAuth: []

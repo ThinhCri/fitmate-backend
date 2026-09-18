@@ -4,7 +4,17 @@
 
 ## Vai trò của repo
 
-Repo này là **backend chính** cho cả Android app và Admin Web. Stack: **.NET 8 + ASP.NET Core + EF Core + Npgsql + PostgreSQL self-hosted**.
+Repo này là **backend chính** cho cả Android app và Admin Web. Stack: **.NET 8 + ASP.NET Core + EF Core + Npgsql + PostgreSQL**.
+
+### Môi trường chạy
+
+| Môi trường | PostgreSQL | Đặc điểm |
+|---|---|---|
+| **Local dev** | Self-hosted qua Docker Compose (`compose.yml`, user `fitmate`, password `dev`) | Mount volume, reset bằng cách xóa container. Không cần backup. |
+| **Staging** | Môi trường tách biệt (chốt khi có budget) | Tách biệt credentials/dữ liệu khỏi production. |
+| **Production (baseline)** | **Managed** DigitalOcean PostgreSQL Singapore, primary 2 vCPU / 4 GiB + 1 standby HA (chưa có read replica) | `sslmode=require` bắt buộc. Credentials qua secret manager — KHÔNG commit. Xem `decisions.md` DEC-030 và `managed-postgres-comparison.md`. |
+
+**Không tự ý tạo tài nguyên trả phí**. Mọi thao tác lên managed DB chờ user/operator cấp credentials (UA-023).
 
 Tài liệu nguồn chuẩn: [`docs/backend-release/README.md`](docs/backend-release/README.md).
 
@@ -33,7 +43,7 @@ Tài liệu nguồn chuẩn: [`docs/backend-release/README.md`](docs/backend-rel
 - **Không commit `.env`, `*.pfx`, `*.keystore`, `appsettings.*.json` thật, dump DB.**
 - **Mỗi migration có `Up` và `Down` rõ ràng**. Migration destructive cần backup + rollback plan.
 - **Không seed admin password mặc định.** Bootstrap qua CLI.
-- **Không fake payment / fake AI trong production.** Adapter phải fail khi cấu hình sai.
+- **Không fake payment / fake AI trong production.** Adapter phải fail khi cấu hình sai. Xem `decisions.md` DEC-033.
 - **Mỗi endpoint có test**: success, validation error, unauthorized, forbidden, not found, conflict.
 - **Money rounding half-up đồng gần nhất.** Tính lũy kế cho refund nhiều lần. Tổng refund ≤ actual_paid.
 

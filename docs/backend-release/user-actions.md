@@ -129,52 +129,53 @@ Khi nhóm AI bàn giao, cung cấp đầy đủ mục trong `ai-handoff-checklis
 
 ## UA-018 — Chốt AppointmentStatus enum giữa 3 client
 
-- **Lý do**: Mobile có 6 states (`pending|confirmed|completed|cancelled|late|rescheduled`), web admin có 4 (`in_progress|completed|pending|cancelled`), BE OpenAPI có 7 (`Held|AwaitingPayment|Paid|Completed|Cancelled|Refunded|Expired`). Cần chốt 1 schema thống nhất.
-- **Bắt buộc**: ✅ (trước khi code BE-060 Booking).
-- **Hướng dẫn**: Trả lời các câu hỏi trong `audit-old-backend.md §5` và §6.
-- **Verify**: `decisions.md` có DEC-026 chốt enum + mapping.
+- **Ngày chốt**: 2026-09-18
+- **Lý do**: 3 client có 3 schema lệch nhau; nhiều record không đủ dữ kiện suy ra mapping an toàn.
+- **Quyết định**: `decisions.md` **DEC-026** — `AppointmentStatus` 7 value (PascalCase: Held, Pending, Confirmed, InProgress, Completed, Cancelled, Expired). `PaymentStatus` + `RefundStatus` tách riêng. `late` là flag `is_late_attendee`; `rescheduled` là event `BookingRescheduleEvent`. Mapping chi tiết: `api-contract.md §2.1`.
+- **Trạng thái**: ✅ DONE (phiên 7, 2026-09-18).
 
 ## UA-019 — Chốt payment method enum
 
-- **Lý do**: Web admin mock có 4 method (FitMate Pay, QR, MoMo, Napas). BE OpenAPI chỉ có `Vnpay`. Cần biết MVP support 1 hay multi-provider.
-- **Bắt buộc**: ✅ (trước khi code BE-140 Payment).
-- **Hướng dẫn**: Trả lời trong `audit-old-backend.md §6`.
-- **Verify**: `decisions.md` có DEC-027.
+- **Ngày chốt**: 2026-09-18
+- **Quyết định**: `decisions.md` **DEC-027** — release đầu chỉ triển khai VNPay. Enum API `Payment.method = vnpay` (1 value). IPaymentProvider interface giữ để mở rộng sau, không viết nhiều adapter giả (DEC-033). FE UI rút gọn chip về 1 (TODO out-of-scope `docs/integration/web-payment-chip.md`).
+- **Trạng thái**: ✅ DONE (phiên 7).
 
 ## UA-020 — Chốt Report target type
 
-- **Lý do**: Mobile có 4 (`post|comment|user|certificate`), web có 3 (`post|user|pt`), BE OpenAPI chưa rõ. Cần biết phạm vi.
-- **Bắt buộc**: ✅ (trước khi code BE-200 Moderation).
-- **Hướng dẫn**: Trả lời trong `audit-old-backend.md §6`.
-- **Verify**: `decisions.md` có DEC-028.
+- **Ngày chốt**: 2026-09-18
+- **Quyết định**: `decisions.md` **DEC-028** — enum canonical 4 value (PascalCase: Post, Comment, User, Certificate). PT map sang user. Visibility check + reason validate + idempotency chống spam. Block user là action riêng, không tự động từ report.
+- **Trạng thái**: ✅ DONE (phiên 7).
 
 ## UA-021 — Chốt cấu hình managed Postgres
 
-- **Lý do**: Có 4 ứng viên (DO Managed / AWS RDS / Neon / Supabase). Mỗi cái có cost / HA / connection limit khác.
-- **Bắt buộc**: ✅ (trước khi production DB).
-- **Hướng dẫn**: Trả lời 4 câu hỏi trong `managed-postgres-comparison.md §5`.
-- **Verify**: `decisions.md` DEC-022 chốt provider + tier.
+- **Ngày chốt**: 2026-09-18
+- **Quyết định**: `decisions.md` **DEC-030** (DEC-022 cập nhật thành Accepted). Production = DigitalOcean Managed PostgreSQL Singapore, primary 2 vCPU / 4 GiB + 1 standby HA; **chưa có read replica** (phân biệt với standby). Storage ~30 GiB. Region Singapore, BE đặt cùng region + private networking khi khả dụng.
+- **Blocked area**: SKU / pricing / backup retention / connection limit phải xác minh trên nguồn chính thức trước khi cấp phát. Không tự tạo tài nguyên trả phí.
+- **Trạng thái**: ✅ Baseline DONE (phiên 7). UA-023 vẫn pending credentials khi deploy production.
 
 ## UA-022 — Chốt platform fee API có cho phép admin sửa không
 
-- **Lý do**: Web admin có `platformPolicy.platformFeeRate=10` (cố định). BE OpenAPI chưa có endpoint quản lý.
-- **Bắt buộc**: ⚠️ (chốt trước MVP).
-- **Hướng dẫn**: Trả lời trong `audit-old-backend.md §6`.
-- **Verify**: `decisions.md` có DEC-029.
+- **Ngày chốt**: 2026-09-18
+- **Quyết định**: `decisions.md` **DEC-029** — release đầu **read-only**. Phí nền tảng cố định **10%** = `platform_fee_rate_bps = 1000`, đọc từ server config (`PLATFORM_FEE_BPS` env). Endpoint mới: `GET /admin/platform-policy`. KHÔNG nhận fee rate từ client.
+- **Trạng thái**: ✅ DONE (phiên 7). POST sửa phí là post-MVP.
 
 ## UA-023 — Cấp managed Postgres credentials
 
-- **Lý do**: Sau khi chốt provider (UA-021), cần connection string thật.
-- **Bắt buộc**: ✅ (trước khi deploy production DB).
-- **Hướng dẫn**: Tạo cluster, lấy connection string có TLS, set `sslmode=require`.
-- **Verify**: `psql` connect OK từ VPS production.
+- **Trạng thái**: ⏳ Pending — credentials qua secret manager, **không gửi connection string thật qua chat**.
+- **Phụ thuộc**: UA-021 (đã chốt baseline ở DEC-030).
+- **Hướng dẫn**: Tạo cluster ở DigitalOcean Singapore theo `managed-postgres-comparison.md` §3 (configuration baseline DEC-030). Connection string có TLS, set `sslmode=require`. Lưu secret qua Vault / SOPS / GitHub Actions secret — không commit.
+- **Verify**: `psql "sslmode=require ..."` từ VPS production connect OK. BE startup không panic ở DB connection.
+- **Note**: Không chặn việc code backend / migration / integration test local — dev dùng Postgres Docker Compose (xem `AGENTS.md §Vai trò của repo`).
 
 ## UA-024 — Xác minh Google Play policy mới nhất
 
-- **Lý do**: Policy Google Play thay đổi thường xuyên. File `vnpay-googleplay-policy.md` tra cứu 2026-09-18.
-- **Bắt buộc**: ✅ (trước khi submit lên Play).
-- **Hướng dẫn**: Vào https://support.google.com/googleplay/android-developer, đọc mục Payments / Health / UGC / Account Deletion / Data Safety. So sánh với `vnpay-googleplay-policy.md §2`. Update nếu khác.
-- **Verify**: Ghi ngày tra cứu mới nhất vào file.
+- **Ngày chốt phần rà soát tài liệu**: 2026-09-18 (phiên 7). File `vnpay-googleplay-policy.md` đã viết lại với mapping chính xác theo nguồn chính thức.
+- **Trạng thái**: ✅ Rà soát tài liệu DONE. Submit + verify trên Console = action riêng (UA-010..014).
+- **User action còn lại** (KHÔNG chặn backend release):
+  - Verify lại lần cuối trước khi submit app lên internal-testing / production.
+  - Khai `Data Safety form` trên Play Console (UA-013).
+  - Đăng ký Privacy policy + Terms URL (UA-012).
+- **Note quan trọng** (DEC-031): Không viết "Google Play compliant" chỉ từ việc đọc policy. Việc trên Console là khác biệt với rà soát tài liệu.
 
 ## Secrets không bao giờ commit
 

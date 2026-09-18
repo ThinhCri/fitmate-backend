@@ -26,55 +26,110 @@ User **không** tự nâng role hay tự set `isVerified`. Chỉ admin.
 
 ### 3.1 Trạng thái
 
+> Theo DEC-026: **không gộp** trạng thái lịch / thanh toán / hoàn tiền vào một enum.
+> - `AppointmentStatus` chỉ mô tả vòng đời của buổi hẹn.
+> - `PaymentStatus` mô tả vòng đời của payment intent.
+> - `RefundStatus` mô tả vòng đời của refund.
+
 ```
-created → held → awaiting_payment → paid → completed
-                                       ↘ cancelled → refunded
-                                       ↘ cancelled → expired
+held → pending → confirmed → in_progress → completed
+                                 ↘ cancelled → refunded
+                                 ↘ cancelled → expired (TTL)
 ```
 
-| State | Ý nghĩa |
+| `AppointmentStatus` | Ý nghĩa |
 |---|---|
-| `held` | Slot tạm giữ, TTL 5 phút. |
-| `awaiting_payment` | Đã tạo payment intent. |
-| `paid` | Đã thanh toán thành công (IPN xác nhận). |
-| `completed` | PT xác nhận hoàn thành. |
-| `cancelled` | Member hoặc PT hủy (xem §3.3). |
-| `refunded` | Đã hoàn tiền (admin hoặc auto theo policy). |
-| `expired` | Hold quá hạn; thanh toán không đến trước deadline. |
+| `Held` | Slot tạm giữ, TTL 5 phút. |
+| `Pending` | Đã tạo booking, đang chờ PT xác nhận. |
+| `Confirmed` | PT đã xác nhận lịch (KHÔNG đồng nghĩa đã thanh toán). |
+| `InProgress` | Buổi tập đã bắt đầu. |
+| `Completed` | PT xác nhận hoàn thành. |
+| `Cancelled` | Member, PT hoặc admin hủy. |
+| `Expired` | Giữ chỗ/yêu cầu hết hạn. |
 
-### 3.2 Snapshot tại thời điểm thanh toán
+| `PaymentStatus` | Ý nghĩa |
+|---|---|
+| `Pending` | Đã tạo payment intent, chờ redirect/IPN. |
+| `Paid` | Provider xác nhận thanh toán thành công. |
+| `Failed` | Thanh toán thất bại hoặc user hủy ở trang provider. |
+| `Refunded` | Đã hoàn toàn bộ `actual_paid_vnd`. |
+| `PartialRefunded` | Đã hoàn một phần; còn dư nợ. |
+
+| `RefundStatus` | Ý nghĩa |
+|---|---|
+| `Pending` | Admin yêu cầu, chờ provider confirm. |
+| `Succeeded` | Provider xác nhận đã chuyển tiền. |
+| `Failed` | Provider từ chối (giữ nguyên payment không thay đổi). |
+
+### 3.1.1 Sự kiện (event) — không phải trạng thái
+
+- **`is_late_attendee: bool`**: thông tin attendance/arrival. Member đến trễ → flag `true`. **KHÔNG tự kết luận no-show** chỉ vì quá giờ.
+- **`BookingRescheduleEvent`**: sự kiện đổi lịch có audit. Fields:
+  - `booking_id`, `requested_by`, `requested_at`.
+  - `old_slot_start_utc`, `new_slot_start_utc`.
+  - `accepted_by?`, `accepted_at?`.
+  - `status`: `Pending | Accepted | Rejected | Cancelled`.
+  - `reason?`.
+- Booking có thêm field `previous_booking_id?` để trace lịch sử reschedule.
+- Reschedule có **transaction** check slot mới trước khi release slot cũ. Nếu đổi lịch thất bại → slot cũ **không bị mất**.
+
+### 3.2 Transition matrix (AppointmentStatus)
+
+| From → To | Trigger | Actor | Guard |
+|---|---|---|---|
+| (none) → Held | `POST /bookings/holds` | Member | Slot available, service hợp lệ |
+| Held → Pending | `POST /bookings/confirm` (sau Payment.Paid) | Member | Hold chưa hết TTL, payment=Paid |
+| Held → Expired | cron TTL | system | Hold.quota > TTL (5 phút) |
+| Pending → Confirmed | PT đồng ý | PT của booking | status hiện tại = Pending |
+| Confirmed → InProgress | Slot bắt đầu | system auto (slot_start_utc - 5 min) hoặc PT manual | status = Confirmed, payment = Paid |
+| InProgress → Completed | PT xác nhận | PT của booking | status = InProgress |
+| {Held, Pending, Confirmed, InProgress} → Cancelled | Member / PT / Admin yêu cầu cancel | Owner hoặc admin | chưa Completed, chưa Refunded |
+| Pending → Expired | admin expire (PT không phản hồi trong N ngày) | admin | status = Pending, payment quá hạn |
+
+**Client KHÔNG được PATCH `appointment.status` tùy ý**. Mỗi transition qua endpoint riêng.
+
+### 3.3 Snapshot tại thời điểm thanh toán
 
 Mỗi booking lưu immutable snapshot:
 - `price_listed_vnd` — giá niêm yết.
 - `discount_vnd` — giảm giá (nếu có).
 - `actual_paid_vnd` — integer VND thực trả (không âm, không vượt `price_listed_vnd - discount_vnd`).
-- `platform_fee_rate` — phiên bản chính sách (vd: `v1=0.10`).
-- `platform_fee_vnd` — tính từ `actual_paid_vnd` tại thời điểm thanh toán, làm tròn half-up đến đồng.
+- `platform_fee_rate_bps` — basis points (vd: `1000` = 10.00%).
+- `platform_fee_vnd` — tính từ `actual_paid_vnd × platform_fee_rate_bps / 10000`, half-up.
 - `trainer_share_vnd` = `actual_paid_vnd - platform_fee_vnd`.
-- `policy_version` — phiên bản `domain-rules.md` đã dùng.
+- `policy_version` — phiên bản `domain-rules.md` đã dùng (vd: `v1`).
+- **`payment_fee_rate_bps` không nhận từ client** — luôn lấy từ server config (DEC-029). Booking snapshot ghi lại giá trị thực dùng để tính.
 
-### 3.3 Hủy & hoàn tiền (chính sách phát triển hiện tại)
+### 3.4 Hủy & hoàn tiền (chính sách phát triển hiện tại)
 
 | Thời điểm hủy | Hoàn tiền | Ghi nhận doanh thu |
 |---|---|---|
-| Trước khi `paid` | Không có gì để hoàn | Không |
-| Sau `paid`, trước `completed` | Hoàn toàn bộ `actual_paid_vnd` | Thu nhập PT chưa ghi nhận |
-| Sau `paid` và `completed` | Qua quy trình admin duyệt; có thể partial/full | Refund tạo điều chỉnh kỳ hoàn |
-| Sau `paid`, quá giờ hẹn không diễn ra | Cần quyết định sản phẩm (no-show policy) — **chưa chốt** | — |
+| Trước khi `Payment.Paid` | Không có gì để hoàn | Không |
+| Sau `Payment.Paid`, trước `Appointment.Completed` | Hoàn toàn bộ `actual_paid_vnd` | Thu nhập PT chưa ghi nhận |
+| Sau `Appointment.Completed` | Qua quy trình admin duyệt; có thể partial/full | Refund tạo điều chỉnh kỳ hoàn |
+| Sau `Payment.Paid`, quá giờ hẹn không diễn ra | Cần quyết định sản phẩm (no-show policy) — **chưa chốt** | — |
 
-**Đã chốt (BR)**: không tự động `completed` khi quá giờ. Không có phí phạt hủy (chưa). Refund giảm phần PT + phí tương ứng. Hoàn nhiều lần dùng tính lũy kế để tránh lệch làm tròn. Tổng refund không vượt tổng đã thanh toán. Không tính trùng khi retry.
+**Đã chốt (BR)**:
+- Không tự động `Appointment.Completed` khi quá giờ.
+- Không có phí phạt hủy (chưa).
+- Refund giảm phần PT + phí tương ứng.
+- Hoàn nhiều lần dùng tính lũy kế để tránh lệch làm tròn.
+- Tổng refund không vượt tổng đã thanh toán.
+- Không tính trùng khi retry.
+- **Điều kiện bắt đầu buổi tập và ghi nhận doanh thu** phải kiểm tra CẢ `AppointmentStatus = Confirmed/InProgress/Completed` LẪN `PaymentStatus = Paid`.
 
-### 3.4 Money rules
+### 3.5 Money rules
 
 - Mọi cột tiền: `BIGINT` (đồng VND).
+- `platform_fee_rate_bps` lưu `INTEGER`, đơn vị basis points (`1000` = 10.00%). Không float.
 - Làm tròn half-up ở đồng gần nhất (`(x + 5) / 10` cho integer xu phát sinh, hoặc `(long)Math.Round(x, MidpointRounding.AwayFromZero)` cho decimal đầu vào).
 - Refund cộng dồn: `refunded_so_far + new_refund ≤ actual_paid_vnd`.
 - Refund idempotent qua `idempotency_key`.
 - Provider fee (nếu có) tách khỏi platform fee; trừ vào share PT nếu BR chốt sau.
 
-### 3.5 Concurrency
+### 3.6 Concurrency
 
-- Unique constraint `(trainer_id, slot_start_utc)` khi appointment status ∈ {`held`,`awaiting_payment`,`paid`,`completed`}.
+- Unique constraint `(trainer_id, slot_start_utc)` khi `AppointmentStatus ∈ {Held, Pending, Confirmed, InProgress, Completed}`.
 - Không chỉ check availability rồi insert; insert phải nằm trong transaction với constraint.
 - Giữ chỗ có TTL: cron job mỗi 1 phút release slot hết hạn.
 - Webhook payment: idempotent qua `payment_id`, chấp nhận out-of-order đến khi trạng thái terminal.

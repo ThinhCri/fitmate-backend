@@ -46,29 +46,37 @@
 
 ## 3. Booking
 
+> Theo DEC-026: `AppointmentStatus` và `PaymentStatus` là 2 enum riêng. Authorization phải enforce cả 2 trên mỗi action.
+
 | Action | public | member | pt | admin |
 |---|---|---|---|---|
-| Create hold | — | 🔒 | ❌ | ❌ |
-| Confirm booking | — | 🔒 | ❌ | ❌ |
+| Create hold (`POST /bookings/holds`) | — | 🔒 | ❌ | ❌ |
+| Confirm booking (`POST /bookings/{id}/confirm`) — `Held → Pending` | — | 🔒 | ❌ | ❌ |
+| PT accept pending (`POST /me/bookings/{id}/accept`) — `Pending → Confirmed` | — | ❌ | 🔒 (PT của booking) | ❌ |
+| Member cancel (`POST /me/bookings/{id}/cancel`) — `* → Cancelled` | — | 🔒 | 🔒 (PT của booking) | ✅ |
+| PT complete (`POST /me/bookings/{id}/complete`) — `InProgress → Completed` | — | ❌ | 🔒 (PT của booking) | ✅ |
+| Admin force complete | — | ❌ | ❌ | ✅ (audit) |
+| Reschedule (`POST /me/bookings/{id}/reschedule`) — tạo `BookingRescheduleEvent` | — | 🔒 | 🔒 (PT của booking) | ✅ |
 | List own bookings (member view) | — | 🔒 | ❌ | ✅ |
 | List own bookings (PT view) | — | ❌ | 🔒 | ✅ |
 | List all bookings | — | ❌ | ❌ | ✅ |
-| Cancel own booking | — | 🔒 (member) | 🔒 (PT của booking) | ✅ |
-| Reschedule own booking | — | 🔒 | ❌ | ✅ |
-| PT confirm completion | — | ❌ | 🔒 | ✅ |
-| Admin force complete | — | ❌ | ❌ | ✅ |
-| Admin force refund | — | ❌ | ❌ | ✅ |
+
+**Không có action nào PATCH `appointment.status` tùy ý** — mỗi transition đi qua endpoint riêng với guard.
 
 ## 4. Payment
 
+> Theo DEC-027: provider duy nhất là `Vnpay`. `Payment.method = 'vnpay'`.
+
 | Action | public | member | pt | admin |
 |---|---|---|---|---|
-| Create payment | — | 🔒 | ❌ | ❌ |
-| VNPay return | ✅ (signed) | — | — | — |
-| VNPay IPN webhook | ✅ (signed) | — | — | — |
-| Get own payment | — | 🔒 | 🔒 (nếu liên quan booking của mình) | ✅ |
+| Create payment (`POST /payments`) | — | 🔒 | ❌ | ❌ |
+| List own payments | — | 🔒 | 🔒 (liên quan booking của mình) | ✅ |
 | List all payments | — | ❌ | ❌ | ✅ |
+| VNPay return URL | ✅ (signed, UX hint) | — | — | — |
+| VNPay IPN webhook | ✅ (signed, source of truth) | — | — | — |
 | Reconciliation job trigger | — | ❌ | ❌ | ✅ |
+| Force refund (`POST /admin/bookings/{id}/refund`) | — | ❌ | ❌ | ✅ (audit) |
+| **PATCH `payment_fee_rate` từ client** | — | ❌ (server-side only) | ❌ | ❌ |
 
 ## 5. Finance
 
@@ -137,12 +145,17 @@
 
 ## 11. Moderation
 
+> Theo DEC-028: `ReportTargetType ∈ {Post, Comment, User, Certificate}`. PT map sang User; targetUserRole trả về read-only.
+> **Block user là action riêng** — report user không tự động khóa. Số report là tín hiệu ưu tiên, admin resolve từng case.
+
 | Action | public | member | pt | admin |
 |---|---|---|---|---|
-| List reports | — | ❌ | ❌ | ✅ |
-| Resolve report | — | ❌ | ❌ | ✅ |
-| Dismiss report | — | ❌ | ❌ | ✅ |
-| Read audit log | — | ❌ | ❌ | ✅ |
+| Create report (`POST /reports`) — visibility check target | — | 🔒 | 🔒 | 🔒 (self-report) |
+| List reports (`GET /admin/reports`) | — | ❌ | ❌ | ✅ |
+| Resolve report (`POST /admin/reports/{id}/resolve`) | — | ❌ | ❌ | ✅ (audit; có thể trigger lock/delete) |
+| Dismiss report (`POST /admin/reports/{id}/dismiss`) | — | ❌ | ❌ | ✅ (audit) |
+| Block user (`POST /admin/users/{id}/lock`) — **không tự động** | — | ❌ | ❌ | ✅ |
+| Read audit log (`GET /admin/audit`) | — | ❌ | ❌ | ✅ |
 
 ## 12. Field-level permissions
 

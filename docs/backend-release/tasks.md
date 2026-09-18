@@ -25,10 +25,10 @@
 
 ### BE-021 Tích hợp ASP.NET Core Identity schema
 - Repo: FitmateAI_BE
-- Scope: thay `User` bằng `ApplicationUser : IdentityUser<Guid>` + 4 bảng Identity (Roles, UserRoles, UserClaims, UserTokens). `Program.cs` đăng ký `AddIdentity`. Seed roles Admin/PT/Member.
-- Depends on: UA-018 (chốt appointment enum), BE-020.
-- Done when: migration tạo 8 bảng Identity + 1 bảng UserProfile, `dotnet ef database update` chạy được.
-- Status: TODO (chờ UA-021 chốt).
+- Scope: thay `User` bằng `ApplicationUser : IdentityUser<Guid>` + 6 bảng Identity (Roles, UserRoles, UserClaims, RoleClaims, UserTokens, UserLogins). `Program.cs` đăng ký `AddIdentity`. Seed roles Admin/PT/Member.
+- Depends on: BE-020. Đã chốt qua DEC-032 (không còn phụ thuộc UA-021/UA-018 cho mục tiêu code; UA-021 chỉ chặn provisioning managed DB).
+- Done when: migration tạo 8 bảng Identity (7 bảng Identity + 1 bảng UserProfile), `dotnet ef database update` chạy được.
+- Status: **IN_PROGRESS** (bắt đầu ở phiên 7 ngay sau khi user chốt DEC-026..030).
 
 ### BE-099 Xóa secret Supabase khỏi Git history (BE cũ)
 - Repo: FitmateAI_BE
@@ -38,10 +38,10 @@
 - Status: BLOCKED (chờ UA-001).
 
 ### BE-030 Auth (register / login / refresh / logout)
-- Scope: JWT custom, BCrypt password. Endpoints trong OpenAPI.
-- Depends on: BE-020
+- Scope: JWT custom + BCrypt/Identity password. Endpoint theo OpenAPI. Theo DEC-026/027 — `AppointmentStatus` / `PaymentStatus` / `RefundStatus` enum đã chốt, truyền trong response. Theo DEC-027 — `Payment.method = vnpay` 1 value.
+- Depends on: BE-021.
 - Done when: integration test pass (success, wrong pwd, locked, expired token, replay).
-- Status: TODO
+- Status: TODO (bắt đầu khi BE-021 DONE).
 
 ### BE-040 Trainer + Certificate
 - Scope: PT profile, certificate submission, admin approve/reject.
@@ -55,11 +55,11 @@
 - Done when: overlap detection pass, edit service có pending booking trả 409.
 - Status: TODO
 
-### BE-060 Booking (hold, confirm, cancel, reschedule, complete)
-- Scope: state machine + unique constraint + TTL release.
+### BE-060 Booking (hold, confirm, pending→accept, cancel, reschedule, complete)
+- Scope: state machine theo `domain-rules.md §3.2` + unique constraint + TTL release. Theo DEC-026 — `late` là flag (BE-135a), `reschedule` qua `booking_reschedule_events` (BE-135). Endpoint accept riêng (`POST /me/bookings/{id}/accept`). Cần check cả `AppointmentStatus` + `PaymentStatus = Paid` mới ghi nhận doanh thu (FP-FN-04).
 - Depends on: BE-050
-- Done when: concurrency test (10 VU cùng slot) chỉ 1 thành công.
-- Status: TODO
+- Done when: concurrency test (10 VU cùng slot) chỉ 1 thành công; reschedule transaction check slot mới trước khi release cũ; idempotency chống report trùng (`reports.idempotency_key`).
+- Status: TODO.
 
 ### BE-070 Idempotency middleware + Outbox
 - Scope: middleware, schema `outbox`, worker.
@@ -68,10 +68,10 @@
 - Status: TODO
 
 ### BE-080 Validation + ProblemDetails
-- Scope: FluentValidation toàn cục, RFC 7807.
+- Scope: FluentValidation toàn cục, RFC 7807. Theo `api-contract.md §6`.
 - Depends on: BE-001
-- Done when: validation error trả đúng format.
-- Status: TODO
+- Done when: validation error trả đúng format; mọi Controller trả ProblemDetails khi 4xx/5xx.
+- Status: TODO.
 
 ### BE-090 Authorization matrix enforcement
 - Scope: spec classes kiểm tra role + ownership + field-level.
@@ -116,10 +116,10 @@
 - Status: TODO
 
 ### BE-150 Finance read-side
-- Scope: ledger + overview + PT earnings + revenue for PT.
+- Scope: ledger + overview + PT earnings + revenue for PT + **`GET /admin/platform-policy` (FP-FN-06, DEC-029 read-only)**.
 - Depends on: BE-140
-- Done when: dashboard numbers khớp với payment state.
-- Status: TODO
+- Done when: dashboard numbers khớp với payment state; `GET /admin/platform-policy` trả `{platform_fee_rate_bps: 1000, policy_version, effective_from, editable: false}`.
+- Status: TODO.
 
 ### BE-160 Workout + Weight
 - Scope: plans, exercises, sessions, weight log. Idempotency qua client_id.
@@ -152,10 +152,10 @@
 - Status: TODO
 
 ### BE-210 Moderation (reports)
-- Scope: list, resolve, dismiss, audit.
+- Scope: list, resolve, dismiss, audit. Theo DEC-028 — `ReportTargetType ∈ {Post, Comment, User, Certificate}`. PT map sang user (BE không có targetType riêng). Idempotency chống spam báo cáo trùng. Visibility check trước khi nhận report (không leak certificate riêng tư).
 - Depends on: BE-090
-- Done when: resolve tạo audit row.
-- Status: TODO
+- Done when: resolve tạo audit row; idempotency test (cùng reporter+target+Open → 409).
+- Status: TODO.
 
 ### BE-220 Admin metrics + action-required
 - Scope: KPIs endpoint + aggregation.
@@ -241,9 +241,9 @@
 
 | Status | Count |
 |---|---|
-| DONE | 0 |
-| IN_PROGRESS | 0 |
+| DONE | 3 (BE-001, BE-010, BE-020) |
+| IN_PROGRESS | 1 (BE-021) |
 | TODO | ~25 |
-| BLOCKED | ~7 |
+| BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.
