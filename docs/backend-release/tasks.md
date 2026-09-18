@@ -25,10 +25,10 @@
 
 ### BE-021 Tích hợp ASP.NET Core Identity schema
 - Repo: FitmateAI_BE
-- Scope: thay `User` bằng `ApplicationUser : IdentityUser<Guid>` + 6 bảng Identity (Roles, UserRoles, UserClaims, RoleClaims, UserTokens, UserLogins). `Program.cs` đăng ký `AddIdentity`. Seed roles Admin/PT/Member.
+- Scope: thay `User` bằng `ApplicationUser : IdentityUser<Guid>` + 6 bảng Identity (Roles, UserRoles, UserClaims, RoleClaims, UserTokens, UserLogins). `Program.cs` đăng ký `AddIdentityCore` + Roles + EF stores + DataProtection. Seed roles Admin/PT/Member.
 - Depends on: BE-020. Đã chốt qua DEC-032 (không còn phụ thuộc UA-021/UA-018 cho mục tiêu code; UA-021 chỉ chặn provisioning managed DB).
-- Done when: migration tạo 8 bảng Identity (7 bảng Identity + 1 bảng UserProfile), `dotnet ef database update` chạy được.
-- Status: **IN_PROGRESS** (bắt đầu ở phiên 7 ngay sau khi user chốt DEC-026..030).
+- Done when: migration `IdentitySchema` tạo 7 bảng Identity (6 bảng Identity + 1 bảng `user_profiles` giữ nguyên) + drop `users` cũ, `dotnet ef database update` chạy được, `dotnet build` + `dotnet test` pass.
+- Status: **DONE (phiên 8, 2026-09-18)**. Migration `20260918170539_IdentitySchema` applied to local Postgres compose (38 bảng). Build 0 warning, 0 error; 14/14 unit tests PASS. DB schema reset (greenfield theo user option A) + admin seed CLI refactor sang `UserManager` (`src/Fitmate.Api/Cli/SeedAdminCommand.cs`).
 
 ### BE-099 Xóa secret Supabase khỏi Git history (BE cũ)
 - Repo: FitmateAI_BE
@@ -241,8 +241,8 @@
 
 | Status | Count |
 |---|---|
-| DONE | 3 (BE-001, BE-010, BE-020) |
-| IN_PROGRESS | 1 (BE-021) |
+| DONE | 4 (BE-001, BE-010, BE-020, BE-021) |
+| IN_PROGRESS | 0 |
 | TODO | ~25 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 

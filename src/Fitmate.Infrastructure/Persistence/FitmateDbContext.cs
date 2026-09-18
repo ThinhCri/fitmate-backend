@@ -10,16 +10,27 @@ using Fitmate.Domain.Workout;
 using Fitmate.Domain.Nutrition;
 using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Review;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace Fitmate.Infrastructure.Persistence;
 
-public class FitmateDbContext : DbContext
+/// <summary>
+/// DbContext chính của Fitmate. Theo DEC-032, kế thừa <see cref="IdentityDbContext{TUser,TRole,TKey}"/>
+/// để quản lý schema Identity (users, roles, user_roles, user_claims, role_claims, user_tokens, user_logins)
+/// cùng các entity nghiệp vụ khác.
+/// </summary>
+public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
 {
     public FitmateDbContext(DbContextOptions<FitmateDbContext> options) : base(options) { }
 
-    // Identity
-    public DbSet<User> Users => Set<User>();
+    // Identity aggregates - IdentityDbContext đã cung cấp Users, Roles, UserRoles,
+    // UserClaims, RoleClaims, UserTokens, UserLogins. Thêm alias để code nghiệp vụ không cần đổi.
+    public new DbSet<ApplicationUser> Users => Set<ApplicationUser>();
+    public new DbSet<IdentityRole<Guid>> Roles => Set<IdentityRole<Guid>>();
+
+    // Identity user management.
     public DbSet<UserProfile> UserProfiles => Set<UserProfile>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -100,11 +111,24 @@ public class FitmateDbContext : DbContext
             {
                 if (entry.State == EntityState.Added)
                 {
-                    if (aud.CreatedAt == default) aud.GetType().GetProperty("CreatedAt")?.SetValue(aud, now);
+                    if (aud.CreatedAt == default)
+                        aud.GetType().GetProperty("CreatedAt")?.SetValue(aud, now);
                 }
                 if (entry.State == EntityState.Modified)
                 {
                     aud.GetType().GetProperty("UpdatedAt")?.SetValue(aud, now);
+                }
+            }
+            else if (entry.Entity is ApplicationUser appUser)
+            {
+                if (entry.State == EntityState.Added)
+                {
+                    if (appUser.CreatedAt == default) appUser.CreatedAt = now;
+                    appUser.UpdatedAt = now;
+                }
+                if (entry.State == EntityState.Modified)
+                {
+                    appUser.UpdatedAt = now;
                 }
             }
         }

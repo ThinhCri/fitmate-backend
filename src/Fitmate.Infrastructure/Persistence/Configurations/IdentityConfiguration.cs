@@ -1,30 +1,49 @@
 using Fitmate.Domain.Identity;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace Fitmate.Infrastructure.Persistence.Configurations;
 
-public class UserConfiguration : IEntityTypeConfiguration<User>
+/// <summary>
+/// Configuration cho <see cref="ApplicationUser"/> (DEC-032).
+/// Theo Phương án A của <c>identity-evaluation.md §4</c>.
+/// </summary>
+public class ApplicationUserConfiguration : IEntityTypeConfiguration<ApplicationUser>
 {
-    public void Configure(EntityTypeBuilder<User> e)
+    public void Configure(EntityTypeBuilder<ApplicationUser> e)
     {
-        e.ToTable("users");
+        e.ToTable("asp_net_users");
         e.HasKey(x => x.Id);
-        e.Property(x => x.Id).HasColumnName("id");
-        e.Property(x => x.Email).HasMaxLength(254).IsRequired();
-        e.HasIndex(x => x.Email).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
-        e.Property(x => x.PasswordHash).HasMaxLength(255).IsRequired();
         e.Property(x => x.FullName).HasMaxLength(120).IsRequired();
-        e.Property(x => x.AvatarUrl).HasMaxLength(500);
-        e.Property(x => x.Role).HasConversion<int>();
         e.Property(x => x.Status).HasConversion<int>();
-        e.Property(x => x.Timezone).HasMaxLength(64);
-        e.Property(x => x.EmailVerified);
+        e.Property(x => x.Timezone).HasMaxLength(64).IsRequired();
         e.Property(x => x.LastActiveAt);
         e.Property(x => x.CreatedAt).IsRequired();
         e.Property(x => x.UpdatedAt).IsRequired();
         e.Property(x => x.DeletedAt);
-        e.HasIndex(x => x.DeletedAt);
+        e.HasIndex(x => x.DeletedAt).HasFilter("\"DeletedAt\" IS NULL");
+
+        // Email là định danh (xem domain-rules.md §1).
+        e.HasIndex(x => x.Email).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+        e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+
+        // Soft-delete global query filter.
+        e.HasQueryFilter(u => u.DeletedAt == null);
+
+        // Concurrency token từ IdentityUser base (SecurityStamp + ConcurrencyStamp).
+    }
+}
+
+/// <summary>
+/// Configuration cho <see cref="IdentityRole{TKey}"/>.
+/// </summary>
+public class IdentityRoleConfiguration : IEntityTypeConfiguration<IdentityRole<Guid>>
+{
+    public void Configure(EntityTypeBuilder<IdentityRole<Guid>> e)
+    {
+        e.ToTable("asp_net_roles");
+        e.HasKey(x => x.Id);
     }
 }
 

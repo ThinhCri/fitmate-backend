@@ -1,12 +1,16 @@
 using Fitmate.Application.Common;
 using Fitmate.Api.Cli;
+using Fitmate.Domain.Identity;
 using Fitmate.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
-if (args.Length > 0)
+// args[0] co the la flag cua dotnet/ef tool (--applicationName, --project, --verbosity, ...)
+// thi KHONG phai command; chi dispatch khi args[0] KHONG bat dau bang '--'.
+if (args.Length > 0 && !args[0].StartsWith("--"))
 {
     var config = new ConfigurationBuilder()
         .AddEnvironmentVariables()
@@ -50,6 +54,26 @@ builder.Services.AddDbContext<FitmateDbContext>(opt =>
         npg.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), null);
     });
 });
+
+// Identity (DEC-032). BE-021: AddIdentityCore + Roles + EF stores.
+// Dung AddIdentityCore thay vi AddIdentity de khong ep cookie auth; API chi dung JWT bearer.
+// AddDataProtection cung cap IDataProtectionProvider cho AddDefaultTokenProviders
+// (reset password + email confirm token).
+builder.Services.AddDataProtection();
+builder.Services.AddIdentityCore<ApplicationUser>(opt =>
+{
+    opt.Password.RequiredLength = 12;
+    opt.Password.RequireDigit = true;
+    opt.Password.RequireUppercase = false;
+    opt.Password.RequireLowercase = false;
+    opt.Password.RequireNonAlphanumeric = false;
+    opt.Lockout.AllowedForNewUsers = true;
+    opt.Lockout.MaxFailedAccessAttempts = 5;
+    opt.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+})
+.AddRoles<IdentityRole<Guid>>()
+.AddEntityFrameworkStores<FitmateDbContext>()
+.AddDefaultTokenProviders(); // reset password + email confirm token
 
 // Services.
 builder.Services.AddSingleton<Fitmate.Application.Common.IPasswordHasher, Fitmate.Application.Common.BcryptPasswordHasher>();

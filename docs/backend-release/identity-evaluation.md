@@ -75,17 +75,15 @@ Framework user management do Microsoft cung cấp cho ASP.NET Core. Mặc địn
 ## 6. Schema cần thêm khi dùng Identity
 
 Bổ sung vào `docs/backend-release/data-model.md`:
-- `asp_net_users` (thay cho `users` hiện tại): thêm `normalized_email`, `email_confirmed`, `password_hash`, `security_stamp`, `concurrency_stamp`, `phone_number`, `phone_number_confirmed`, `two_factor_enabled`, `lockout_end`, `lockout_enabled`, `access_failed_count`.
-- `asp_net_roles`: id, name, normalized_name, concurrency_stamp.
+- `asp_net_users` (thay cho `users` cũ): `normalized_user_name`, `normalized_email`, `email_confirmed`, `password_hash`, `security_stamp`, `concurrency_stamp`, `phone_number`, `phone_number_confirmed`, `two_factor_enabled`, `lockout_end`, `lockout_enabled`, `access_failed_count`, `avatar_url` (qua IdentityUser), `full_name`, `status`, `timezone`, `last_active_at`, `deleted_at`, `created_at`, `updated_at`.
+- `asp_net_roles`: id, name, normalized_name, concurrency_stamp. Seed: `Admin`, `PT`, `Member`.
 - `asp_net_user_roles`: user_id, role_id.
 - `asp_net_user_claims`: id, user_id, claim_type, claim_value.
-- `asp_net_user_tokens`: user_id, login_provider, name, value.
 - `asp_net_role_claims`: id, role_id, claim_type, claim_value.
-- Giữ nguyên `user_profiles`, `refresh_tokens`, `audit_logs`, `devices` như hiện tại.
+- `asp_net_user_tokens`: user_id, login_provider, name, value.
+- `asp_net_user_logins`: login_provider, provider_key, provider_display_name, user_id.
+- Giữ nguyên `user_profiles`, `refresh_tokens`, `audit_logs`, `devices` như cũ.
 
-## 7. Việc cần làm
+## 7. Việc đã làm
 
-- Cập nhật `decisions.md` thành DEC-009 chốt dùng Identity.
-- Cập nhật `data-model.md` thêm 4 bảng Identity.
-- Cập nhật `audit-old-backend.md`: BE cũ không có schema Identity → migration = greenfield, không có data conversion.
-- BE-030 (Auth) sẽ dùng `ApplicationUser : IdentityUser<Guid>`.
+- BE-021 DONE ở phiên 8 (2026-09-18): `ApplicationUser : IdentityUser<Guid>` + 6 bảng Identity + migration `20260918170539_IdentitySchema`. Build 0 warning, 0 error; 14/14 unit tests PASS. CLI `seed-admin` refactor sang `UserManager<ApplicationUser>` + `RoleManager<IdentityRole<Guid>>`. DB schema reset + apply thành công 38 bảng.

@@ -5,11 +5,11 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-18
-- **Phiên 7**: User chốt toàn bộ UA-018..024 + UA-022. Cập nhật decisions (DEC-026..035) + domain-rules §3 (transition matrix + tách status, late/rescheduled là event) + authorization-matrix + OpenAPI (3 enum `AppointmentStatus`/`PaymentStatus`/`RefundStatus`, `/admin/platform-policy`, `BookingRescheduleEvent`, response `Forbidden`) + api-contract §2.1/§9/§16/§17 + feature-api-matrix (FP-BK-06/10/11, FP-FN-06, Report SC-06) + user-actions (UA-018..024 DONE; UA-023 giữ secret manager) + managed-postgres-comparison (bỏ số chưa xác minh, bỏ "secret leak" lý do loại) + AGENTS.md env matrix + vnpay-googleplay-policy.md (rewrite với 5 link nguồn + mapping chi tiết) + tasks.md (BE-021 IN_PROGRESS).
-- Gỡ blocker theo yêu cầu user: UA-021/023 chỉ chặn provisioning production DB, không chặn code BE local. UA-024 là task rà soát tài liệu + checklist — đã DONE phần tài liệu.
-- Code change: BE-021 (Identity refactor) bắt đầu trong commit tiếp nếu còn dung lượng tokens; nếu hết thì đã có đầy đủ docs để commit độc lập.
+- **Phiên 8**: Triển khai BE-021 (Identity refactor) sau khi user chốt approach Greenfield (drop + recreate schema). Code change thật sự đầu tiên sau 7 phiên docs. Tạo `ApplicationUser : IdentityUser<Guid>` + `IdentityRole<Guid>` + DbContext `IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>`. Refactor `SeedAdminCommand` sang `UserManager` + `RoleManager`. Migration `20260918170539_IdentitySchema` drop `users` cũ + tạo 6 bảng Identity. Build 0 warning, 0 error; 14/14 unit tests PASS. DB compose Postgres `fitmate-postgres` reset schema + apply OK (38 bảng).
+- **Lưu ý destructive**: phiên này đã `DROP SCHEMA public CASCADE` trên DB compose local — chỉ chạm vào dev DB (không phải production). Theo user chọn Approach A ở đầu phiên.
+- **Tiếp theo** (BE-080 hoặc BE-030): Validation + ProblemDetails là foundation trước khi viết endpoints. BE-030 (JWT + login/register/refresh/logout) cần thêm `JwtOptions` issuer config.
 
-### Phiên 6 — đã làm
+### Phiên 7 — đã làm
 
 - **Đề xuất DEC-026..031** trong `decisions.md` để gỡ UA-018..024 — không sửa code, không thay đổi OpenAPI. Căn cứ từ `audit-old-backend.md §5,§6` và `managed-postgres-comparison.md §3,§5`.
   - **DEC-026 (UA-018) AppointmentStatus**: 7-state canonical giữ nguyên (Held/AwaitingPayment/Paid/Completed/Cancelled/Refunded/Expired). `late` → flag `Booking.isLateAttendee`. `rescheduled` → cancel + tạo mới + `previousBookingId`. Mapping 2 chiều cho mobile 6 ↔ web 4 → BE 7.
@@ -104,7 +104,7 @@
 
 1. ✅ Cập nhật `decisions.md` DEC-026..035 (phiên 7).
 2. ✅ Cập nhật OpenAPI spec (AppointmentStatus/PaymentStatus/RefundStatus + `/admin/platform-policy` + `BookingRescheduleEvent`) + `feature-api-matrix.md` (phiên 7).
-3. **BE-021**: tích hợp ASP.NET Core Identity (DEC-021 + DEC-032) — thay `User` bằng `ApplicationUser : IdentityUser<Guid>`, thêm 6 bảng Identity. → **IN_PROGRESS phiên 7**.
+3. ✅ **BE-021**: tích hợp ASP.NET Core Identity (DEC-021 + DEC-032) — `ApplicationUser : IdentityUser<Guid>`, migration `IdentitySchema`. → **DONE phiên 8**.
 4. **BE-030**: Auth (JWT custom + IdentityUser + refresh token + tests).
 5. **BE-070**: Idempotency middleware + Outbox worker.
 6. **BE-060**: Booking concurrency test + transition matrix (Held→Pending→Confirmed→InProgress→Completed + Cancelled/Expired; flag late; event reschedule).
@@ -117,7 +117,7 @@
 
 ## Working tree
 
-- BE: 7+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 7 đã cập nhật: decisions.md, domain-rules.md, authorization-matrix.md, openapi/fitmate-v1.yaml, api-contract.md, feature-api-matrix.md, user-actions.md, managed-postgres-comparison.md, AGENTS.md, vnpay-googleplay-policy.md, tasks.md, handoff.md. Working tree có modified docs trước khi commit.
+- BE: 8+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 8 thay đổi code BE-021: thêm `ApplicationUser.cs` + cập nhật `FitmateDbContext` (Identity) + cập nhật `SeedAdminCommand` + cập nhật `Program.cs` (`AddIdentityCore` + `AddDataProtection`) + migration `20260918170539_IdentitySchema` + drop file `User.cs` cũ + 2 csproj thêm Identity packages + `tasks.md` (BE-021 DONE) + `identity-evaluation.md` (schema update) + `handoff.md` (phiên 8). Working tree có modified files trước khi commit.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
@@ -152,8 +152,6 @@
 
 ## Bước tiếp theo (kế hoạch phiên sau)
 
-1. **Phiên 7 doc commit** (lần commit tiếp — phiên này hoặc phiên 8).
-2. **BE-021**: Identity refactor (DEC-032) — `ApplicationUser : IdentityUser<Guid>` + 6 bảng Identity + migration `IdentitySchema`.
-3. **BE-080**: Validation + ProblemDetails (FluentValidation toàn cục).
-4. **BE-030**: Auth endpoints (JWT + refresh + rate limit + lockout).
-5. Sau đó: BE-070 (Idempotency/Outbox) → BE-060 (Booking concurrency + transition matrix) → BE-090 (Authorization) → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6).
+1. **BE-080**: Validation + ProblemDetails (FluentValidation toàn cục). Sửa `Program.cs` đã có sẵn `ConfigureApiBehaviorOptions`; chỉ cần thêm `AddFluentValidationAutoValidate` + viết các `IValidator<T>` cho DTO đầu tiên (RegisterRequest, LoginRequest).
+2. **BE-030**: Auth (JWT + refresh + rate limit + lockout). Tạo `TokenService`, `AuthController`, controller endpoints theo OpenAPI. Identity `SignInManager` đã chuẩn bị.
+3. Sau đó: BE-070 (Idempotency/Outbox) → BE-060 (Booking concurrency + transition matrix) → BE-090 (Authorization) → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6).
