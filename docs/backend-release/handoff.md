@@ -9,23 +9,21 @@
 
 ### Phiên 3 — đã làm
 
-- **BE-010 PARTIAL** — wire EF Core + Postgres + tạo migration ban đầu.
-  - Thêm 4 package cho `Fitmate.Infrastructure`:
-    - `Microsoft.EntityFrameworkCore` 8.0.10
-    - `Microsoft.EntityFrameworkCore.Relational` 8.0.10
-    - `Npgsql.EntityFrameworkCore.PostgreSQL` 8.0.10
-    - `BCrypt.Net-Next` 4.0.3
-  - Thêm 4 package cho `Fitmate.Api`:
-    - `FluentValidation.AspNetCore` 11.3.0
-    - `Microsoft.AspNetCore.Authentication.JwtBearer` 8.0.10
-    - `Serilog.AspNetCore` 8.0.3
-    - `AspNetCoreRateLimit` 5.0.0
+- **BE-010 DONE** — wire EF Core + Postgres + apply InitialSchema migration thành công.
+  - Add 4 package cho `Fitmate.Infrastructure`: EF Core, EF Core Relational, Npgsql.EntityFrameworkCore.PostgreSQL, BCrypt.Net-Next.
+  - Add 4 package cho `Fitmate.Api`: FluentValidation.AspNetCore, JwtBearer, Serilog.AspNetCore, AspNetCoreRateLimit.
   - `dotnet build` solution: **0 warning, 0 error**, 5 projects PASS.
-  - `dotnet ef migrations add InitialSchema` PASS — tạo:
-    - `src/Fitmate.Infrastructure/Persistence/Migrations/20260918145647_InitialSchema.cs`
-    - `.Designer.cs` + `FitmateDbContextModelSnapshot.cs`
-  - **CHƯA apply migration** — `dotnet ef database update` fail vì Postgres chưa chạy trên `localhost:5432` (`No connection could be made... actively refused`). Cần user bật Postgres local hoặc `docker compose up postgres` (xem UA-021 cho managed Postgres).
-- Phiên tiếp theo sẽ: (a) apply migration khi Postgres sẵn sàng, (b) viết DB seed admin qua CLI, (c) chốt BE-021 (Identity schema) sau khi user trả lời UA-018..022.
+  - Khởi động Postgres local: `docker run -d --name fitmate-postgres -e POSTGRES_DB=fitmate -e POSTGRES_USER=fitmate -e POSTGRES_PASSWORD=dev -p 5432:5432 postgres:16-alpine` → `pg_isready` accepting connections.
+  - `dotnet ef migrations add InitialSchema` PASS → migration `20260918160320_InitialSchema` (32 tables: 1 `__EFMigrationsHistory` + 28 domain + idempotency / outbox / audit helpers).
+  - **`dotnet ef database update` PASS** sau 1 lần fix:
+    - Bug: filter `IX_users_Email` ban đầu dùng `deleted_at IS NULL` (snake_case) nhưng EF Core generate column `DeletedAt` quote-preserved PascalCase → Postgres error `column "deleted_at" does not exist`.
+    - Root cause: `IdentityConfiguration.cs` line 15 viết filter sai convention; EF render filter nguyên văn (không transform) → schema thiếu underscore.
+    - Fix: filter → `"DeletedAt" IS NULL`. Regenerate migration. Apply OK.
+  - Verify:
+    - `\dt` → 32 tables. ✅
+    - `\d users` → 13 columns đúng, `IX_users_Email` UNIQUE + `WHERE "DeletedAt" IS NULL`. ✅
+    - `dotnet test` → **14/14 PASS**. ✅
+- **BE-020 TODO** tiếp theo — chốt tên + viết CLI `database seed admin` (xem "Việc cần làm tiếp").
 
 - **Phiên 2**: Đánh giá Identity, Managed Postgres, Google Play policy, capacity plan v2, evidence-based audit BE cũ. **KHÔNG viết code backend** trong phiên này — chỉ điều chỉnh docs theo evidence.
 

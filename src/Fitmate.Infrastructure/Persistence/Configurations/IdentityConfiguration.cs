@@ -12,7 +12,7 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         e.HasKey(x => x.Id);
         e.Property(x => x.Id).HasColumnName("id");
         e.Property(x => x.Email).HasMaxLength(254).IsRequired();
-        e.HasIndex(x => x.Email).IsUnique().HasFilter("deleted_at IS NULL");
+        e.HasIndex(x => x.Email).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
         e.Property(x => x.PasswordHash).HasMaxLength(255).IsRequired();
         e.Property(x => x.FullName).HasMaxLength(120).IsRequired();
         e.Property(x => x.AvatarUrl).HasMaxLength(500);

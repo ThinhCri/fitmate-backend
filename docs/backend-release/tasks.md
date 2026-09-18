@@ -15,7 +15,7 @@
 - Scope: DbContext, Npgsql provider, migrations ban đầu.
 - Depends on: BE-001
 - Done when: `dotnet ef database update` chạy được với Postgres local.
-- Status: PARTIAL (2026-09-18) — đã add 4 package EF Core/Npgsql/BCrypt cho Infrastructure, 4 package (FluentValidation/JwtBearer/Serilog/RateLimit) cho Api, scaffold DbContext + 14 Configuration + Identity entities, `dotnet build` PASS (0 warn/0 err), `dotnet ef migrations add InitialSchema` PASS. **CHƯA apply vì Postgres local chưa chạy** (xem `handoff.md` phiên 3).
+- Status: DONE (2026-09-18) — wired EF Core + Postgres, migration `20260918160320_InitialSchema` created + applied to local Postgres (Docker `fitmate-postgres`, `postgres:16-alpine`, user `fitmate` / pass `dev`). 32 tables created (1 `__EFMigrationsHistory` + 28 domain + 3 helpers idempotency/outbox/audit). **Bug fix ngay trong phiên 3**: filter `IX_users_Email` ban đầu dùng `deleted_at IS NULL` (snake_case) trong khi EF Core generate column `DeletedAt` quote-preserved PascalCase → Postgres error `column "deleted_at" does not exist`. Fix tại `IdentityConfiguration.cs` line 15: filter đổi thành `"DeletedAt" IS NULL`, regenerate migration, apply OK. Unit tests: 14/14 PASS.
 
 ### BE-020 Domain entities (Identity, Profile, RefreshToken)
 - Scope: schema `identity`. Users + UserProfile + RefreshToken + AuditLog.

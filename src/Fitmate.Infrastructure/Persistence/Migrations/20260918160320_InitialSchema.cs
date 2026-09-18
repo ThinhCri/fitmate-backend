@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Migrations;
 
@@ -815,7 +815,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                 table: "users",
                 column: "Email",
                 unique: true,
-                filter: "deleted_at IS NULL");
+                filter: "\"DeletedAt\" IS NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_weight_logs_UserId_RecordedAt",
