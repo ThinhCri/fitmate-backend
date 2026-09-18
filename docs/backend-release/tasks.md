@@ -59,7 +59,7 @@
 - Scope: state machine theo `domain-rules.md §3.2` + unique constraint + TTL release. Theo DEC-026 — `late` là flag (BE-135a), `reschedule` qua `booking_reschedule_events` (BE-135). Endpoint accept riêng (`POST /me/bookings/{id}/accept`). Cần check cả `AppointmentStatus` + `PaymentStatus = Paid` mới ghi nhận doanh thu (FP-FN-04).
 - Depends on: BE-050
 - Done when: concurrency test (10 VU cùng slot) chỉ 1 thành công; reschedule transaction check slot mới trước khi release cũ; idempotency chống report trùng (`reports.idempotency_key`).
-- Status: TODO.
+- Status: **PARTIAL_DONE (phiên 16, 2026-09-19, scope booking lifecycle)** — Application: `IBookingService` (CreateHold/Cancel/Complete/Reschedule/ListByMember/ListByPt) + abstractions (`IAppointmentStore`/`IBookingHoldStore`/`IServiceBookingLookup`). Infrastructure: `EfAppointmentStore` (ExistsActiveForSlot check Held/AwaitingPayment/Paid/Completed) + `EfBookingHoldStore` + `ServiceBookingLookup` (delegates to IServiceOfferingStore). API: `BookingsController` (`POST /bookings/holds`, `GET /bookings/holds/{id}`, `POST /me/bookings/{id}/cancel`, `POST /me/bookings/{id}/complete` role=PT, `POST /me/bookings/{id}/reschedule`, `GET /me/bookings` member, `GET /me/trainer-bookings` PT) với pagination max=100. Outbox enqueue: `booking.held`, `booking.cancelled`, `booking.completed`, `booking.rescheduled`. Domain-rules.md §3.1.1 honored: reschedule fail → slot cũ không bị mất; verified bằng test `Reschedule_NewSlotBusy_ThrowsConflict_DoesNotMutateOldAppointment`. **Confirm/Accept out-of-scope (chưa implement)**: cần `Appointment.HoldId FK` + tách enum `BookingStatus` → `AppointmentStatus` (DEC-026) — sẽ làm ở **BE-160 migration**. Concurrency test (10 VU cùng slot) cần Postgres + k6 tích hợp, đưa vào BE-330. Unit tests: 15/15 mới PASS (154/154 tổng) — BookingService (15).
 
 ### BE-070 Idempotency middleware + Outbox
 - Scope: middleware, schema `outbox`, worker.
@@ -243,7 +243,8 @@
 |---|---|
 | DONE | 10 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-100, BE-040, BE-050) |
 | IN_PROGRESS | 0 |
-| TODO | ~19 |
+| PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
+| TODO | ~18 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.

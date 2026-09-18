@@ -5,6 +5,16 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-19
+- **Phiên 16**: Triển khai **BE-060 (PARTIAL_DONE)** (Booking lifecycle).
+  - **Application** (pure): `IBookingService` với CreateHold/Cancel/Complete/Reschedule/ListByMember/ListByPt + abstractions (`IAppointmentStore`/`IBookingHoldStore`/`IServiceBookingLookup`). Outbox enqueue: `booking.held`, `booking.cancelled`, `booking.completed`, `booking.rescheduled`. Domain rules enforced: hold TTL = 5 phút (cấu hình qua DI), slot-availability check (held/awaiting_payment/paid/completed), cancel reason min 5 chars, complete chỉ owner-PT, reschedule transaction check slot mới trước khi release slot cũ.
+  - **Infrastructure** (EF): `EfAppointmentStore` (ExistsActiveForSlot, ListByMember/ByPt phân trang) + `EfBookingHoldStore` + `ServiceBookingLookup` delegate sang `IServiceOfferingStore` (BE-050).
+  - **Api**: `BookingsController` (`POST /api/v1/bookings/holds`, `GET /bookings/holds/{id}`, `POST /me/bookings/{id}/cancel|complete|reschedule`, `GET /me/bookings` member, `GET /me/trainer-bookings` PT role).
+  - **Behavior**:
+    - CreateHold: validate service (active + đúng PT) → check slot không active → tạo Hold + Appointment(Held) → outbox `booking.held`.
+    - Complete: domain throws ConflictException nếu chưa Paid; outbox `booking.completed`.
+    - Reschedule: check ownership + status (không trên terminal) → check newSlot != current → check newSlot open → cancel old + create new (linked via Outbox event) → outbox `booking.rescheduled`.
+  - **Out-of-scope (BE-160)**: `Confirm` (sau payment) và `Accept` (PT accept pending). Cần `Appointment.HoldId FK` + tách enum `BookingStatus` → `AppointmentStatus` (DEC-026). Hiện tại domain schema gộp lịch + payment trong `BookingStatus` (7 value: Held, AwaitingPayment, Paid, Completed, Cancelled, Refunded, Expired) nên Confirm/Accept phải chờ migration enum.
+  - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **154/154 PASS** (15 mới + 139 cũ, 0 failed, 0 skipped). Commit (sẽ tạo kết thúc phiên): `<type>(be): BE-060 PARTIAL -- Booking lifecycle (hold/cancel/complete/reschedule/list) [BE-060]`.
 - **Phiên 15**: Triển khai **BE-050** (Availability + Service).
   - **Application** (pure): `IServiceOfferingService` (Create/Update/Deactivate/Get/ListMine owner-scoped) + `IAvailabilityService` (ReplaceMine batch + ListOpenForTrainer range query) + abstractions `IServiceOfferingStore`/`IAvailabilitySlotStore`.
   - **Infrastructure** (EF): `EfServiceOfferingStore` + `EfAvailabilitySlotStore` với `ExecuteDeleteAsync` cho batch replace.
@@ -63,7 +73,11 @@
   - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **37/37 PASS** (0 failed, 0 skipped). Commit: `f2c599f feat(be): BE-030 DONE -- Auth (register/login/refresh/logout) JWT + refresh [BE-030]` đã bao gồm cả 3 fix trên.
 - **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
 - **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
-- **Tiếp theo** (BE-060): Booking state machine (lõi nghiệp vụ). Sau BE-050 đã có slot Open để giữ; BE-060 sẽ dùng `Money.BuildSnapshot` + `Money.AllocateRefund`, kết hợp Idempotency (BE-070) cho createHold/createPayment. Concurrency test (10 VU cùng slot, chỉ 1 thắng) + transition matrix (Held→Pending→Confirmed→InProgress→Completed + Cancelled/Expired; flag late; event reschedule) sẽ cover toàn bộ domain-rules.md §3. Sau đó: BE-090 (Authorization) → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6). Integration test WebApplicationFactory cho các route 4xx (booking create / payment create / report create) sẽ bổ sung ở BE-310.
+- **Tiếp theo** (BE-160 hoặc BE-090): Có 2 hướng đi tiếp:
+  - **BE-160 (Status migration)**: thêm `Appointment.HoldId FK`, tách enum `BookingStatus` → `AppointmentStatus` (theo DEC-026 — 7 value PascalCase: Held/Pending/Confirmed/InProgress/Completed/Cancelled/Refunded/Expired + flag `is_late`), thêm bảng `booking_reschedule_events`. Cần thiết để BE-060 hoàn thiện (`Confirm`/`Accept`) + cho admin analytics mới chính xác (tách paid vs confirmed vs in-progress).
+  - **BE-090 (Authorization matrix enforcement)**: đảm bảo layer Application enforce ownership + role trên toàn bộ endpoint hiện có, không chỉ ở controller. Quan trọng cho `payment.refund`, `booking.complete`, `trainer-cert-approve` (admin)…
+  - Đề xuất: đi **BE-090 trước** (low-risk, high-value cho nhiều endpoint hiện có), sau đó BE-160 (touches schema/migrations nhiều hơn).
+  - Sau BE-090 + BE-160 → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6). Integration test WebApplicationFactory cho các route 4xx (booking create / payment create / report create) sẽ bổ sung ở BE-310.
 
 ### Phiên 7 — đã làm
 
@@ -173,7 +187,7 @@
 
 ## Working tree
 
-- BE: 13+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 15 (BE-050) sắp commit: thêm 8 file mới Application + Infrastructure + Api + 2 file test + cập nhật `Program.cs` (DI) + docs.
+- BE: 14+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 16 (BE-060 PARTIAL) sắp commit: thêm 5 file mới Application + Infrastructure + Api + 1 file test + cập nhật `Program.cs` (DI) + docs.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
@@ -188,6 +202,7 @@
 - **Phiên 13**: `dotnet test` **84/84 PASS** (MoneyTests 14 cũ + 29 mới, + 55 cũ khác). 0 failed, 0 skipped.
 - **Phiên 14**: `dotnet test` **119/119 PASS** (CertificateService 12 + PtProfileService 10 + DomainProblemDetails 5 + 84 cũ + 8 idempotency/outbox). 0 failed, 0 skipped.
 - **Phiên 15**: `dotnet test` **139/139 PASS** (ServiceOfferingService 11 + AvailabilityService 9 + 119 cũ). 0 failed, 0 skipped.
+- **Phiên 16**: `dotnet test` **154/154 PASS** (BookingService 15 + 139 cũ). 0 failed, 0 skipped.
 
 ## Kết quả đo tải
 

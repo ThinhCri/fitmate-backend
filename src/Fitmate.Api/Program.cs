@@ -18,6 +18,7 @@ using Fitmate.Application.Auth;
 using Fitmate.Application.Auth.Validators;
 using Fitmate.Application.Auth.Contracts;
 using Fitmate.Application.Trainers;
+using Fitmate.Application.Booking;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -122,6 +123,12 @@ builder.Services.AddScoped<IServiceOfferingStore, Fitmate.Infrastructure.Trainer
 builder.Services.AddScoped<IAvailabilitySlotStore, Fitmate.Infrastructure.Trainers.EfAvailabilitySlotStore>();
 builder.Services.AddScoped<IServiceOfferingService, Fitmate.Application.Trainers.ServiceOfferingService>();
 builder.Services.AddScoped<IAvailabilityService, Fitmate.Application.Trainers.AvailabilityService>();
+
+// BE-060: Booking lifecycle services.
+builder.Services.AddScoped<IAppointmentStore, Fitmate.Infrastructure.Booking.EfAppointmentStore>();
+builder.Services.AddScoped<IBookingHoldStore, Fitmate.Infrastructure.Booking.EfBookingHoldStore>();
+builder.Services.AddScoped<IServiceBookingLookup, Fitmate.Infrastructure.Booking.ServiceBookingLookup>();
+builder.Services.AddScoped<IBookingService, Fitmate.Application.Booking.BookingService>();
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
 // - IIdempotencyStore: EF Core backed.
