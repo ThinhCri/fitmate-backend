@@ -5,9 +5,9 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-18
-- **Phiên 8**: Triển khai BE-021 (Identity refactor) sau khi user chốt approach Greenfield (drop + recreate schema). Code change thật sự đầu tiên sau 7 phiên docs. Tạo `ApplicationUser : IdentityUser<Guid>` + `IdentityRole<Guid>` + DbContext `IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>`. Refactor `SeedAdminCommand` sang `UserManager` + `RoleManager`. Migration `20260918170539_IdentitySchema` drop `users` cũ + tạo 6 bảng Identity. Build 0 warning, 0 error; 14/14 unit tests PASS. DB compose Postgres `fitmate-postgres` reset schema + apply OK (38 bảng).
-- **Lưu ý destructive**: phiên này đã `DROP SCHEMA public CASCADE` trên DB compose local — chỉ chạm vào dev DB (không phải production). Theo user chọn Approach A ở đầu phiên.
-- **Tiếp theo** (BE-080 hoặc BE-030): Validation + ProblemDetails là foundation trước khi viết endpoints. BE-030 (JWT + login/register/refresh/logout) cần thêm `JwtOptions` issuer config.
+- **Phiên 9**: Triển khai BE-080 (Validation + ProblemDetails) foundation. Tạo `src/Fitmate.Api/Errors/ErrorCodes.cs` (constants `FITMATE.<DOMAIN>.<REASON>`) + `src/Fitmate.Api/Errors/ProblemDetailsFactory.cs` (pure helper, testable). Patch `Program.cs`: `ConfigureApiBehaviorOptions` + `UseExceptionHandler` đều đi qua factory → mọi 4xx/5xx trả RFC 7807 chuẩn với `code` + `traceId`. `Fitmate.UnitTests.csproj` thêm reference `Fitmate.Api` để test factory. Unit tests: 6/6 mới PASS (20/20 tổng). Build 0 warning, 0 error.
+- **Lưu ý auto-review**: web host + DB query bị chặn ở phiên này (khác phiên 8), nên chưa viết integration test qua WebApplicationFactory. `IValidator<T>` + DTO thật (RegisterRequest, LoginRequest) sẽ đi kèm BE-030 khi `AuthController` ra đời — lúc đó thêm integration test cho route 4xx.
+- **Tiếp theo** (BE-030): Auth (JWT custom + IdentityUser + refresh + lockout). Đã có `SignInManager` + `UserManager` từ BE-021. Cần `JwtOptions.Issuer`/`Audience` thêm vào config.
 
 ### Phiên 7 — đã làm
 

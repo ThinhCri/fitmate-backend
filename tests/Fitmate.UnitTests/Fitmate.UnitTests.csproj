@@ -25,6 +25,7 @@
     <ProjectReference Include="..\..\src\Fitmate.Domain\Fitmate.Domain.csproj" />
     <ProjectReference Include="..\..\src\Fitmate.Application\Fitmate.Application.csproj" />
     <ProjectReference Include="..\..\src\Fitmate.Infrastructure\Fitmate.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Fitmate.Api\Fitmate.Api.csproj" />
   </ItemGroup>
 
 </Project>

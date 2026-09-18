@@ -1,5 +1,6 @@
 using Fitmate.Application.Common;
 using Fitmate.Api.Cli;
+using Fitmate.Api.Errors;
 using Fitmate.Domain.Identity;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -79,19 +80,28 @@ builder.Services.AddIdentityCore<ApplicationUser>(opt =>
 builder.Services.AddSingleton<Fitmate.Application.Common.IPasswordHasher, Fitmate.Application.Common.BcryptPasswordHasher>();
 builder.Services.AddSingleton<Fitmate.Application.Common.ITokenHasher, Fitmate.Application.Common.Sha256TokenHasher>();
 
-// Controllers + ProblemDetails (RFC 7807).
+// Controllers + ProblemDetails (RFC 7807). BE-080: format chuẩn hoá qua ProblemDetailsFactory
+// (code + traceId theo api-contract.md §6).
 builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(opt =>
     {
         opt.InvalidModelStateResponseFactory = ctx =>
         {
-            var problem = new ValidationProblemDetails(ctx.ModelState)
-            {
-                Status = 400,
-                Title = "Validation failed",
-                Type = "https://docs.fitmate.vn/errors/validation",
-                Detail = "One or more fields failed validation."
-            };
+            var errors = ctx.ModelState
+                .Where(kv => kv.Value is not null && kv.Value.Errors.Count > 0)
+                .ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray());
+
+            var problem = ProblemDetailsFactory.Create(
+                status: 400,
+                title: "Validation failed",
+                code: ErrorCodes.ValidationFailed,
+                typeSlug: "validation",
+                detail: "One or more fields failed validation.",
+                traceId: ProblemDetailsFactory.ResolveTraceId(ctx.HttpContext),
+                errors: errors);
+
             return new BadRequestObjectResult(problem)
             {
                 ContentTypes = { "application/problem+json" }
@@ -110,18 +120,32 @@ app.UseExceptionHandler(handler =>
     handler.Run(async context =>
     {
         var ex = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
-        var traceId = context.TraceIdentifier;
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/problem+json";
-        await context.Response.WriteAsJsonAsync(new
+        var traceId = ProblemDetailsFactory.ResolveTraceId(context);
+
+        // BE-080: mọi 4xx/5xx đi qua factory để format đồng nhất (code + traceId + type).
+        // BE-060+ sẽ map exception cụ thể (vd SlotTakenException -> 409) sang code tương ứng.
+        var (status, title, code, typeSlug) = ex switch
         {
-            type = "https://docs.fitmate.vn/errors/internal",
-            title = "Internal server error",
-            status = 500,
-            detail = "Unexpected error. See server logs with traceId.",
-            traceId,
-            code = "FITMATE.GENERAL.INTERNAL"
-        });
+            ArgumentException => (400, "Bad request", ErrorCodes.GeneralBadRequest, "bad-request"),
+            KeyNotFoundException => (404, "Resource not found", ErrorCodes.GeneralNotFound, "not-found"),
+            UnauthorizedAccessException => (401, "Unauthorized", ErrorCodes.AuthUnauthorized, "unauthorized"),
+            _ => (500, "Internal server error", ErrorCodes.GeneralInternal, "internal")
+        };
+
+        context.Response.StatusCode = status;
+        context.Response.ContentType = "application/problem+json";
+
+        var problem = ProblemDetailsFactory.Create(
+            status: status,
+            title: title,
+            code: code,
+            typeSlug: typeSlug,
+            detail: status == 500
+                ? "Unexpected error. See server logs with traceId."
+                : ex?.Message,
+            traceId: traceId);
+
+        await context.Response.WriteAsJsonAsync(problem);
     });
 });
 

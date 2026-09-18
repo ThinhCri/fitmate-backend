@@ -71,7 +71,7 @@
 - Scope: FluentValidation toàn cục, RFC 7807. Theo `api-contract.md §6`.
 - Depends on: BE-001
 - Done when: validation error trả đúng format; mọi Controller trả ProblemDetails khi 4xx/5xx.
-- Status: TODO.
+- Status: **DONE (phiên 9, 2026-09-18)** — foundation ProblemDetails theo RFC 7807: `Errors/ErrorCodes.cs` (constants `FITMATE.<DOMAIN>.<REASON>`), `Errors/ProblemDetailsFactory.cs` (pure helper, testable), patch `Program.cs` (`ConfigureApiBehaviorOptions` + `UseExceptionHandler` đều dùng factory). Unit tests: 6/6 PASS (20/20 tổng). Auto-review chặn DB query nên chưa viết integration test WebApplicationFactory — BE-030 (AuthController) sẽ tạo DTO + `IValidator<T>` thật, lúc đó thêm integration test cho route 4xx.
 
 ### BE-090 Authorization matrix enforcement
 - Scope: spec classes kiểm tra role + ownership + field-level.
@@ -241,9 +241,9 @@
 
 | Status | Count |
 |---|---|
-| DONE | 4 (BE-001, BE-010, BE-020, BE-021) |
+| DONE | 5 (BE-001, BE-010, BE-020, BE-021, BE-080) |
 | IN_PROGRESS | 0 |
-| TODO | ~25 |
+| TODO | ~24 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.
