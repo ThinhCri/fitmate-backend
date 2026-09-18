@@ -9,7 +9,7 @@
 - Scope: solution + projects (Api, Application, Domain, Infrastructure, Tests). .gitignore chuẩn .NET.
 - Depends on: —
 - Done when: `dotnet build` pass, `dotnet test` pass với 0 test.
-- Status: TODO
+- Status: DONE (commit scaffold hoàn tất 2026-09-18; còn chốt Identity schema ở BE-021)
 
 ### BE-010 EF Core + Postgres wiring
 - Scope: DbContext, Npgsql provider, migrations ban đầu.
@@ -21,7 +21,21 @@
 - Scope: schema `identity`. Users + UserProfile + RefreshToken + AuditLog.
 - Depends on: BE-010
 - Done when: migration tạo schema, seed admin user qua CLI.
-- Status: TODO
+- Status: PARTIAL — entities đã scaffold (User, UserProfile, RefreshToken, AuditLog), CHƯA tích hợp Identity schema. Cần mở rộng ở BE-021.
+
+### BE-021 Tích hợp ASP.NET Core Identity schema
+- Repo: FitmateAI_BE
+- Scope: thay `User` bằng `ApplicationUser : IdentityUser<Guid>` + 4 bảng Identity (Roles, UserRoles, UserClaims, UserTokens). `Program.cs` đăng ký `AddIdentity`. Seed roles Admin/PT/Member.
+- Depends on: UA-018 (chốt appointment enum), BE-020.
+- Done when: migration tạo 8 bảng Identity + 1 bảng UserProfile, `dotnet ef database update` chạy được.
+- Status: TODO (chờ UA-021 chốt).
+
+### BE-099 Xóa secret Supabase khỏi Git history (BE cũ)
+- Repo: FitmateAI_BE
+- Scope: `git filter-repo` để xóa file `src/main/resources/application.properties` chứa password `doanxemtoilaai`. Force-push sau khi user duyệt.
+- Depends on: UA-001 (rotate password).
+- Done when: clone fresh từ origin không có password; collaborator đã re-clone.
+- Status: BLOCKED (chờ UA-001).
 
 ### BE-030 Auth (register / login / refresh / logout)
 - Scope: JWT custom, BCrypt password. Endpoints trong OpenAPI.

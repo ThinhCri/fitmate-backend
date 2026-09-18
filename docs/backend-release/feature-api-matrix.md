@@ -198,3 +198,47 @@
 | Chưa có | ~50 |
 | Phụ thuộc dịch vụ ngoài | ~10 (payment, AI, email, push, upload) |
 | Cần quyết định sản phẩm | ~5 |
+
+## Gap analysis từ khảo sát 2026-09-18
+
+### Phát hiện từ audit-old-backend.md (BE Spring Boot cũ)
+
+| Vấn đề | Ảnh hưởng đến feature matrix |
+|---|---|
+| BE cũ có 3 endpoint, OpenAPI mới có 69 endpoint. **~97% là viết mới**. | Status của hầu hết features giữ nguyên "Chưa có". |
+| BE cũ tự động set `isVerified=true` khi PT đăng ký (không qua admin). | FP-TR-03 đã ghi "Khác contract" — giữ nguyên. |
+| BE cũ KHÔNG có refresh token, session, audit. | FP-ID-03, FP-ID-04, FP-MD-04 vẫn "Chưa có". |
+| BE cũ có `LocalDateTime` không có timezone. | Tất cả features có date/time ở mobile sẽ sai nếu reuse. Phải convert UTC. |
+| BE cũ không có idempotency. | FP-BK-01 (hold slot), FP-PAY-01 (payment intent) — retry không an toàn. |
+
+### Phát hiện từ mobile domain.ts
+
+- `Appointment.status` có **6 state** (mobile) ↔ **7 state** (BE OpenAPI) ↔ **4 state** (web mock).
+- `Appointment.timeSlot` mobile là string, cần tách thành `slotStartUtc` + `durationMinutes` ở BE.
+- `WorkoutSession.status` mobile có `completed|endedEarly|skipped` ↔ BE ✅ match.
+- **Cần chốt**: UA-018 (AppointmentStatus enum), UA-019 (payment method), UA-020 (report target type).
+
+### Phát hiện từ web mockData.js
+
+- `Booking.paymentMethod` (web) có 4 method (`FitMate Pay / QR / MoMo / Napas`) ↔ BE chỉ có enum `Vnpay`. Lệch.
+- `Booking.location` (web) có sẵn ↔ BE chưa có field.
+- `Booking.sessionSchedule` (web) là denormalized từ Service.schedule.
+- `aiAnalyticsSummary` (web) có thống kê AI tokens, cost ↔ FP-AD-05 chưa rõ scope.
+- `platformPolicy.platformFeeRate=10` (web, cố định) ↔ chưa có endpoint admin đổi.
+- `ViolationReports.targetType` web: `post|user|pt` ↔ mobile: `post|comment|user|certificate`.
+- `UserStatus` web: `active|suspended` ↔ BE OpenAPI: `Active|Suspended|PendingDeletion`. ✅ match.
+
+### Endpoint cần thêm (chưa có trong matrix)
+
+Sau audit, phát hiện FE sẽ cần thêm:
+- `POST /api/v1/auth/email/verify` (email verification) — chưa list.
+- `POST /api/v1/auth/email/resend` — chưa list.
+- `GET /api/v1/me/profile/extended` (medical conditions + allergies đầy đủ).
+- `GET /api/v1/trainers/{id}/reviews` (FE có `Review` entity).
+- `POST /api/v1/trainers/{id}/reviews` (chỉ member đã book mới được review).
+- `GET /api/v1/admin/users/{id}` (admin xem chi tiết user + lịch sử).
+- `GET /api/v1/admin/users/{id}/audit-log` (audit riêng cho user).
+- `GET /api/v1/admin/system/info` (admin xem version + region — web có `systemInfo`).
+- `GET /api/v1/admin/platform-policy` (web có `platformPolicy`).
+
+Sẽ thêm vào matrix ở phase tiếp theo.

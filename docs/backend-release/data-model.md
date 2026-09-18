@@ -6,7 +6,7 @@
 
 | Schema | Bounded context | Aggregate roots chính |
 |---|---|---|
-| `identity` | users, profile, sessions | User, UserProfile, RefreshToken, AuditLog |
+| `identity` | users, profile, sessions | **ApplicationUser** (Identity), UserProfile, RefreshToken, AuditLog, **Identity Roles/Claims/Tokens** |
 | `trainers` | PT, certificates, services, availability | PtProfile, Certificate, Service, AvailabilitySlot |
 | `booking` | appointments, holds | Appointment, BookingHold, AppointmentAudit |
 | `payment` | transactions, refunds | Payment, Refund, PaymentAttempt |
@@ -103,6 +103,29 @@ outbox.idempotency_records
 | `token_hash` | refresh_tokens | credential |
 
 Tất cả cột trên đều redact khi log; mọi select ra response đều đi qua allowlist.
+
+## Identity schema (bổ sung khi áp dụng DEC-021)
+
+Khi tích hợp ASP.NET Core Identity, schema `identity` có thêm các bảng:
+
+| Bảng | Cột chính | Mục đích |
+|---|---|---|
+| `asp_net_users` | id (Guid), email, normalized_email, email_confirmed, password_hash, security_stamp, concurrency_stamp, phone_number, phone_number_confirmed, two_factor_enabled, lockout_end, lockout_enabled, access_failed_count, full_name, timezone, status, created_at, updated_at, deleted_at | User aggregate root. |
+| `asp_net_roles` | id (Guid), name, normalized_name, concurrency_stamp | Vai trò (Admin, PT, Member). |
+| `asp_net_user_roles` | user_id, role_id | Many-to-many. |
+| `asp_net_user_claims` | id, user_id, claim_type, claim_value | Custom claims (vd: `pt_id`). |
+| `asp_net_role_claims` | id, role_id, claim_type, claim_value | Role-based claims. |
+| `asp_net_user_tokens` | user_id, login_provider, name, value | Lưu reset password / email confirm token. |
+
+`ApplicationUser : IdentityUser<Guid>` thêm: `FullName`, `Timezone`, `Status`, `CreatedAt`, `UpdatedAt`, `DeletedAt`. Chi tiết: [`identity-evaluation.md`](identity-evaluation.md).
+
+## Migration từ BE cũ
+
+BE Spring Boot cũ **không có data thật** (chỉ mock auth, 3 endpoint, 12 entity sơ khai). Migration = **greenfield**:
+- Schema cũ dùng `BIGSERIAL`, `LocalDateTime`, lưu JSON-as-text — không map sang schema mới.
+- Demo data sẽ seed qua script (xem `BE-350`).
+- Nếu user có data thật trong Supabase (chờ UA-001), viết export script riêng.
+- Chi tiết: [`audit-old-backend.md`](audit-old-backend.md).
 
 ## Partition / archive
 

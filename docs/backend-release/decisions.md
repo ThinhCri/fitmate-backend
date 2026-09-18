@@ -167,3 +167,66 @@
 - **Quyết định**: Payment / external HTTP call không nằm trong DB transaction. Commit DB trước, dispatch qua Outbox.
 - **Hệ quả**: Tránh lock DB lâu; rollback rõ ràng.
 - **Trạng thái**: ✅ Accepted.
+
+## DEC-021 — Auth: ASP.NET Core Identity
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User
+- **Bối cảnh**: Cần password hashing đúng chuẩn, lockout, email confirm, password reset có sẵn.
+- **Quyết định**: Dùng `Microsoft.AspNetCore.Identity.EntityFrameworkCore` với `ApplicationUser : IdentityUser<Guid>` + `IdentityRole<Guid>`. JWT issuance + refresh token vẫn tự viết (Identity không có).
+- **Hệ quả**: Schema Identity có 8 bảng (Users, Roles, UserRoles, UserClaims, RoleClaims, UserLogins, UserTokens). Mất ~150 LOC custom hashing. Được maintain bởi Microsoft.
+- **Chi tiết**: [`identity-evaluation.md`](identity-evaluation.md).
+- **Trạng thái**: ✅ Accepted.
+
+## DEC-022 — Managed PostgreSQL cho production
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User (yêu cầu so sánh)
+- **Bối cảnh**: User muốn managed Postgres để giảm gánh nặng vận hành. Supabase không phải lựa chọn bắt buộc.
+- **Quyết định đề xuất**: DigitalOcean Managed Postgres Singapore (General Purpose 4 GB + 1 read replica), ~$70/mo. Phương án dự phòng: AWS RDS nếu đã dùng AWS. KHÔNG dùng Supabase project (đã có vết lộ secret).
+- **Hệ quả**:
+  - Cần TLS bắt buộc, `sslmode=require`.
+  - Backup 7 ngày + PITR 24h.
+  - Cần user cấp credentials hoặc tự cấp nếu có quyền.
+- **Chi tiết**: [`managed-postgres-comparison.md`](managed-postgres-comparison.md).
+- **Trạng thái**: ⏳ Proposed — chờ user chốt câu hỏi § 5 trong `managed-postgres-comparison.md`.
+
+## DEC-023 — Google Play: Booking PT là dịch vụ vật lý → không bắt buộc Play Billing
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User (qua xác nhận chính sách VNPay)
+- **Bối cảnh**: Cần xác định loại sản phẩm Fitmate theo Google Play policy.
+- **Quyết định**:
+  - Booking PT = dịch vụ vật lý → VNPay OK, không vi phạm Play Billing policy.
+  - Nếu sau này thêm subscription/premium digital content → PHẢI qua Play Billing.
+  - Health declaration: KHÔNG claim chẩn đoán/điều trị → khai là "lifestyle/fitness".
+  - Account deletion: bắt buộc có flow `DELETE /users/me`.
+  - UGC: đã có report + admin moderation flow.
+- **Hệ quả**: 
+  - Phí provider VNPay tách khỏi phí nền tảng 10%.
+  - Cần privacy policy URL.
+- **Chi tiết**: [`vnpay-googleplay-policy.md`](vnpay-googleplay-policy.md).
+- **Trạng thái**: ✅ Accepted.
+
+## DEC-024 — Migration từ BE cũ: viết mới, KHÔNG migrate data
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User (xác nhận qua audit)
+- **Bối cảnh**: BE cũ chỉ có 3 endpoint (register, login, getUserProfile) + 12 entity sơ khai. JWT giả. Không có data thật.
+- **Quyết định**:
+  - Giữ BE cũ trong Git (tham chiếu nội dung), KHÔNG xóa.
+  - Viết mới .NET 8 BE từ đầu. Parity ~3/69 endpoints, 97% là mới.
+  - Demo data sẽ tạo qua seed script, không migrate từ Supabase.
+  - Nếu sau này user có data thật trong Supabase → viết export script riêng (chờ UA-001).
+- **Hệ quả**: Schema cũ không mapping sang schema mới (DateTime, JSON-as-text, etc đều khác). Tốn công đọc spec hơn migration data.
+- **Chi tiết**: [`audit-old-backend.md`](audit-old-backend.md).
+- **Trạng thái**: ✅ Accepted.
+
+## DEC-025 — Staging có thể dùng Docker Compose trên 1 VPS
+
+- **Ngày**: 2026-09-18
+- **Người chốt**: User
+- **Bối cảnh**: Staging chưa cần scale.
+- **Quyết định**: 1 droplet 4 GB Singapore chạy compose (`api`, `postgres`, `mailhog`). Backup nightly qua DO Spaces.
+- **Hệ quả**: Downtime khi droplet fail — acceptable cho staging.
+- **Trạng thái**: ✅ Accepted.
