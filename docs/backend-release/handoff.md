@@ -6,7 +6,10 @@
 
 - **Ngày**: 2026-09-18
 - **Phiên**: Khởi tạo docs nền tảng backend release.
-- **Commits trong phiên**: chưa commit (sẽ commit sau khi hoàn tất scaffold).
+- **Commits trong phiên**:
+  - BE `ff95843` — `docs(be): foundation — source-of-truth docs, OpenAPI v1, .env.example, Docker Compose skeleton [BE-099-partial]` (32 files, 6542 insertions).
+  - FE `bb8207f` — `docs(fe): backend integration pointer + mobile/.env.example [INT-MOB-prep]` (3 files).
+  - Web `76766f8` — `docs(web): backend integration pointer + .env.example [INT-WEB-prep]` (3 files).
 
 ## Đã làm
 
@@ -20,6 +23,11 @@
 - Tạo bộ docs nền tảng trong `docs/backend-release/` của BE repo:
   - README, architecture, feature-api-matrix, domain-rules, authorization-matrix, decisions, data-model, migrations, api-contract, openapi/fitmate-v1.yaml, android-integration-guide, admin-integration-guide, ai-contract, ai-handoff-checklist, capacity-plan, load-test-report, deployment-runbook, runbooks/, release-checklist, user-actions, tasks.
 - OpenAPI spec hợp lệ: 69 endpoints, 53 schemas, 16 tags.
+- Tạo `.env.example`, `.dockerignore`, `.gitignore` chuẩn .NET.
+- Tạo `compose.yml` + `compose.override.yml` skeleton.
+- Tạo `AGENTS.md` mới cho BE repo.
+- Tạo pointer + `.env.example` cho FE repo và Web repo (không đụng working tree của user).
+- Working tree của user giữ nguyên ở cả 3 repo.
 
 ## Việc cần làm tiếp
 
