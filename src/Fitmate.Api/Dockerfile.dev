@@ -1,0 +1,11 @@
+# Stage dev cho compose.override.yml — debug + watch.
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS dev
+WORKDIR /src
+COPY Fitmate.sln ./
+COPY src/Fitmate.Domain/Fitmate.Domain.csproj src/Fitmate.Domain/
+COPY src/Fitmate.Application/Fitmate.Application.csproj src/Fitmate.Application/
+COPY src/Fitmate.Infrastructure/Fitmate.Infrastructure.csproj src/Fitmate.Infrastructure/
+COPY src/Fitmate.Api/Fitmate.Api.csproj src/Fitmate.Api/
+RUN dotnet restore src/Fitmate.Api/Fitmate.Api.csproj
+COPY src/ src/
+USER root
