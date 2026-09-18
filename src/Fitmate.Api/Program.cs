@@ -117,6 +117,12 @@ builder.Services.AddScoped<IPtProfileService, Fitmate.Application.Trainers.PtPro
 builder.Services.AddScoped<ICertificateService, Fitmate.Application.Trainers.CertificateService>();
 builder.Services.AddScoped<IAuditLogger, Fitmate.Infrastructure.Audit.EfAuditLogger>();
 
+// BE-050: Service offering + Availability services.
+builder.Services.AddScoped<IServiceOfferingStore, Fitmate.Infrastructure.Trainers.EfServiceOfferingStore>();
+builder.Services.AddScoped<IAvailabilitySlotStore, Fitmate.Infrastructure.Trainers.EfAvailabilitySlotStore>();
+builder.Services.AddScoped<IServiceOfferingService, Fitmate.Application.Trainers.ServiceOfferingService>();
+builder.Services.AddScoped<IAvailabilityService, Fitmate.Application.Trainers.AvailabilityService>();
+
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
 // - IIdempotencyStore: EF Core backed.
 // - IIdempotencyService: dùng store + TTL 24h mặc định (api-contract.md §11).

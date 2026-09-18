@@ -53,7 +53,7 @@
 - Scope: PT set availability, CRUD service.
 - Depends on: BE-040
 - Done when: overlap detection pass, edit service có pending booking trả 409.
-- Status: TODO
+- Status: **DONE (phiên 15, 2026-09-19)** — Application services: `IServiceOfferingService` (Create/Update/Deactivate/Get/ListMine, owner-scoped với ForbiddenException nếu không phải owner) + `IAvailabilityService` (ReplaceMine batch + ListOpenForTrainer range query, time-zone aware qua `AvailabilitySlot.Create`). Store abstractions trong Application; EF Core impl (`EfServiceOfferingStore` + `EfAvailabilitySlotStore` với `ExecuteDeleteAsync`) trong Infrastructure. API: `/api/v1/me/services` (CRUD role=PT) + `/api/v1/me/availability` (PUT batch replace, chỉ xóa slot Open, không đụng Held/Booked) + `/api/v1/trainers/{id}/availability` (public, lọc status=Open trong [from,to) UTC). Replace validation: empty/dup-utc/bad-duration/bad-timezone → ValidationException; dup UTC trong batch → ConflictException. Unit tests: 20/20 mới PASS (139/139 tổng) — ServiceOffering (11) + Availability (9).
 
 ### BE-060 Booking (hold, confirm, pending→accept, cancel, reschedule, complete)
 - Scope: state machine theo `domain-rules.md §3.2` + unique constraint + TTL release. Theo DEC-026 — `late` là flag (BE-135a), `reschedule` qua `booking_reschedule_events` (BE-135). Endpoint accept riêng (`POST /me/bookings/{id}/accept`). Cần check cả `AppointmentStatus` + `PaymentStatus = Paid` mới ghi nhận doanh thu (FP-FN-04).
@@ -241,9 +241,9 @@
 
 | Status | Count |
 |---|---|
-| DONE | 9 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-100, BE-040) |
+| DONE | 10 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-100, BE-040, BE-050) |
 | IN_PROGRESS | 0 |
-| TODO | ~20 |
+| TODO | ~19 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.
