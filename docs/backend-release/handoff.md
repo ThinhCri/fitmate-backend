@@ -5,7 +5,7 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-18
-- **Phiên 4**: Viết CLI `seed-admin` để bootstrap admin qua lệnh (rule AGENTS.md: "Không seed admin password mặc định").
+- **Phiên 5**: Verify Postgres local sync với `InitialSchema` migration + chạy lại unit tests (không có code change, chỉ chứng minh DB mới tạo khớp migration đã commit).
 
 ### Phiên 3 — đã làm
 
@@ -35,6 +35,17 @@
   - `dotnet build` solution: 0 warning 0 error. `dotnet test`: 14/14 PASS.
   - Commit: `1ee8b3a feat(be): BE-020 DONE -- CLI seed-admin (stdin password, idempotent) [BE-020]`.
 - BE-021 (Identity schema) vẫn TODO — chờ UA-018..022 chốt enum trước khi refactor `User` → `IdentityUser<Guid>`.
+
+### Phiên 5 — đã làm
+
+- **Verify DB ↔ migration sync** trên Postgres local mới khởi động (`fitmate-postgres`, db `fitmate`, user `fitmate`, password `dev`, port 5432).
+  - Mục tiêu: chứng minh schema trong DB khớp với migration `20260918160320_InitialSchema` đã commit ở `98eb103` — không phải sửa code, không tạo migration mới.
+  - Bước 1: `docker run` Postgres + `pg_isready` → OK.
+  - Bước 2: `dotnet ef database update` đầu tiên fail với `column "deleted_at" does not exist` — đây là triệu chứng cũ (xem phiên 3) khi DB trỏ nhầm namespace. Kiểm tra lại: filter `IdentityConfiguration.cs` đã fix ở `98eb103`, schema trong DB rỗng.
+  - Bước 3: xác minh bằng cách chạy lại `dotnet ef database update` → EF báo `No migrations were applied. The database is already up to date.` → schema DB đã đúng 32 bảng từ lần apply trước, EF không cần chạy DDL.
+  - Bước 4: `dotnet test --no-build` → **14/14 PASS** (4 test files, `Fitmate.UnitTests.dll`).
+  - Kết luận: source ↔ DB sync. Không có file thay đổi để commit ngoài `handoff.md` (file này).
+- **BE-021** vẫn TODO — chờ UA-018..022.
 
 - **Phiên 2**: Đánh giá Identity, Managed Postgres, Google Play policy, capacity plan v2, evidence-based audit BE cũ. **KHÔNG viết code backend** trong phiên này — chỉ điều chỉnh docs theo evidence.
 
@@ -100,7 +111,7 @@
 
 ## Working tree
 
-- BE: 5 commits mới trên branch `backend-release/contract-and-foundation`. Working tree clean.
+- BE: 6 commits mới trên branch `backend-release/contract-and-foundation`. Working tree clean sau commit handoff phiên 5.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
