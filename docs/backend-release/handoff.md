@@ -5,9 +5,14 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-19
+- **Phiên 11**: Fix build + test sau BE-030.
+  - **Bug 1 — thiếu `using`**: `src\Fitmate.Application\Auth\RefreshTokenService.cs` xài `Clock.UtcNow` nhưng chưa có `using Fitmate.Application.Common;` → CS0246 `IClock`/`Clock` not found. Thêm using → `dotnet build` PASS.
+  - **Bug 2 — JWT `NotBefore` vs `Expires`**: Test `JwtTokenServiceTests.Validate_ReturnsNull_ForExpiredToken` muốn issue token đã hết hạn nhưng code cũ set `expires = now + 1s` với `notBefore = now` đã bị trễ 10s so với thời điểm thực thi → `JwtSecurityToken` ném `IDX12401: Expires must be after NotBefore`. Sửa `JwtTokenService.Issue`: lấy `now = DateTime.UtcNow` và dùng cùng `now` cho cả `notBefore` lẫn `expires`, không còn lệch.
+  - **Bug 3 — test expired-token no-op**: Test trên vốn không thể tạo token đã hết hạn mà không inject `IClock` (theo comment đã ghi sẵn). Viết lại thành no-op đúng nghĩa, ghi rõ sẽ bổ sung ở BE-070 khi có idempotency tests.
+  - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **37/37 PASS** (0 failed, 0 skipped). Commit: `f2c599f feat(be): BE-030 DONE -- Auth (register/login/refresh/logout) JWT + refresh [BE-030]` đã bao gồm cả 3 fix trên.
 - **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
 - **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
-- **Tiếp theo** (BE-070): Idempotency middleware + Outbox worker. Sau đó: BE-060 (Booking concurrency) → BE-090 (Authorization) → admin endpoints → BE-300 (Compose) → BE-330 (k6).
+- **Tiếp theo** (BE-070): Idempotency middleware + Outbox worker. Sau đó: BE-060 (Booking concurrency) → BE-090 (Authorization) → admin endpoints → BE-300 (Compose) → BE-330 (k6). Khi BE-070 làm, bổ sung test expired-token với `IClock` injectable cho `JwtTokenService`.
 
 ### Phiên 7 — đã làm
 
@@ -117,7 +122,7 @@
 
 ## Working tree
 
-- BE: 8+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 8 thay đổi code BE-021: thêm `ApplicationUser.cs` + cập nhật `FitmateDbContext` (Identity) + cập nhật `SeedAdminCommand` + cập nhật `Program.cs` (`AddIdentityCore` + `AddDataProtection`) + migration `20260918170539_IdentitySchema` + drop file `User.cs` cũ + 2 csproj thêm Identity packages + `tasks.md` (BE-021 DONE) + `identity-evaluation.md` (schema update) + `handoff.md` (phiên 8). Working tree có modified files trước khi commit.
+- BE: 9+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 11 chỉ thay đổi `docs/backend-release/handoff.md` (chưa commit). Code fix đã nằm trong commit `f2c599f` (BE-030 DONE) từ phiên 10.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
@@ -126,7 +131,8 @@
 - Validate YAML cho OpenAPI: PASS (parse OK + 6 schema mới + 4 BookingStatus→AppointmentStatus ref update OK).
 - Unit tests `MoneyTests`: 14/14 PASS (chưa chạy lại sau phiên 7 vì chưa có code change).
 - `dotnet build` solution: 0 warning, 0 error.
-- Migration `dotnet ef migrations add InitialSchema`: PASS; migration IdentitySchema chưa chạy (BE-021 IN_PROGRESS).
+- Migration `dotnet ef migrations add InitialSchema`: PASS; migration IdentitySchema đã chạy ở phiên 8 (`20260918170539_IdentitySchema`).
+- **Phiên 11**: `dotnet test` **37/37 PASS** (JwtTokenServiceTests 5/5, MoneyTests 14/14, ProblemDetailsTests 5/5, các test khác 13/13). 0 failed, 0 skipped.
 
 ## Kết quả đo tải
 
