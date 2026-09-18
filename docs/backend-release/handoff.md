@@ -5,6 +5,23 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-19
+- **Phiên 12**: Triển khai **BE-070** (Idempotency middleware + Outbox worker).
+  - **Application layer** (pure, không phụ thuộc EF Core):
+    - `Idempotency/IIdempotencyStore.cs` — interface store + lookup record + `Conflict` flag.
+    - `Idempotency/IdempotencyService.cs` — interface `IIdempotencyService` + `IdempotencyDecision` enum (Proceed/Replay/Conflict).
+    - `Idempotency/IdempotencyServiceImplementation.cs` — pure logic, TTL 24h mặc định.
+    - `Outbox/IOutboxStore.cs` — store interface + `IOutboxHandler` (per-type).
+    - `Outbox/OutboxDispatcher.cs` — `IOutboxDispatcher` + `IOutboxQueue` (Application không reference Infrastructure).
+    - `Outbox/OutboxWorker.cs` — pure worker: `ProcessOnceAsync(batch)` → dispatch → `MarkDone`/`MarkFailed` với backoff.
+  - **Infrastructure layer** (EF Core-backed):
+    - `Idempotency/EfIdempotencyStore.cs` — DbContext lookup + AddAsync (SaveChanges inline).
+    - `Outbox/EfOutboxStore.cs` — query `pending + NextAttemptAt <= now`, batch limit.
+    - `Outbox/EfOutboxQueue.cs` — adapter `IOutboxQueue` → `FitmateDbContext.OutboxMessages`.
+  - **Api layer**:
+    - `Idempotency/IdempotencyMiddleware.cs` — POST/PUT/PATCH/DELETE + `Idempotency-Key` header; replay/conflict/proceed. Hash = SHA-256(content-type + "\n" + body). Key format `[A-Za-z0-9_-]{8,128}`.
+    - `Outbox/OutboxBackgroundService.cs` — hosted service poll worker mỗi 5s; stop gracefully khi host shutdown.
+  - **DI wiring** (`Program.cs`): đăng ký store/service/queue/dispatcher/worker/hosted service. Middleware đặt SAU auth, TRƯỚC MapControllers.
+  - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **55/55 PASS** (18 mới + 37 cũ, 0 failed, 0 skipped). Commit (sẽ tạo kết thúc phiên): `<type>(be): BE-070 DONE -- Idempotency middleware + Outbox worker + tests [BE-070]`.
 - **Phiên 11**: Fix build + test sau BE-030.
   - **Bug 1 — thiếu `using`**: `src\Fitmate.Application\Auth\RefreshTokenService.cs` xài `Clock.UtcNow` nhưng chưa có `using Fitmate.Application.Common;` → CS0246 `IClock`/`Clock` not found. Thêm using → `dotnet build` PASS.
   - **Bug 2 — JWT `NotBefore` vs `Expires`**: Test `JwtTokenServiceTests.Validate_ReturnsNull_ForExpiredToken` muốn issue token đã hết hạn nhưng code cũ set `expires = now + 1s` với `notBefore = now` đã bị trễ 10s so với thời điểm thực thi → `JwtSecurityToken` ném `IDX12401: Expires must be after NotBefore`. Sửa `JwtTokenService.Issue`: lấy `now = DateTime.UtcNow` và dùng cùng `now` cho cả `notBefore` lẫn `expires`, không còn lệch.
@@ -12,7 +29,7 @@
   - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **37/37 PASS** (0 failed, 0 skipped). Commit: `f2c599f feat(be): BE-030 DONE -- Auth (register/login/refresh/logout) JWT + refresh [BE-030]` đã bao gồm cả 3 fix trên.
 - **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
 - **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
-- **Tiếp theo** (BE-070): Idempotency middleware + Outbox worker. Sau đó: BE-060 (Booking concurrency) → BE-090 (Authorization) → admin endpoints → BE-300 (Compose) → BE-330 (k6). Khi BE-070 làm, bổ sung test expired-token với `IClock` injectable cho `JwtTokenService`.
+- **Tiếp theo** (BE-100 hoặc BE-060): Money adapters (nền cho finance) hoặc Booking state machine (lõi nghiệp vụ). Sau đó: BE-040 → BE-050 → BE-060 → BE-090 → admin endpoints → BE-300 → BE-330. Khi viết integration test cho route 4xx (booking create / payment create / report create), sẽ thêm `IdempotencyMiddleware` test với WebApplicationFactory (BE-310).
 
 ### Phiên 7 — đã làm
 
@@ -110,7 +127,7 @@
 1. ✅ Cập nhật `decisions.md` DEC-026..035 (phiên 7).
 2. ✅ Cập nhật OpenAPI spec (AppointmentStatus/PaymentStatus/RefundStatus + `/admin/platform-policy` + `BookingRescheduleEvent`) + `feature-api-matrix.md` (phiên 7).
 3. ✅ **BE-021**: tích hợp ASP.NET Core Identity (DEC-021 + DEC-032) — `ApplicationUser : IdentityUser<Guid>`, migration `IdentitySchema`. → **DONE phiên 8**.
-4. **BE-030**: Auth (JWT custom + IdentityUser + refresh token + tests).
+4. ✅ **BE-030**: Auth (JWT custom + IdentityUser + refresh token + tests).
 5. **BE-070**: Idempotency middleware + Outbox worker.
 6. **BE-060**: Booking concurrency test + transition matrix (Held→Pending→Confirmed→InProgress→Completed + Cancelled/Expired; flag late; event reschedule).
 7. **BE-080**: Validation (FluentValidation).
@@ -122,7 +139,7 @@
 
 ## Working tree
 
-- BE: 9+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 11 chỉ thay đổi `docs/backend-release/handoff.md` (chưa commit). Code fix đã nằm trong commit `f2c599f` (BE-030 DONE) từ phiên 10.
+- BE: 10+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 12 (BE-070) sắp commit: thêm 9 file mới (Application Idempotency + Outbox, Infrastructure EF stores, Api Middleware + BackgroundService, 3 file test) + cập nhật `Program.cs` + `tasks.md` + `handoff.md`.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
@@ -133,6 +150,7 @@
 - `dotnet build` solution: 0 warning, 0 error.
 - Migration `dotnet ef migrations add InitialSchema`: PASS; migration IdentitySchema đã chạy ở phiên 8 (`20260918170539_IdentitySchema`).
 - **Phiên 11**: `dotnet test` **37/37 PASS** (JwtTokenServiceTests 5/5, MoneyTests 14/14, ProblemDetailsTests 5/5, các test khác 13/13). 0 failed, 0 skipped.
+- **Phiên 12**: `dotnet test` **55/55 PASS** (IdempotencyServiceTests 5, OutboxWorkerTests 6, IdempotencyMiddlewareTests 7, + 37 cũ). 0 failed, 0 skipped.
 
 ## Kết quả đo tải
 

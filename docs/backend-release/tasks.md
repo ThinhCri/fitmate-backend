@@ -65,7 +65,7 @@
 - Scope: middleware, schema `outbox`, worker.
 - Depends on: BE-030
 - Done when: retry cùng key → response cũ; khác payload → 409.
-- Status: TODO
+- Status: **DONE (phiên 12, 2026-09-19)** — `IIdempotencyStore`/`IIdempotencyService` (Application) + `EfIdempotencyStore` (Infrastructure) + `IdempotencyMiddleware` (Api). `IOutboxStore` + `IOutboxDispatcher` (Application) + `EfOutboxStore` + `EfOutboxQueue` (Infrastructure) + `OutboxWorker` (Application, pure) + `OutboxBackgroundService` (Api, hosted). Schema `idempotency_records` + `outbox_messages` đã có sẵn trong `InitialSchema` (không cần migration mới). Key format: `[A-Za-z0-9_-]{8,128}`; hash = SHA-256(content-type + "\n" + body); TTL 24h mặc định. Backoff retry: 1s/5s/30s/5m/1h. Unit tests: 18/18 mới PASS (55/55 tổng) — IdempotencyServiceTests (5) + OutboxWorkerTests (6) + IdempotencyMiddlewareTests (7). Auto-review chặn web host + DB query nên chưa có integration test (sẽ làm ở BE-310 cùng WebApplicationFactory).
 
 ### BE-080 Validation + ProblemDetails
 - Scope: FluentValidation toàn cục, RFC 7807. Theo `api-contract.md §6`.
@@ -241,9 +241,9 @@
 
 | Status | Count |
 |---|---|
-| DONE | 6 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030) |
+| DONE | 7 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070) |
 | IN_PROGRESS | 0 |
-| TODO | ~23 |
+| TODO | ~22 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.

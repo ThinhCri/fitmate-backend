@@ -1,6 +1,10 @@
 using Fitmate.Application.Common;
 using Fitmate.Api.Cli;
 using Fitmate.Api.Errors;
+using Fitmate.Api.Idempotency;
+using Fitmate.Api.Outbox;
+using Fitmate.Application.Idempotency;
+using Fitmate.Application.Outbox;
 using Fitmate.Domain.Identity;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -104,6 +108,27 @@ builder.Services.AddScoped<IValidator<RegisterRequest>, RegisterRequestValidator
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<RefreshRequest>, RefreshRequestValidator>();
 
+// BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
+// - IIdempotencyStore: EF Core backed.
+// - IIdempotencyService: dùng store + TTL 24h mặc định (api-contract.md §11).
+// - IOutboxDispatcher: enqueue message vào DbContext (cùng transaction use case).
+// - IOutboxStore: EF Core backed, worker dùng để fetch due + purge.
+// - OutboxWorker: pure service, xử lý batch + retry với backoff.
+// - OutboxBackgroundService: hosted service poll worker theo interval.
+// IOutboxHandler implementations đăng ký ở các module nghiệp vụ (booking, payment, ...).
+builder.Services.AddScoped<IIdempotencyStore, Fitmate.Infrastructure.Idempotency.EfIdempotencyStore>();
+builder.Services.AddScoped<IIdempotencyService>(sp => new IdempotencyService(
+    sp.GetRequiredService<IIdempotencyStore>(),
+    ttl: TimeSpan.FromHours(24)));
+builder.Services.AddScoped<IOutboxQueue, Fitmate.Infrastructure.Outbox.EfOutboxQueue>();
+builder.Services.AddScoped<IOutboxDispatcher, OutboxDispatcher>();
+builder.Services.AddScoped<IOutboxStore, Fitmate.Infrastructure.Outbox.EfOutboxStore>();
+builder.Services.AddScoped<OutboxWorker>(sp => new OutboxWorker(
+    sp.GetRequiredService<IOutboxStore>(),
+    sp.GetServices<IOutboxHandler>(),
+    sp.GetRequiredService<ILogger<OutboxWorker>>()));
+builder.Services.AddHostedService<OutboxBackgroundService>();
+
 // BE-030: JWT Bearer authentication.
 var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
 if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey))
@@ -165,6 +190,11 @@ var app = builder.Build();
 // BE-030: JWT auth pipeline.
 app.UseAuthentication();
 app.UseAuthorization();
+
+// BE-070: Idempotency middleware (DEC-011). Áp dụng cho mọi mutation có Idempotency-Key header.
+// Đặt SAU authentication để chỉ nhận key đã qua auth filter, nhưng TRƯỚC MapControllers
+// để có thể short-circuit khi replay/conflict.
+app.UseMiddleware<IdempotencyMiddleware>();
 
 app.UseExceptionHandler(handler =>
 {
