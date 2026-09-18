@@ -95,7 +95,7 @@
 - Scope: pagination, filter, lock/unlock.
 - Depends on: BE-090
 - Done when: admin lock user → session bị revoke.
-- Status: TODO
+- Status: **DONE (phiên 18, 2026-09-19)** — Application: `IAdminUserService` (List/SetLock) + abstractions `IAdminUserStore`. Service enforce role Admin ở Application (BE-090) + ngăn self-lock + validate reason ≥ 5 chars + audit (`user.lock` / `user.unlock` với reason). `SecurityStamp` được bump → invalidate JWT/refresh tokens (session revoke). Infrastructure: `EfAdminUserStore` dùng `UserManager.FindByIdAsync/SetLockoutEnabledAsync/SetLockoutEndDateAsync/UpdateSecurityStampAsync`. List filter: role (member/pt/admin), status (active/locked/pending_deletion), search (email ILIKE), pagination max=100, sort allowlist (`createdAt:asc|desc`, `email:asc|desc`). API: `/api/v1/admin/users` GET (list + filter + sort + page), `/api/v1/admin/users/{id}` GET, `/api/v1/admin/users/{id}/lock` POST. `AdminUsersController` Authorize role=Admin. Bảo vệ `fullName`: hiện trả null — sẽ fill từ `UserProfile` ở BE-160. Unit tests: 9/9 mới PASS (173/173 tổng).
 
 ### BE-120 Trainer marketplace
 - Scope: GET /trainers, /trainers/{id}, /trainers/{id}/availability.
@@ -241,10 +241,10 @@
 
 | Status | Count |
 |---|---|
-| DONE | 11 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050) |
+| DONE | 12 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110) |
 | IN_PROGRESS | 0 |
 | PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
-| TODO | ~17 |
+| TODO | ~16 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.
