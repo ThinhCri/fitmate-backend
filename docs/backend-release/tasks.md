@@ -89,7 +89,7 @@
 - Scope: helper tính fee/share/refund với integer VND.
 - Depends on: BE-001
 - Done when: unit test rounding + sum cap.
-- Status: TODO
+- Status: **DONE (phiên 13, 2026-09-19)** — mở rộng `Fitmate.Application.Common.Money` thêm: `ValidateBps` + `SplitFeeBps` (DEC-029, basis points 0..10000) + `FormatPercent` (hiển thị invariant) + `AllocateRefund` (DEC-008, phân bổ refund cả fee + share theo tỷ lệ ban đầu, sum invariant) + `ApplyCumulativeRefund` (delegate sang `ApplyRefund`, AGENTS.md §"Refund lũy kế") + `MoneySnapshot` record + `BuildSnapshot` (DEC-029 snapshot cho booking). Các method cũ `RoundVnd` / `SplitFee` / `ApplyRefund` giữ nguyên (backward-compat với code cũ). Unit tests: 29/29 mới PASS (84/84 tổng) — cover rounding half-up, sum invariant, bps edge cases (0/1000/10000), refund proportional + cumulative + zero-paid, snapshot sum invariant, validation throws.
 
 ### BE-110 Admin Users (list + lock + audit)
 - Scope: pagination, filter, lock/unlock.
@@ -241,9 +241,9 @@
 
 | Status | Count |
 |---|---|
-| DONE | 7 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070) |
+| DONE | 8 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-100) |
 | IN_PROGRESS | 0 |
-| TODO | ~22 |
+| TODO | ~21 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.
