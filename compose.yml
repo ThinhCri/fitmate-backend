@@ -1,0 +1,85 @@
+# Docker Compose cho Fitmate Backend local/integration.
+# Mục đích: dev + integration test. Không dùng cho production.
+# Production: dùng compose.prod.yml riêng với reverse proxy, secret manager, backup.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fitmate-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-fitmate}
+      POSTGRES_USER: ${DB_USER:-fitmate}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD phai duoc set trong .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fitmate} -d ${DB_NAME:-fitmate}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      - "5432:5432"
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: fitmate-mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Fitmate.Api/Dockerfile
+    container_name: fitmate-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-fitmate}
+      DB_USER: ${DB_USER:-fitmate}
+      DB_PASSWORD: ${DB_PASSWORD}
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  # Migration chạy riêng, không tự chạy trong container api.
+  # Chạy: docker compose --profile migrate up migrate
+  migrate:
+    build:
+      context: .
+      dockerfile: src/Fitmate.Api/Dockerfile
+    container_name: fitmate-migrate
+    profiles: ["migrate"]
+    command: ["dotnet", "Fitmate.Infrastructure.dll", "database", "update"]
+    env_file:
+      - .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-fitmate}
+      DB_USER: ${DB_USER:-fitmate}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  postgres-data:
+    name: fitmate-postgres-data

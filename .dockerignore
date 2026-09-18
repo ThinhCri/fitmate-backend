@@ -1,0 +1,47 @@
+# Exclude from Docker build context
+**/.git
+**/.gitignore
+**/.gitattributes
+**/.gitkeep
+
+# .NET
+**/bin/
+**/obj/
+**/out/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/*.user
+**/*.suo
+**/*.pdb
+
+# Tests results
+**/TestResults/
+**/coverage/
+
+# Secrets
+.env
+.env.*
+!.env.example
+**/*.pfx
+**/*.p12
+**/*.keystore
+**/secrets.json
+**/appsettings.*.json
+
+# Docs (giữ trong repo nhưng không cần trong image)
+docs/
+*.md
+README.md
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Local data
+data/
+uploads/
+pgdata/
+**/*.sql.gz
+**/*.dump
