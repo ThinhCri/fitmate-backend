@@ -5,9 +5,30 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-18
-- **Phiên 5**: Verify Postgres local sync với `InitialSchema` migration + chạy lại unit tests (không có code change, chỉ chứng minh DB mới tạo khớp migration đã commit).
+- **Phiên 6**: Đề xuất DEC-026..031 trả lời UA-018..024 dựa trên evidence (audit-old-backend.md §5,§6 + managed-postgres-comparison.md §3,§5). Chưa có code change — chỉ doc. Chờ user chốt / chỉnh sửa đề xuất.
 
-### Phiên 3 — đã làm
+### Phiên 5 — đã làm
+
+- **Verify DB ↔ migration sync** trên Postgres local mới khởi động (`fitmate-postgres`, db `fitmate`, user `fitmate`, password `dev`, port 5432).
+  - Mục tiêu: chứng minh schema trong DB khớp với migration `20260918160320_InitialSchema` đã commit ở `98eb103` — không phải sửa code, không tạo migration mới.
+  - Bước 1: `docker run` Postgres + `pg_isready` → OK.
+  - Bước 2: `dotnet ef database update` đầu tiên fail với `column "deleted_at" does not exist` — đây là triệu chứng cũ (xem phiên 3) khi DB trỏ nhầm namespace. Kiểm tra lại: filter `IdentityConfiguration.cs` đã fix ở `98eb103`, schema trong DB rỗng.
+  - Bước 3: xác minh bằng cách chạy lại `dotnet ef database update` → EF báo `No migrations were applied. The database is already up to date.` → schema DB đã đúng 32 bảng từ lần apply trước, EF không cần chạy DDL.
+  - Bước 4: `dotnet test --no-build` → **14/14 PASS** (4 test files, `Fitmate.UnitTests.dll`).
+  - Kết luận: source ↔ DB sync. Không có file thay đổi để commit ngoài `handoff.md` (file này).
+- **BE-021** vẫn TODO — chờ UA-018..022.
+
+### Phiên 6 — đã làm
+
+- **Đề xuất DEC-026..031** trong `decisions.md` để gỡ UA-018..024 — không sửa code, không thay đổi OpenAPI. Căn cứ từ `audit-old-backend.md §5,§6` và `managed-postgres-comparison.md §3,§5`.
+  - **DEC-026 (UA-018) AppointmentStatus**: 7-state canonical giữ nguyên (Held/AwaitingPayment/Paid/Completed/Cancelled/Refunded/Expired). `late` → flag `Booking.isLateAttendee`. `rescheduled` → cancel + tạo mới + `previousBookingId`. Mapping 2 chiều cho mobile 6 ↔ web 4 → BE 7.
+  - **DEC-027 (UA-019) PaymentMethod**: MVP chỉ enable **VNPay** (theo DEC-002). Enum mở rộng 5 value (`Vnpay | FitmatePay | Qr | Momo | Napas`) để khớp web UI chip; 3 value sau trả 503 `PROVIDER_NOT_CONFIGURED`. `FitmatePay` = wallet branding, adapter redirect sang VNPay.
+  - **DEC-028 (UA-020) targetType**: enum canonical 4 value (`post|comment|user|certificate`) — union của mobile + 1. Web `pt` alias = `user` (PT là user có role=PT), BE normalize khi parse.
+  - **DEC-029 (UA-022) platformFeeRate**: MVP cố định `platformFeeRateBps=1000` (10%) trong config. GET `/admin/platform-policy` read-only cho web hiển thị. POST để admin sửa là post-MVP (cần audit + version + cool-down).
+  - **DEC-030 (UA-021) Production DB**: **DigitalOcean Managed Postgres Singapore GP 4 GB + 1 read replica**, ~$70-90/mo. Lý do loại: Supabase (đã lộ secret), Neon (cold start), RDS (chưa dùng AWS), self-host (SPOF). Trả lời 4 câu §5 `managed-postgres-comparison.md` xong → DEC-022 → Accepted.
+  - **DEC-031 (UA-024) Google Play**: `vnpay-googleplay-policy.md` đã có ngày tra cứu 2026-09-18. Policy tóm tắt: PT booking = dịch vụ vật lý → VNPay OK; health = lifestyle; account deletion = `DELETE /users/me`; UGC cần report+moderation (BE-210). User chỉ cần verify lại trước khi submit.
+- Tất cả DEC mới ở trạng thái **Proposed** — chờ user reply. Nếu user reply "ok" thì đổi thành Accepted và bắt đầu code BE-021 (Identity).
+- Không có code change; không tác động schema / migration / tests.
 
 - **BE-010 DONE** — wire EF Core + Postgres + apply InitialSchema migration thành công.
   - Add 4 package cho `Fitmate.Infrastructure`: EF Core, EF Core Relational, Npgsql.EntityFrameworkCore.PostgreSQL, BCrypt.Net-Next.
@@ -111,7 +132,7 @@
 
 ## Working tree
 
-- BE: 6 commits mới trên branch `backend-release/contract-and-foundation`. Working tree clean sau commit handoff phiên 5.
+- BE: 6 commits mới trên branch `backend-release/contract-and-foundation` (gồm `d9d122b` docs phiên 5). Phiên 6 chỉnh sửa docs (chưa commit) — DEC-026..031 + handoff phiên 6. Working tree có modified docs.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
@@ -146,4 +167,6 @@
 
 ## Bước tiếp theo (kế hoạch phiên sau)
 
-1. **Chờ user trả lời UA-018..024** trước khi code backend tiếp.
+1. **Chờ user chốt DEC-026..031** (đã viết ở phiên 6, trả lời tương ứng UA-018..024). Nếu user reply "ok" → đổi status thành Accepted rồi mới code BE-021 (Identity refactor).
+2. **Nếu user chỉnh sửa DEC** → update lại rồi hỏi lại.
+3. Sau khi user chốt xong → triển khai thứ tự ưu tiên: BE-021 (Identity) → BE-030 (Auth) → BE-080 (Validation) → BE-070 (Idempotency/Outbox) → BE-060 (Booking concurrency) → BE-090 (Authorization) → admin endpoints (BE-110..220) → staging pipeline (BE-300) → k6 test (BE-330) → FE/Web integrate (INT-MOB / INT-WEB).
