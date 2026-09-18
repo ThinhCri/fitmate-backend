@@ -15,7 +15,7 @@
 - Scope: DbContext, Npgsql provider, migrations ban đầu.
 - Depends on: BE-001
 - Done when: `dotnet ef database update` chạy được với Postgres local.
-- Status: TODO
+- Status: PARTIAL (2026-09-18) — đã add 4 package EF Core/Npgsql/BCrypt cho Infrastructure, 4 package (FluentValidation/JwtBearer/Serilog/RateLimit) cho Api, scaffold DbContext + 14 Configuration + Identity entities, `dotnet build` PASS (0 warn/0 err), `dotnet ef migrations add InitialSchema` PASS. **CHƯA apply vì Postgres local chưa chạy** (xem `handoff.md` phiên 3).
 
 ### BE-020 Domain entities (Identity, Profile, RefreshToken)
 - Scope: schema `identity`. Users + UserProfile + RefreshToken + AuditLog.

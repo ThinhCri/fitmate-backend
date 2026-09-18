@@ -5,6 +5,28 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-18
+- **Phiên 3**: Wire EF Core + packages cần thiết + tạo InitialSchema migration. **KHÔNG code business logic** — chỉ infra layer để BE-010 ready.
+
+### Phiên 3 — đã làm
+
+- **BE-010 PARTIAL** — wire EF Core + Postgres + tạo migration ban đầu.
+  - Thêm 4 package cho `Fitmate.Infrastructure`:
+    - `Microsoft.EntityFrameworkCore` 8.0.10
+    - `Microsoft.EntityFrameworkCore.Relational` 8.0.10
+    - `Npgsql.EntityFrameworkCore.PostgreSQL` 8.0.10
+    - `BCrypt.Net-Next` 4.0.3
+  - Thêm 4 package cho `Fitmate.Api`:
+    - `FluentValidation.AspNetCore` 11.3.0
+    - `Microsoft.AspNetCore.Authentication.JwtBearer` 8.0.10
+    - `Serilog.AspNetCore` 8.0.3
+    - `AspNetCoreRateLimit` 5.0.0
+  - `dotnet build` solution: **0 warning, 0 error**, 5 projects PASS.
+  - `dotnet ef migrations add InitialSchema` PASS — tạo:
+    - `src/Fitmate.Infrastructure/Persistence/Migrations/20260918145647_InitialSchema.cs`
+    - `.Designer.cs` + `FitmateDbContextModelSnapshot.cs`
+  - **CHƯA apply migration** — `dotnet ef database update` fail vì Postgres chưa chạy trên `localhost:5432` (`No connection could be made... actively refused`). Cần user bật Postgres local hoặc `docker compose up postgres` (xem UA-021 cho managed Postgres).
+- Phiên tiếp theo sẽ: (a) apply migration khi Postgres sẵn sàng, (b) viết DB seed admin qua CLI, (c) chốt BE-021 (Identity schema) sau khi user trả lời UA-018..022.
+
 - **Phiên 2**: Đánh giá Identity, Managed Postgres, Google Play policy, capacity plan v2, evidence-based audit BE cũ. **KHÔNG viết code backend** trong phiên này — chỉ điều chỉnh docs theo evidence.
 
 ## Phiên 1 (đã làm)
