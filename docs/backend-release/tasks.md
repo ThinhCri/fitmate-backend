@@ -21,7 +21,7 @@
 - Scope: schema `identity`. Users + UserProfile + RefreshToken + AuditLog.
 - Depends on: BE-010
 - Done when: migration tạo schema, seed admin user qua CLI.
-- Status: PARTIAL — entities đã scaffold (User, UserProfile, RefreshToken, AuditLog), CHƯA tích hợp Identity schema. Cần mở rộng ở BE-021.
+- Status: DONE (2026-09-18) — entities scaffold (User, UserProfile, RefreshToken, AuditLog), migration applied (32 tables), **CLI `seed-admin` working**: `dotnet run --project src/Fitmate.Api -- seed-admin --email X`. Test 1 lần: created admin@fitmate.vn (id=2e417dd7-...). Re-run idempotent: CLI tra loi "da ton tai (role=Admin, status=Active). Bo qua." → exit code 0 neu dung role, 2 neu dung nhung sai role. Password nhap tu STDIN (khong echo), yeu cau >= 12 ky tu.
 
 ### BE-021 Tích hợp ASP.NET Core Identity schema
 - Repo: FitmateAI_BE

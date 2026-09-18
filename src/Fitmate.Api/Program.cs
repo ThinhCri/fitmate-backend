@@ -1,7 +1,30 @@
 using Fitmate.Application.Common;
+using Fitmate.Api.Cli;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
+// CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
+// Khong khoi dong web host -> nhanh, it footprint.
+if (args.Length > 0)
+{
+    var config = new ConfigurationBuilder()
+        .AddEnvironmentVariables()
+        .Build();
+
+    int exitCode = args[0] switch
+    {
+        "seed-admin" => await SeedAdminCommand.RunAsync(args[1..], config),
+        _ => UnknownCommand(args[0])
+    };
+    Environment.Exit(exitCode);
+}
+
+static int UnknownCommand(string cmd)
+{
+    Console.Error.WriteLine($"[fitmate-api] Unknown command: '{cmd}'. Supported: seed-admin");
+    return 1;
+}
 
 var builder = WebApplication.CreateBuilder(args);
 
