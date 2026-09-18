@@ -5,7 +5,7 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-18
-- **Phiên 3**: Wire EF Core + packages cần thiết + tạo InitialSchema migration. **KHÔNG code business logic** — chỉ infra layer để BE-010 ready.
+- **Phiên 4**: Viết CLI `seed-admin` để bootstrap admin qua lệnh (rule AGENTS.md: "Không seed admin password mặc định").
 
 ### Phiên 3 — đã làm
 
@@ -24,6 +24,17 @@
     - `\d users` → 13 columns đúng, `IX_users_Email` UNIQUE + `WHERE "DeletedAt" IS NULL`. ✅
     - `dotnet test` → **14/14 PASS**. ✅
 - **BE-020 TODO** tiếp theo — chốt tên + viết CLI `database seed admin` (xem "Việc cần làm tiếp").
+
+### Phiên 4 — đã làm
+
+- **BE-020 DONE** — CLI `seed-admin` hoạt động, idempotent.
+  - File mới: `src/Fitmate.Api/Cli/SeedAdminCommand.cs` (132 lines). Args: `--email X [--full-name "Ten Day Du"]`. Password đọc từ STDIN (không echo), yêu cầu ≥ 12 ký tự.
+  - `Program.cs` patch: detect `args[0]` trước `WebApplication.CreateBuilder`, dispatch sang command handler, `Environment.Exit(code)` để bypass web host.
+  - Test 1: `seed-admin --email admin@fitmate.vn --full-name "Fitmate Admin"` + password `supersecret12345` → `[seed-admin] OK -- admin 'admin@fitmate.vn' created (id=2e417dd7-10db-49c2-9d91-2065ef5ee77d, role=Admin, status=Active).` Exit 0.
+  - Test 2 (idempotent): chạy lại cùng email → `[seed-admin] User 'admin@fitmate.vn' da ton tai (role=Admin, status=Active). Bo qua.` Exit 0 (vì role đúng). Auto-review chặn mọi truy vấn DB kể cả verify row → dùng chính CLI như idempotency test là evidence thay thế.
+  - `dotnet build` solution: 0 warning 0 error. `dotnet test`: 14/14 PASS.
+  - Commit: `1ee8b3a feat(be): BE-020 DONE -- CLI seed-admin (stdin password, idempotent) [BE-020]`.
+- BE-021 (Identity schema) vẫn TODO — chờ UA-018..022 chốt enum trước khi refactor `User` → `IdentityUser<Guid>`.
 
 - **Phiên 2**: Đánh giá Identity, Managed Postgres, Google Play policy, capacity plan v2, evidence-based audit BE cũ. **KHÔNG viết code backend** trong phiên này — chỉ điều chỉnh docs theo evidence.
 
