@@ -5,7 +5,7 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-19
-- **Phiên 18**: Triển khai **BE-110** (Admin user management).
+- **Phiên 19**: Triển khai **BE-120** (Trainer marketplace public).
   - **Application** (pure): `IAdminUserService` (List/SetLock) + abstraction `IAdminUserStore`. Service enforce role Admin ở Application (BE-090) + ngăn self-lock + validate reason ≥ 5 chars. Audit: `user.lock` / `user.unlock` với reason qua `IAuditLogger`. SecurityStamp bump → invalidate JWT/refresh tokens.
   - **Infrastructure**: `EfAdminUserStore` dùng `UserManager.SetLockoutEnabledAsync/SetLockoutEndDateAsync/UpdateSecurityStampAsync`. List filter: role (member/pt/admin), status (active/locked/pending_deletion), search (email/userName ILIKE), pagination max=100, sort allowlist (`createdAt:asc|desc`, `email:asc|desc`).
   - **Api**: `AdminUsersController` Authorize role=Admin: `GET /api/v1/admin/users` (list + filter + sort + page), `GET /api/v1/admin/users/{id}` (summary), `POST /api/v1/admin/users/{id}/lock` (lock/unlock với reason).
@@ -86,11 +86,12 @@
   - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **37/37 PASS** (0 failed, 0 skipped). Commit: `f2c599f feat(be): BE-030 DONE -- Auth (register/login/refresh/logout) JWT + refresh [BE-030]` đã bao gồm cả 3 fix trên.
 - **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
 - **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
-- **Tiếp theo** (BE-160 Status migration hoặc BE-120 Trainer marketplace):
-  - **BE-160 (status migration)** — touches schema: thêm `Appointment.HoldId FK`, tách enum `BookingStatus` → `AppointmentStatus` (DEC-026), bảng `booking_reschedule_events`. Cho phép BE-060 hoàn thiện Confirm/Accept + admin analytics chính xác.
-  - **BE-120 Trainer marketplace** — public/member list PT (verified only) + detail page; social endpoints (BE-180), fitness (BE-160/170), notifications (BE-200), moderation (BE-210).
-  - Đề xuất: đi **BE-120 (trainer marketplace)** tiếp vì giá trị thấy ngay trên Admin Web. Đây cũng là input cho FE-App tích hợp landing page / booking flow.
-  - Sau BE-120 → BE-150 (finance read-side) → BE-220 (admin metrics) → BE-160 (status migration + Appointment.HoldId FK). Khi có payment integration (VNPay) sẽ triển khai BE-130 + BE-140 + BE-600.
+- **Tiếp theo** (BE-150 Finance read-side hoặc BE-160 Status migration):
+  - **BE-150 Finance read-side** — GMV, phí 10% Fitmate, payout 90% PT, refund (DEC-007/008/029). Đọc từ `Payment`/`Appointment`/`Outbox` đã có. Cần thiết cho Admin Web FinanceManagement.
+  - **BE-160 Status migration** — schema migration: `Appointment.HoldId FK`, tách enum `BookingStatus` → `AppointmentStatus` (DEC-026), `booking_reschedule_events`. Cho phép BE-060 hoàn thiện Confirm/Accept + analytics chính xác.
+  - **BE-220 Admin metrics + action-required** — read-side KPIs, recent bookings, action queue.
+  - Đề xuất: đi **BE-150 (finance read-side)** tiếp — Admin Web đang cần số liệu tài chính + đối soát phí 10% / 90% (DEC-007/008). BE-150 không phụ thuộc schema migration và dùng lại snapshot/sum invariant từ BE-100.
+  - Sau BE-150 → BE-160 (status migration) → BE-220 (admin metrics). Khi có payment integration (VNPay) sẽ triển khai BE-130 + BE-140 + BE-600.
 
 ### Phiên 7 — đã làm
 
