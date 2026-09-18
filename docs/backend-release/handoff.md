@@ -4,10 +4,10 @@
 
 ## Phiên hiện tại
 
-- **Ngày**: 2026-09-18
-- **Phiên 9**: Triển khai BE-080 (Validation + ProblemDetails) foundation. Tạo `src/Fitmate.Api/Errors/ErrorCodes.cs` (constants `FITMATE.<DOMAIN>.<REASON>`) + `src/Fitmate.Api/Errors/ProblemDetailsFactory.cs` (pure helper, testable). Patch `Program.cs`: `ConfigureApiBehaviorOptions` + `UseExceptionHandler` đều đi qua factory → mọi 4xx/5xx trả RFC 7807 chuẩn với `code` + `traceId`. `Fitmate.UnitTests.csproj` thêm reference `Fitmate.Api` để test factory. Unit tests: 6/6 mới PASS (20/20 tổng). Build 0 warning, 0 error.
-- **Lưu ý auto-review**: web host + DB query bị chặn ở phiên này (khác phiên 8), nên chưa viết integration test qua WebApplicationFactory. `IValidator<T>` + DTO thật (RegisterRequest, LoginRequest) sẽ đi kèm BE-030 khi `AuthController` ra đời — lúc đó thêm integration test cho route 4xx.
-- **Tiếp theo** (BE-030): Auth (JWT custom + IdentityUser + refresh + lockout). Đã có `SignInManager` + `UserManager` từ BE-021. Cần `JwtOptions.Issuer`/`Audience` thêm vào config.
+- **Ngày**: 2026-09-19
+- **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
+- **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
+- **Tiếp theo** (BE-070): Idempotency middleware + Outbox worker. Sau đó: BE-060 (Booking concurrency) → BE-090 (Authorization) → admin endpoints → BE-300 (Compose) → BE-330 (k6).
 
 ### Phiên 7 — đã làm
 

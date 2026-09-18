@@ -6,6 +6,13 @@ using Fitmate.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.Tokens;
+using FluentValidation;
+using Fitmate.Application.Auth;
+using Fitmate.Application.Auth.Validators;
+using Fitmate.Application.Auth.Contracts;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -80,7 +87,47 @@ builder.Services.AddIdentityCore<ApplicationUser>(opt =>
 builder.Services.AddSingleton<Fitmate.Application.Common.IPasswordHasher, Fitmate.Application.Common.BcryptPasswordHasher>();
 builder.Services.AddSingleton<Fitmate.Application.Common.ITokenHasher, Fitmate.Application.Common.Sha256TokenHasher>();
 
-// Controllers + ProblemDetails (RFC 7807). BE-080: format chuẩn hoá qua ProblemDetailsFactory
+// BE-030: Auth services.
+builder.Services.AddSingleton<IJwtTokenService>(sp =>
+{
+    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AppOptions>>().Value.Jwt;
+    return new JwtTokenService(options);
+});
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+builder.Services.AddScoped<Fitmate.Application.Auth.IRefreshTokenStore, Fitmate.Infrastructure.Auth.EfRefreshTokenStore>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<Fitmate.Api.Auth.ICurrentUserAccessor, Fitmate.Api.Auth.HttpContextCurrentUserAccessor>();
+
+// BE-030: FluentValidation auto-validate cho Controller.
+builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
+builder.Services.AddScoped<IValidator<RegisterRequest>, RegisterRequestValidator>();
+builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
+builder.Services.AddScoped<IValidator<RefreshRequest>, RefreshRequestValidator>();
+
+// BE-030: JWT Bearer authentication.
+var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
+if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey))
+{
+    throw new InvalidOperationException("JwtOptions.SigningKey must be configured (env JWT_SIGNING_KEY)");
+}
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(opt =>
+    {
+        opt.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidAudience = jwtOptions.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
+            ClockSkew = TimeSpan.FromSeconds(30)
+        };
+    });
+builder.Services.AddAuthorization();
+
+// Controllers + ProblemDetails (RFC 7807). BE-080: format chuẩn hoá qua FitmateProblemDetails
 // (code + traceId theo api-contract.md §6).
 builder.Services.AddControllers()
     .ConfigureApiBehaviorOptions(opt =>
@@ -93,13 +140,13 @@ builder.Services.AddControllers()
                     kv => kv.Key,
                     kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray());
 
-            var problem = ProblemDetailsFactory.Create(
+            var problem = FitmateProblemDetails.Create(
                 status: 400,
                 title: "Validation failed",
                 code: ErrorCodes.ValidationFailed,
                 typeSlug: "validation",
                 detail: "One or more fields failed validation.",
-                traceId: ProblemDetailsFactory.ResolveTraceId(ctx.HttpContext),
+                traceId: FitmateProblemDetails.ResolveTraceId(ctx.HttpContext),
                 errors: errors);
 
             return new BadRequestObjectResult(problem)
@@ -115,12 +162,16 @@ builder.Services.AddHealthChecks()
 
 var app = builder.Build();
 
+// BE-030: JWT auth pipeline.
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.UseExceptionHandler(handler =>
 {
     handler.Run(async context =>
     {
         var ex = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
-        var traceId = ProblemDetailsFactory.ResolveTraceId(context);
+        var traceId = FitmateProblemDetails.ResolveTraceId(context);
 
         // BE-080: mọi 4xx/5xx đi qua factory để format đồng nhất (code + traceId + type).
         // BE-060+ sẽ map exception cụ thể (vd SlotTakenException -> 409) sang code tương ứng.
@@ -135,7 +186,7 @@ app.UseExceptionHandler(handler =>
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/problem+json";
 
-        var problem = ProblemDetailsFactory.Create(
+        var problem = FitmateProblemDetails.Create(
             status: status,
             title: title,
             code: code,

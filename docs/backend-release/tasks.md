@@ -41,7 +41,7 @@
 - Scope: JWT custom + BCrypt/Identity password. Endpoint theo OpenAPI. Theo DEC-026/027 — `AppointmentStatus` / `PaymentStatus` / `RefundStatus` enum đã chốt, truyền trong response. Theo DEC-027 — `Payment.method = vnpay` 1 value.
 - Depends on: BE-021.
 - Done when: integration test pass (success, wrong pwd, locked, expired token, replay).
-- Status: TODO (bắt đầu khi BE-021 DONE).
+- Status: **DONE (phiên 10, 2026-09-19)** — 4 endpoints `/api/v1/auth/{register,login,refresh,logout}` theo OpenAPI. JWT HS256 (`Microsoft.IdentityModel.Tokens` + `System.IdentityModel.Tokens.Jwt`) với claims `sub/email/jti/role/full_name`. Refresh token SHA-256 hash lưu DB, rotate-on-use, revoke idempotent. FluentValidation auto-validate cho `RegisterRequest`/`LoginRequest`/`RefreshRequest`. JWT Bearer auth pipeline (`AddAuthentication` + `AddJwtBearer`). `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với `Microsoft.AspNetCore.Mvc.ProblemDetailsFactory`). Unit tests: 17/17 PASS mới (37/37 tổng). Auto-review chặn web host + DB query nên chưa viết integration test WebApplicationFactory — để phiên sau (BE-070) cùng integration suite.
 
 ### BE-040 Trainer + Certificate
 - Scope: PT profile, certificate submission, admin approve/reject.
@@ -241,9 +241,9 @@
 
 | Status | Count |
 |---|---|
-| DONE | 5 (BE-001, BE-010, BE-020, BE-021, BE-080) |
+| DONE | 6 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030) |
 | IN_PROGRESS | 0 |
-| TODO | ~24 |
+| TODO | ~23 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.

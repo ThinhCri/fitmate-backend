@@ -6,9 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace Fitmate.UnitTests;
 
 /// <summary>
-/// BE-080: ProblemDetailsFactory format chuẩn RFC 7807 + extensions code/traceId/errors.
+/// BE-080: FitmateProblemDetails format chuẩn RFC 7807 + extensions code/traceId/errors.
 /// </summary>
-public class ProblemDetailsFactoryTests
+public class FitmateProblemDetailsTests
 {
     [Fact]
     public void Create_WithFullArgs_SetsAllRequiredFields()
@@ -18,7 +18,7 @@ public class ProblemDetailsFactoryTests
             ["email"] = new[] { "Email is required", "Email must be valid" }
         };
 
-        var problem = ProblemDetailsFactory.Create(
+        var problem = FitmateProblemDetails.Create(
             status: 400,
             title: "Validation failed",
             code: ErrorCodes.ValidationFailed,
@@ -40,7 +40,7 @@ public class ProblemDetailsFactoryTests
     [Fact]
     public void Create_WithoutOptionalArgs_OmitsNullExtensions()
     {
-        var problem = ProblemDetailsFactory.Create(
+        var problem = FitmateProblemDetails.Create(
             status: 404,
             title: "Not found",
             code: ErrorCodes.GeneralNotFound,
@@ -58,7 +58,7 @@ public class ProblemDetailsFactoryTests
     [Fact]
     public void Create_WithEmptyErrors_DoesNotAddErrorsExtension()
     {
-        var problem = ProblemDetailsFactory.Create(
+        var problem = FitmateProblemDetails.Create(
             status: 400,
             title: "Bad request",
             code: ErrorCodes.GeneralBadRequest,
@@ -72,13 +72,13 @@ public class ProblemDetailsFactoryTests
     public void ResolveTraceId_PrefersHttpContextTraceIdentifier()
     {
         var ctx = new DefaultHttpContext { TraceIdentifier = "ctx-trace-id" };
-        ProblemDetailsFactory.ResolveTraceId(ctx).Should().Be("ctx-trace-id");
+        FitmateProblemDetails.ResolveTraceId(ctx).Should().Be("ctx-trace-id");
     }
 
     [Fact]
     public void ResolveTraceId_NullContext_ReturnsUnknown()
     {
-        ProblemDetailsFactory.ResolveTraceId(null).Should().Be("unknown");
+        FitmateProblemDetails.ResolveTraceId(null).Should().Be("unknown");
     }
 
     [Fact]

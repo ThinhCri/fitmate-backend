@@ -11,7 +11,7 @@ namespace Fitmate.Api.Errors;
 /// và optional <c>detail</c> + <c>errors</c>.
 /// Pure logic: không phụ thuộc HttpContext, có thể unit test trực tiếp.
 /// </summary>
-public static class ProblemDetailsFactory
+public static class FitmateProblemDetails
 {
     /// <summary>
     /// Tạo <see cref="ProblemDetails"/> cơ bản.
