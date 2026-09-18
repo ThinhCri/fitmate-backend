@@ -125,6 +125,10 @@ builder.Services.AddScoped<IAvailabilitySlotStore, Fitmate.Infrastructure.Traine
 builder.Services.AddScoped<IServiceOfferingService, Fitmate.Application.Trainers.ServiceOfferingService>();
 builder.Services.AddScoped<IAvailabilityService, Fitmate.Application.Trainers.AvailabilityService>();
 
+// BE-120: Trainer marketplace.
+builder.Services.AddScoped<ITrainerMarketplaceStore, Fitmate.Infrastructure.Trainers.EfTrainerMarketplaceStore>();
+builder.Services.AddScoped<ITrainerMarketplaceService, Fitmate.Application.Trainers.TrainerMarketplaceService>();
+
 // BE-060: Booking lifecycle services.
 builder.Services.AddScoped<IAppointmentStore, Fitmate.Infrastructure.Booking.EfAppointmentStore>();
 builder.Services.AddScoped<IBookingHoldStore, Fitmate.Infrastructure.Booking.EfBookingHoldStore>();

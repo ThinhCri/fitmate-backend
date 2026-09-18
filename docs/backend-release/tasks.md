@@ -101,7 +101,7 @@
 - Scope: GET /trainers, /trainers/{id}, /trainers/{id}/availability.
 - Depends on: BE-040
 - Done when: chỉ verified PT hiện.
-- Status: TODO
+- Status: **DONE (phiên 19, 2026-09-19)** — Application: `ITrainerMarketplaceService` (List verified + GetDetail) + abstraction `ITrainerMarketplaceStore`. Filter: specialty (substring ignore case), minPriceVnd/maxPriceVnd, minRating (0..5), pagination cursor-based (default limit=20, max=100). Validation: maxPriceVnd >= minPriceVnd, limit 1..100, minRating 0..5. Verified-only enforcement: store level (chỉ PT có 1+ Approved Certificate mới trả về). Infrastructure: `EfTrainerMarketplaceStore` query `PtProfiles` với distinct PT userIds từ Approved Certificates; post-filter sort theo Rating desc, UserId asc. API: `/api/v1/trainers` (GET, `[AllowAnonymous]`), `/api/v1/trainers/{id}` (GET detail với services active). Bảo vệ `TrainerMarketplaceSummary.FullName`/`AvatarUrl` placeholder null — sẽ fill từ `UserProfile` ở BE-160. Unit tests: 10/10 mới PASS (183/183 tổng).
 
 ### BE-130 Booking flows
 - Scope: my bookings (member + PT), admin list.
