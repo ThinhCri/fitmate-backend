@@ -130,6 +130,9 @@ builder.Services.AddScoped<IBookingHoldStore, Fitmate.Infrastructure.Booking.EfB
 builder.Services.AddScoped<IServiceBookingLookup, Fitmate.Infrastructure.Booking.ServiceBookingLookup>();
 builder.Services.AddScoped<IBookingService, Fitmate.Application.Booking.BookingService>();
 
+// BE-090: Authorization guard.
+builder.Services.AddScoped<IAuthorizationGuard, Fitmate.Application.Auth.AuthorizationGuard>();
+
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
 // - IIdempotencyStore: EF Core backed.
 // - IIdempotencyService: dùng store + TTL 24h mặc định (api-contract.md §11).

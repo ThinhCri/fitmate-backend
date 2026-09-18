@@ -76,7 +76,7 @@ public class BookingServiceTests
     }
 
     private static BookingService NewService(InMemoryAppointmentStore apptStore, InMemoryHoldStore holdStore, StubServiceLookup lookup, CapturingOutbox outbox)
-        => new(apptStore, holdStore, lookup, outbox);
+        => new(apptStore, holdStore, lookup, outbox, AlwaysAllowAuthz.Instance);
 
     private static ServiceSnapshot Snapshot(Guid ptUserId, long price = 500_000, int duration = 60) =>
         new(Guid.NewGuid(), ptUserId, price, duration, IsActive: true);

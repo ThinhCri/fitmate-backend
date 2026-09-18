@@ -1,3 +1,4 @@
+using Fitmate.Application.Auth;
 using Fitmate.Application.Common;
 using Fitmate.Application.Outbox;
 using Fitmate.Domain.Booking;
@@ -19,6 +20,7 @@ public class BookingService : IBookingService
     private readonly IBookingHoldStore _holds;
     private readonly IServiceBookingLookup _services;
     private readonly IOutboxDispatcher _outbox;
+    private readonly IAuthorizationGuard _authz;
     private readonly TimeSpan _holdTtl;
 
     public BookingService(
@@ -26,12 +28,14 @@ public class BookingService : IBookingService
         IBookingHoldStore holds,
         IServiceBookingLookup services,
         IOutboxDispatcher outbox,
+        IAuthorizationGuard authz,
         TimeSpan? holdTtl = null)
     {
         _appointments = appointments;
         _holds = holds;
         _services = services;
         _outbox = outbox;
+        _authz = authz;
         _holdTtl = holdTtl ?? TimeSpan.FromMinutes(5); // domain-rules.md §3.6
     }
 
@@ -88,6 +92,8 @@ public class BookingService : IBookingService
 
     public async Task<Appointment> CompleteAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
     {
+        // BE-090: enforce role PT ở Application.
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct);
         var appt = await _appointments.FindByIdAsync(appointmentId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
         if (appt.PtUserId != ptUserId)

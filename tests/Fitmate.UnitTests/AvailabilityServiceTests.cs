@@ -46,7 +46,7 @@ public class AvailabilityServiceTests
         }
     }
 
-    private static AvailabilityService NewService(InMemoryStore store) => new(store);
+    private static AvailabilityService NewService(InMemoryStore store) => new(store, AlwaysAllowAuthz.Instance);
 
     private static SlotInput MakeSlot(DateTime local, string tz = "Asia/Ho_Chi_Minh", int duration = 60)
         => new(local, tz, duration);

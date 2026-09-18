@@ -70,7 +70,7 @@ public class CertificateServiceTests
     }
 
     private static CertificateService NewService(InMemoryStore store, CapturingAudit audit)
-        => new(store, audit);
+        => new(store, audit, AlwaysAllowAuthz.Instance);
 
     [Fact]
     public async Task Submit_NewCert_PersistsAsPending()

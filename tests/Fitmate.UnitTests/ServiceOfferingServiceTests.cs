@@ -39,7 +39,7 @@ public class ServiceOfferingServiceTests
     }
 
     private static ServiceOfferingService NewService(InMemoryStore store)
-        => new(store);
+        => new(store, AlwaysAllowAuthz.Instance);
 
     [Fact]
     public async Task Create_ValidArgs_PersistsActive()

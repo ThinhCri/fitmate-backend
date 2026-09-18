@@ -95,4 +95,16 @@ public class IdentityUserRoleLookup : IUserRoleLookup
         if (user is null) return false;
         return await _users.IsInRoleAsync(user, roleName);
     }
+
+    public async Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await _users.FindByIdAsync(userId.ToString());
+        if (user is null) return null;
+        var roles = await _users.GetRolesAsync(user);
+        // Thứ tự ưu tiên: Admin > PT > Member.
+        if (roles.Contains("Admin")) return "Admin";
+        if (roles.Contains("PT")) return "PT";
+        if (roles.Contains("Member")) return "Member";
+        return roles.FirstOrDefault();
+    }
 }

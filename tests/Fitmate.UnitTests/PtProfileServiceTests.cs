@@ -41,6 +41,14 @@ public class PtProfileServiceTests
 
         public Task<bool> IsInRoleAsync(Guid userId, string roleName, CancellationToken ct)
             => Task.FromResult(RoleMembers.Contains((userId, roleName)));
+
+        public Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct)
+        {
+            if (RoleMembers.Contains((userId, "PT"))) return Task.FromResult<string?>("PT");
+            if (RoleMembers.Contains((userId, "Admin"))) return Task.FromResult<string?>("Admin");
+            if (RoleMembers.Contains((userId, "Member"))) return Task.FromResult<string?>("Member");
+            return Task.FromResult<string?>(null);
+        }
     }
 
     private static PtProfileService NewService(InMemoryStore store, FakeUserLookup users)

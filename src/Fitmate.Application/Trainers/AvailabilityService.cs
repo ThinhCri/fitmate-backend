@@ -1,3 +1,4 @@
+using Fitmate.Application.Auth;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Trainers;
 
@@ -9,14 +10,17 @@ namespace Fitmate.Application.Trainers;
 public class AvailabilityService : IAvailabilityService
 {
     private readonly IAvailabilitySlotStore _store;
+    private readonly IAuthorizationGuard _authz;
 
-    public AvailabilityService(IAvailabilitySlotStore store)
+    public AvailabilityService(IAvailabilitySlotStore store, IAuthorizationGuard authz)
     {
         _store = store;
+        _authz = authz;
     }
 
     public async Task<IReadOnlyList<AvailabilitySlot>> ReplaceMineAsync(Guid ptUserId, IReadOnlyList<SlotInput> slots, CancellationToken ct)
     {
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         if (slots is null || slots.Count == 0)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "slots required", new Dictionary<string, string[]> { ["slots"] = new[] { "required" } });
 

@@ -1,3 +1,4 @@
+using Fitmate.Application.Auth;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Trainers;
 
@@ -10,15 +11,19 @@ public class CertificateService : ICertificateService
 {
     private readonly ICertificateStore _store;
     private readonly IAuditLogger _audit;
+    private readonly IAuthorizationGuard _authz;
 
-    public CertificateService(ICertificateStore store, IAuditLogger audit)
+    public CertificateService(ICertificateStore store, IAuditLogger audit, IAuthorizationGuard authz)
     {
         _store = store;
         _audit = audit;
+        _authz = authz;
     }
 
     public async Task<Certificate> SubmitAsync(Guid ptUserId, string title, string issuedBy, string code, DateOnly issueDate, string? imageStorageKey, CancellationToken ct)
     {
+        // BE-090: chỉ PT được submit certificate của mình.
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct);
         ValidateFields(title, issuedBy, code);
 
         var existing = await _store.FindByIdentityAsync(ptUserId, title, issuedBy, code, ct);
@@ -30,14 +35,20 @@ public class CertificateService : ICertificateService
         return cert;
     }
 
-    public Task<IReadOnlyList<Certificate>> ListMineAsync(Guid ptUserId, CancellationToken ct)
-        => _store.ListByPtAsync(ptUserId, ct);
+    public async Task<IReadOnlyList<Certificate>> ListMineAsync(Guid ptUserId, CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct);
+        return await _store.ListByPtAsync(ptUserId, ct);
+    }
 
     public Task<(IReadOnlyList<Certificate> Items, int Total)> ListPendingAsync(int page, int pageSize, CancellationToken ct)
         => _store.ListPendingPagedAsync(page, pageSize, ct);
 
     public async Task<Certificate> ApproveAsync(Guid certId, Guid adminUserId, CancellationToken ct)
     {
+        // BE-090: enforce role Admin ở Application, không chỉ controller filter.
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+
         var cert = await _store.FindByIdAsync(certId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Certificate {certId} not found.");
 
@@ -49,6 +60,8 @@ public class CertificateService : ICertificateService
 
     public async Task<Certificate> RejectAsync(Guid certId, Guid adminUserId, string reason, CancellationToken ct)
     {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+
         if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 5)
             throw new ValidationException(
                 ErrorCodes.Trainer.CertificateMissingReason,

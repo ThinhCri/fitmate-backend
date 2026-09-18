@@ -33,4 +33,6 @@ public interface IUserRoleLookup
 {
     Task<bool> UserExistsAsync(Guid userId, CancellationToken ct);
     Task<bool> IsInRoleAsync(Guid userId, string roleName, CancellationToken ct);
+    /// <summary>Trả về primary role của user, hoặc null nếu user không có role nào (member mặc định).</summary>
+    Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct);
 }

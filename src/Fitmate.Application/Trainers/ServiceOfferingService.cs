@@ -1,3 +1,4 @@
+using Fitmate.Application.Auth;
 using Fitmate.Domain.Common;
 
 namespace Fitmate.Application.Trainers;
@@ -8,14 +9,17 @@ namespace Fitmate.Application.Trainers;
 public class ServiceOfferingService : IServiceOfferingService
 {
     private readonly IServiceOfferingStore _store;
+    private readonly IAuthorizationGuard _authz;
 
-    public ServiceOfferingService(IServiceOfferingStore store)
+    public ServiceOfferingService(IServiceOfferingStore store, IAuthorizationGuard authz)
     {
         _store = store;
+        _authz = authz;
     }
 
     public async Task<Domain.Trainers.Service> CreateAsync(Guid ptUserId, string name, string? description, long priceVnd, int durationMinutes, CancellationToken ct)
     {
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         // Domain.Service.Create đã validate name/price/duration ném ArgumentException;
         // catch + convert sang ValidationException để chuẩn format ProblemDetails.
         Domain.Trainers.Service entity;
@@ -35,6 +39,7 @@ public class ServiceOfferingService : IServiceOfferingService
 
     public async Task<Domain.Trainers.Service> UpdateAsync(Guid ptUserId, Guid serviceId, string? name, string? description, long? priceVnd, int? durationMinutes, bool? isActive, CancellationToken ct)
     {
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         var service = await _store.FindAsync(serviceId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Service {serviceId} not found.");
         if (service.PtUserId != ptUserId)
@@ -54,6 +59,7 @@ public class ServiceOfferingService : IServiceOfferingService
 
     public async Task DeactivateAsync(Guid ptUserId, Guid serviceId, CancellationToken ct)
     {
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         var service = await _store.FindAsync(serviceId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Service {serviceId} not found.");
         if (service.PtUserId != ptUserId)

@@ -77,7 +77,7 @@
 - Scope: spec classes kiểm tra role + ownership + field-level.
 - Depends on: BE-030
 - Done when: mỗi endpoint admin test 401/403/200.
-- Status: TODO
+- Status: **DONE (phiên 17, 2026-09-19)** — Abstractions `IAuthorizationGuard` + `AuthorizationGuard` (Application) dùng `IUserRoleLookup.GetPrimaryRoleAsync` (mở rộng ở phiên này với priority order Admin > PT > Member). Enforce role ở Application cho: `CertificateService.SubmitAsync/ListMineAsync` (PT), `CertificateService.ApproveAsync/RejectAsync` (Admin — chống bypass controller filter), `ServiceOfferingService.CreateAsync/UpdateAsync/DeactivateAsync` (PT), `AvailabilityService.ReplaceMineAsync` (PT), `BookingService.CompleteAsync` (PT). `PtProfileService.EnsureDraftAsync` enforce PT từ BE-040. Các ownership check (resource → userId) vẫn ở service; `EnsureOwnerAsync` helper cho controller/admin. Unit tests: 10/10 mới PASS (164/164 tổng) — AuthorizationGuard (8) + BookingAuthzIntegration (2). Note: BE-090 chưa thêm guard cho endpoint admin *sắp tới* (BE-110/210/220/600) — sẽ enforce ở Application service tương ứng trong từng task.
 
 ### BE-099 Xóa Supabase secrets khỏi Git history
 - Scope: dùng `git filter-repo` hoặc BFG sau khi UA-001 rotate.
@@ -241,10 +241,10 @@
 
 | Status | Count |
 |---|---|
-| DONE | 10 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-100, BE-040, BE-050) |
+| DONE | 11 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050) |
 | IN_PROGRESS | 0 |
 | PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
-| TODO | ~18 |
+| TODO | ~17 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.

@@ -5,6 +5,13 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-19
+- **Phiên 17**: Triển khai **BE-090** (Authorization matrix enforcement).
+  - **Application** (pure): `IAuthorizationGuard` (EnsureRoleAsync/EnsureAnyRoleAsync/EnsureOwnerAsync/HasRoleAsync/GetPrimaryRoleAsync) + `AuthorizationGuard` impl dùng `IUserRoleLookup`.
+  - **Enforce ở Application** (không chỉ controller filter): `CertificateService.SubmitAsync/ListMineAsync` (PT), `CertificateService.ApproveAsync/RejectAsync` (Admin — chống bypass filter), `ServiceOfferingService.CreateAsync/UpdateAsync/DeactivateAsync` (PT), `AvailabilityService.ReplaceMineAsync` (PT), `BookingService.CompleteAsync` (PT). Ownership check vẫn ở service.
+  - **Infrastructure**: mở rộng `IUserRoleLookup.GetPrimaryRoleAsync` trả `Admin/PT/Member` (priority Admin > PT > Member); impl qua `UserManager.GetRolesAsync`.
+  - **Tests**: helper `AlwaysAllowAuthz.Instance` cho test hiện có; `RoleRequireAuthz` cho deny cases. Booking test phải pass fake guard trước complete. 10/10 mới PASS (164/164 tổng): AuthorizationGuard (8) + BookingAuthzIntegration (2). 1 warning cosmetic xUnit1031 (blocking trên HasRoleAsync dùng `.Result`).
+  - **Out-of-scope**: admin endpoints chưa có (BE-110..220 sẽ tự enforce), social/community endpoints chưa có (BE-180+), field-level sensitivity (chưa có use case).
+  - **Kết quả**: `dotnet build` 0 error; `dotnet test` **164/164 PASS**. Commit: `<type>(be): BE-090 DONE -- AuthorizationGuard + role enforcement tại Application layer [BE-090]`.
 - **Phiên 16**: Triển khai **BE-060 (PARTIAL_DONE)** (Booking lifecycle).
   - **Application** (pure): `IBookingService` với CreateHold/Cancel/Complete/Reschedule/ListByMember/ListByPt + abstractions (`IAppointmentStore`/`IBookingHoldStore`/`IServiceBookingLookup`). Outbox enqueue: `booking.held`, `booking.cancelled`, `booking.completed`, `booking.rescheduled`. Domain rules enforced: hold TTL = 5 phút (cấu hình qua DI), slot-availability check (held/awaiting_payment/paid/completed), cancel reason min 5 chars, complete chỉ owner-PT, reschedule transaction check slot mới trước khi release slot cũ.
   - **Infrastructure** (EF): `EfAppointmentStore` (ExistsActiveForSlot, ListByMember/ByPt phân trang) + `EfBookingHoldStore` + `ServiceBookingLookup` delegate sang `IServiceOfferingStore` (BE-050).
@@ -73,11 +80,12 @@
   - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **37/37 PASS** (0 failed, 0 skipped). Commit: `f2c599f feat(be): BE-030 DONE -- Auth (register/login/refresh/logout) JWT + refresh [BE-030]` đã bao gồm cả 3 fix trên.
 - **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
 - **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
-- **Tiếp theo** (BE-160 hoặc BE-090): Có 2 hướng đi tiếp:
-  - **BE-160 (Status migration)**: thêm `Appointment.HoldId FK`, tách enum `BookingStatus` → `AppointmentStatus` (theo DEC-026 — 7 value PascalCase: Held/Pending/Confirmed/InProgress/Completed/Cancelled/Refunded/Expired + flag `is_late`), thêm bảng `booking_reschedule_events`. Cần thiết để BE-060 hoàn thiện (`Confirm`/`Accept`) + cho admin analytics mới chính xác (tách paid vs confirmed vs in-progress).
-  - **BE-090 (Authorization matrix enforcement)**: đảm bảo layer Application enforce ownership + role trên toàn bộ endpoint hiện có, không chỉ ở controller. Quan trọng cho `payment.refund`, `booking.complete`, `trainer-cert-approve` (admin)…
-  - Đề xuất: đi **BE-090 trước** (low-risk, high-value cho nhiều endpoint hiện có), sau đó BE-160 (touches schema/migrations nhiều hơn).
-  - Sau BE-090 + BE-160 → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6). Integration test WebApplicationFactory cho các route 4xx (booking create / payment create / report create) sẽ bổ sung ở BE-310.
+- **Tiếp theo** (BE-160 Status migration hoặc admin endpoints BE-110):
+  - **BE-160 (status migration)** — touches schema: thêm `Appointment.HoldId FK`, tách enum `BookingStatus` → `AppointmentStatus` (DEC-026: 7 value PascalCase + flag `is_late`), bảng `booking_reschedule_events`. Cho phép BE-060 hoàn thiện Confirm/Accept + admin analytics chính xác.
+  - **BE-110 Admin Users (list + lock + audit)** — khi UA-007 (email MFA/notification) chưa xong, vẫn có thể làm user list/lock/unlock; lock sẽ revoke session (mapping Identity SecurityStamp).
+  - **BE-210 Moderation** — báo cáo + workflow.
+  - Đề xuất: đi **BE-110 (admin user mgmt)** tiếp vì nó độc lập, ít touches schema, có value cho admin UX sớm; **BE-160** song song.
+  - Sau BE-110 → BE-120 (trainer marketplace) → BE-150 (finance read-side) → BE-220 (admin metrics). Khi có payment integration (VNPay) sẽ triển khai BE-130 + BE-140 + BE-600. Integration test WebApplicationFactory cho các route 4xx sẽ bổ sung ở BE-310.
 
 ### Phiên 7 — đã làm
 
@@ -187,7 +195,7 @@
 
 ## Working tree
 
-- BE: 14+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 16 (BE-060 PARTIAL) sắp commit: thêm 5 file mới Application + Infrastructure + Api + 1 file test + cập nhật `Program.cs` (DI) + docs.
+- BE: 15+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 17 (BE-090) sắp commit: thêm 2 file mới Application (`Auth/IAuthorizationGuard.cs`, `Auth/AuthorizationGuard.cs`) + 4 file test mới + cập nhật 4 service hiện có + mở rộng `IUserRoleLookup`/`IdentityUserRoleLookup` + cập nhật `Program.cs` (DI) + docs.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
@@ -203,6 +211,7 @@
 - **Phiên 14**: `dotnet test` **119/119 PASS** (CertificateService 12 + PtProfileService 10 + DomainProblemDetails 5 + 84 cũ + 8 idempotency/outbox). 0 failed, 0 skipped.
 - **Phiên 15**: `dotnet test` **139/139 PASS** (ServiceOfferingService 11 + AvailabilityService 9 + 119 cũ). 0 failed, 0 skipped.
 - **Phiên 16**: `dotnet test` **154/154 PASS** (BookingService 15 + 139 cũ). 0 failed, 0 skipped.
+- **Phiên 17**: `dotnet test` **164/164 PASS** (AuthorizationGuard 8 + BookingAuthzIntegration 2 + 154 cũ). 0 failed, 0 skipped. 1 warning cosmetic xUnit1031 (HasRoleAsync gọi `.Result` trong AuthorizationGuardTests).
 
 ## Kết quả đo tải
 
