@@ -5,6 +5,22 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-19
+- **Phiên 14**: Triển khai **BE-040** (Trainer + Certificate).
+  - **Application layer** (pure, không reference Infrastructure):
+    - `Trainers/IPtProfileService.cs` + `PtProfileService` — EnsureDraft / Update / GetByUserId.
+    - `Trainers/ICertificateService.cs` + `CertificateService` — Submit (idempotent) / ListMine / ListPendingPaged / Approve / Reject (validate reason ≥ 5 chars).
+    - `Trainers/Stores.cs` — `IPtProfileStore`/`ICertificateStore`/`IUserRoleLookup` abstractions.
+    - `IAuditLogger` cho audit log (BE-110 sẽ mở rộng).
+  - **Infrastructure layer**:
+    - `Trainers/EfTrainerStores.cs` — `EfPtProfileStore` / `EfCertificateStore` (query + paging, status filter) + `IdentityUserRoleLookup` (qua `UserManager<ApplicationUser>`).
+    - `Audit/EfAuditLogger.cs` — ghi vào `audit_logs`.
+  - **Api layer**:
+    - `Trainers/CertificatesController.cs` — `GET/POST /api/v1/me/certificates` (Authorize role=PT).
+    - `Trainers/AdminCertificatesController.cs` — `GET /api/v1/admin/certificates` + `POST .../approve` + `POST .../reject` (Authorize role=Admin).
+    - `Auth/CurrentUserAccessor.cs` — thêm `GetUserIdOrThrow()`.
+  - **Program.cs**: domain seeder cho 3 roles (`Admin`/`Member`/`PT`); `UseExceptionHandler` map `DomainException` → ProblemDetails với typeSlug derive từ code (`FITMATE.BOOKING.SLOT_TAKEN` → `booking/slot-taken`); errors dict passthrough.
+  - **Domain fix nhỏ**: `SeedAdminCommand.RoleNames` đổi `private` → `public` để Program.cs reference.
+  - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **119/119 PASS** (35 mới + 84 cũ, 0 failed, 0 skipped). Commit (sẽ tạo kết thúc phiên): `<type>(be): BE-040 DONE -- Trainer profile + Certificate submit/approve/reject + tests [BE-040]`.
 - **Phiên 13**: Triển khai **BE-100** (Money + VND adapters + rounding tests).
   - Mở rộng `src/Fitmate.Application/Common/Money.cs` thêm (giữ backward-compat với method cũ):
     - `ValidateBps(int)` — bps ∈ [0, 10000] (DEC-029).
@@ -39,7 +55,7 @@
   - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **37/37 PASS** (0 failed, 0 skipped). Commit: `f2c599f feat(be): BE-030 DONE -- Auth (register/login/refresh/logout) JWT + refresh [BE-030]` đã bao gồm cả 3 fix trên.
 - **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
 - **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
-- **Tiếp theo** (BE-060 hoặc BE-040): Booking state machine (lõi nghiệp vụ) hoặc Trainer profile + certificate. Sau BE-100 giờ có foundation tính tiền sẵn (SplitFeeBps, AllocateRefund, MoneySnapshot) để booking dùng ngay. Thứ tự gợi ý: BE-040 (PT profile + cert) → BE-050 (availability + service) → BE-060 (Booking) → BE-090 (Authorization) → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6). Khi viết integration test cho route 4xx (booking create / payment create / report create), sẽ thêm `IdempotencyMiddleware` test với WebApplicationFactory (BE-310).
+- **Tiếp theo** (BE-050 hoặc BE-060): Availability + Service hoặc Booking state machine. Sau BE-040 đã có PT + Certificate thật; BE-050 thêm slot để PT nhận booking; BE-060 mới chạy được concurrency test cho slot. Thứ tự gợi ý: BE-050 → BE-060 (booking concurrency dùng `Money.BuildSnapshot` + `Money.AllocateRefund`) → BE-090 (Authorization) → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6). Khi viết integration test cho route 4xx (booking create / payment create / report create), sẽ thêm `IdempotencyMiddleware` test với WebApplicationFactory (BE-310).
 
 ### Phiên 7 — đã làm
 
@@ -149,7 +165,7 @@
 
 ## Working tree
 
-- BE: 11+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 13 (BE-100) sắp commit: mở rộng `src/Fitmate.Application/Common/Money.cs` + 29 test mới trong `tests/Fitmate.UnitTests/MoneyTests.cs` + cập nhật `tasks.md` + `handoff.md`.
+- BE: 12+ commits mới trên branch `backend-release/contract-and-foundation`. Phiên 14 (BE-040) sắp commit: thêm 6 file mới Application (`Trainers/IPtProfileService.cs`, `ICertificateService.cs`, `Stores.cs`, 2 service impl + `IAuditLogger`) + 3 file mới Infrastructure (`Trainers/EfTrainerStores.cs`, `Audit/EfAuditLogger.cs`) + 3 file mới Api (`Trainers/CertificatesController.cs`, `AdminCertificatesController.cs`, sửa `Auth/CurrentUserAccessor.cs`) + 3 file test mới + cập nhật `Program.cs` (DI + role seeder + DomainException mapping) + `SeedAdminCommand.cs` (RoleNames public) + docs.
 - FE: 1 commit mới trên branch `backend-release/mobile-integration-guide`. Working tree có 2 file unstaged của user.
 - Web: 1 commit mới trên branch `backend-release/admin-integration-guide`. Working tree có 27 file unstaged của user.
 
@@ -162,6 +178,7 @@
 - **Phiên 11**: `dotnet test` **37/37 PASS** (JwtTokenServiceTests 5/5, MoneyTests 14/14, ProblemDetailsTests 5/5, các test khác 13/13). 0 failed, 0 skipped.
 - **Phiên 12**: `dotnet test` **55/55 PASS** (IdempotencyServiceTests 5, OutboxWorkerTests 6, IdempotencyMiddlewareTests 7, + 37 cũ). 0 failed, 0 skipped.
 - **Phiên 13**: `dotnet test` **84/84 PASS** (MoneyTests 14 cũ + 29 mới, + 55 cũ khác). 0 failed, 0 skipped.
+- **Phiên 14**: `dotnet test` **119/119 PASS** (CertificateService 12 + PtProfileService 10 + DomainProblemDetails 5 + 84 cũ + 8 idempotency/outbox). 0 failed, 0 skipped.
 
 ## Kết quả đo tải
 

@@ -21,7 +21,7 @@ namespace Fitmate.Api.Cli;
 /// </summary>
 public static class SeedAdminCommand
 {
-    private static readonly string[] RoleNames = { "Admin", "Member", "PT" };
+    public static readonly string[] RoleNames = { "Admin", "Member", "PT" };
 
     public static async Task<int> RunAsync(string[] args, IConfiguration configuration)
     {

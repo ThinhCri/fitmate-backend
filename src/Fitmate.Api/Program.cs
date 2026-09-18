@@ -17,6 +17,7 @@ using FluentValidation;
 using Fitmate.Application.Auth;
 using Fitmate.Application.Auth.Validators;
 using Fitmate.Application.Auth.Contracts;
+using Fitmate.Application.Trainers;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -108,6 +109,14 @@ builder.Services.AddScoped<IValidator<RegisterRequest>, RegisterRequestValidator
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<RefreshRequest>, RefreshRequestValidator>();
 
+// BE-040: Trainer + Certificate services.
+builder.Services.AddScoped<IPtProfileStore, Fitmate.Infrastructure.Trainers.EfPtProfileStore>();
+builder.Services.AddScoped<ICertificateStore, Fitmate.Infrastructure.Trainers.EfCertificateStore>();
+builder.Services.AddScoped<IUserRoleLookup, Fitmate.Infrastructure.Trainers.IdentityUserRoleLookup>();
+builder.Services.AddScoped<IPtProfileService, Fitmate.Application.Trainers.PtProfileService>();
+builder.Services.AddScoped<ICertificateService, Fitmate.Application.Trainers.CertificateService>();
+builder.Services.AddScoped<IAuditLogger, Fitmate.Infrastructure.Audit.EfAuditLogger>();
+
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
 // - IIdempotencyStore: EF Core backed.
 // - IIdempotencyService: dùng store + TTL 24h mặc định (api-contract.md §11).
@@ -191,6 +200,18 @@ var app = builder.Build();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// BE-040: Đảm bảo roles Member/Pt/Admin đã được seed (idempotent) trước khi request đầu tiên đến.
+// SeedAdminCommand đã seed khi chạy CLI; với web host cần đảm bảo khi role được dùng trong [Authorize(Roles=...)].
+using (var scope = app.Services.CreateScope())
+{
+    var roleManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.RoleManager<Microsoft.AspNetCore.Identity.IdentityRole<Guid>>>();
+    foreach (var roleName in Fitmate.Api.Cli.SeedAdminCommand.RoleNames)
+    {
+        if (!await roleManager.RoleExistsAsync(roleName))
+            await roleManager.CreateAsync(new Microsoft.AspNetCore.Identity.IdentityRole<Guid> { Name = roleName });
+    }
+}
+
 // BE-070: Idempotency middleware (DEC-011). Áp dụng cho mọi mutation có Idempotency-Key header.
 // Đặt SAU authentication để chỉ nhận key đã qua auth filter, nhưng TRƯỚC MapControllers
 // để có thể short-circuit khi replay/conflict.
@@ -204,13 +225,19 @@ app.UseExceptionHandler(handler =>
         var traceId = FitmateProblemDetails.ResolveTraceId(context);
 
         // BE-080: mọi 4xx/5xx đi qua factory để format đồng nhất (code + traceId + type).
-        // BE-060+ sẽ map exception cụ thể (vd SlotTakenException -> 409) sang code tương ứng.
-        var (status, title, code, typeSlug) = ex switch
+        // BE-040+: DomainException mang code + status + errors map → dùng trực tiếp, không guess.
+        var (status, title, code, typeSlug, errors) = ex switch
         {
-            ArgumentException => (400, "Bad request", ErrorCodes.GeneralBadRequest, "bad-request"),
-            KeyNotFoundException => (404, "Resource not found", ErrorCodes.GeneralNotFound, "not-found"),
-            UnauthorizedAccessException => (401, "Unauthorized", ErrorCodes.AuthUnauthorized, "unauthorized"),
-            _ => (500, "Internal server error", ErrorCodes.GeneralInternal, "internal")
+            Fitmate.Domain.Common.DomainException de => (
+                de.HttpStatus,
+                TitleForStatus(de.HttpStatus),
+                de.Code,
+                TypeSlugForCode(de.Code),
+                de.Errors),
+            ArgumentException => (400, "Bad request", ErrorCodes.GeneralBadRequest, "bad-request", (IReadOnlyDictionary<string, string[]>?)null),
+            KeyNotFoundException => (404, "Resource not found", ErrorCodes.GeneralNotFound, "not-found", null),
+            UnauthorizedAccessException => (401, "Unauthorized", ErrorCodes.AuthUnauthorized, "unauthorized", null),
+            _ => (500, "Internal server error", ErrorCodes.GeneralInternal, "internal", null)
         };
 
         context.Response.StatusCode = status;
@@ -224,11 +251,33 @@ app.UseExceptionHandler(handler =>
             detail: status == 500
                 ? "Unexpected error. See server logs with traceId."
                 : ex?.Message,
-            traceId: traceId);
+            traceId: traceId,
+            errors: errors?.ToDictionary(kv => kv.Key, kv => kv.Value));
 
         await context.Response.WriteAsJsonAsync(problem);
     });
 });
+
+static string TitleForStatus(int status) => status switch
+{
+    400 => "Bad request",
+    401 => "Unauthorized",
+    403 => "Forbidden",
+    404 => "Resource not found",
+    409 => "Conflict",
+    _ => "Error"
+};
+
+// typeSlug = lower-cased, dot→slash. "FITMATE.BOOKING.SLOT_TAKEN" → "booking/slot-taken"
+static string TypeSlugForCode(string code)
+{
+    var parts = code.Split('.', StringSplitOptions.RemoveEmptyEntries);
+    if (parts.Length <= 1) return code.ToLowerInvariant();
+    // skip prefix "FITMATE"
+    var slug = string.Join('/', parts.Skip(1).Take(parts.Length - 2).Select(p => p.ToLowerInvariant()));
+    var last = parts[^1].ToLowerInvariant();
+    return string.IsNullOrEmpty(slug) ? last : $"{slug}/{last}";
+}
 
 app.MapHealthChecks("/health/live", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {

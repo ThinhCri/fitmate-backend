@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Fitmate.Domain.Common;
 
 namespace Fitmate.Api.Auth;
 
@@ -9,6 +10,11 @@ public interface ICurrentUserAccessor
 {
     /// <summary>Trả Guid user hiện tại, hoặc null nếu chưa authenticated.</summary>
     Guid? GetUserId();
+
+    /// <summary>
+    /// Trả Guid user hiện tại; throw <see cref="UnauthorizedException"/> nếu chưa authenticated.
+    /// </summary>
+    Guid GetUserIdOrThrow();
 }
 
 public class HttpContextCurrentUserAccessor : ICurrentUserAccessor
@@ -29,4 +35,7 @@ public class HttpContextCurrentUserAccessor : ICurrentUserAccessor
             ?? user.FindFirstValue("sub");
         return Guid.TryParse(sub, out var id) ? id : null;
     }
+
+    public Guid GetUserIdOrThrow() => GetUserId()
+        ?? throw new UnauthorizedException(ErrorCodes.Auth.TokenInvalid, "User not authenticated.");
 }

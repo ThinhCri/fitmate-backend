@@ -47,7 +47,7 @@
 - Scope: PT profile, certificate submission, admin approve/reject.
 - Depends on: BE-030
 - Done when: PT register kèm cert status=pending, admin approve set verified.
-- Status: TODO
+- Status: **DONE (phiên 14, 2026-09-19)** — Application services: `IPtProfileService` (EnsureDraft/Update/GetByUserId) + `ICertificateService` (Submit/ListMine/ListPendingPaged/Approve/Reject). Store abstractions (`IPtProfileStore`/`ICertificateStore`/`IUserRoleLookup`) trong Application; EF Core impl trong Infrastructure (`EfPtProfileStore`/`EfCertificateStore`/`IdentityUserRoleLookup`). `IAuditLogger` abstraction + `EfAuditLogger` ghi vào `audit_logs` (domain-rules.md §7). API controllers: `/api/v1/me/certificates` (PT tự list + submit), `/api/v1/admin/certificates` (admin list pending + approve + reject với reason). DI wiring: roles seeded ở startup (`SeedAdminCommand.RoleNames`). Exception middleware map `DomainException` → ProblemDetails với status/code/typeSlug/errors đúng format RFC 7807. `ICurrentUserAccessor.GetUserIdOrThrow()` helper. Unit tests: 35/35 mới PASS (119/119 tổng) — CertificateService (12) + PtProfileService (10) + DomainProblemDetails (5 + 8 từ các test khác). Auto-review chặn web host + DB query → integration test WebApplicationFactory để phiên BE-310.
 
 ### BE-050 Availability + Service (PT)
 - Scope: PT set availability, CRUD service.
@@ -241,9 +241,9 @@
 
 | Status | Count |
 |---|---|
-| DONE | 8 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-100) |
+| DONE | 9 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-100, BE-040) |
 | IN_PROGRESS | 0 |
-| TODO | ~21 |
+| TODO | ~20 |
 | BLOCKED | ~7 (giảm — UA-018..024 đã chốt phần kỹ thuật; UA-007/008/023/001/004..006/009..010 là ops external) |
 
 Cập nhật mỗi lần commit.
