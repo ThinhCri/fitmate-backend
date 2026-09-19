@@ -87,3 +87,34 @@ Mỗi thay đổi tuân theo chu kỳ:
 - Tests: chưa.
 - Staging: chưa.
 - Production: **KHÔNG** tự deploy.
+
+## Local dev workflow
+
+Một lần duy nhất:
+
+```bash
+cp .env.example .env
+# Sửa DB_PASSWORD (dev), JWT_SIGNING_KEY (>= 32 bytes base64) trong .env
+docker compose up -d postgres
+dotnet tool install -g dotnet-ef
+```
+
+Hằng ngày:
+
+```bash
+# Apply EF migrations (load env tự động từ .env)
+powershell -ExecutionPolicy Bypass -File ./scripts/ef-update.ps1
+
+# Hoặc các action khác:
+powershell -ExecutionPolicy Bypass -File ./scripts/ef-update.ps1 -Action migrations   # list pending/applied
+powershell -ExecutionPolicy Bypass -File ./scripts/ef-update.ps1 -Action script      # generate idempotent SQL
+powershell -ExecutionPolicy Bypass -File ./scripts/ef-update.ps1 -Action info        # DbContext info
+
+# Run API
+dotnet run --project src/Fitmate.Api
+
+# Tests
+dotnet test
+```
+
+> Script `scripts/ef-update.ps1` đọc `.env` (fallback `.env.example`), set env vars (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`), rồi gọi `dotnet ef` tương ứng. Mặc định `DB_HOST=localhost` cho local dev (postgres container publish port 5432). Trong docker compose, đổi `DB_HOST=postgres`.
