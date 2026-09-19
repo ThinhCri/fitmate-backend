@@ -19,4 +19,11 @@ public class Comment : AuditableEntity
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
+
+    /// <summary>BE-211: comment soft-delete khi admin resolve report với DeleteContent.</summary>
+    public new void SoftDelete()
+    {
+        DeletedAt = DateTime.UtcNow;
+        Touch();
+    }
 }

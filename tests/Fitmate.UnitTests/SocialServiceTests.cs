@@ -1,14 +1,17 @@
 using Fitmate.Application.Auth;
+using Fitmate.Application.Moderation;
 using Fitmate.Application.Social;
+using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Moderation;
 using Fitmate.Domain.Social;
+using Fitmate.Domain.Trainers;
 using FluentAssertions;
 
 namespace Fitmate.UnitTests;
 
 /// <summary>
-/// BE-180: SocialService — post feed pagination + create + visibility filter + comment + reaction toggle + report.
+/// BE-180 + BE-211: SocialService — post feed pagination + create + visibility filter + comment + reaction toggle + report.
 /// </summary>
 public class SocialServiceTests
 {
@@ -21,12 +24,23 @@ public class SocialServiceTests
         public Task<bool> HasRoleAsync(Guid userId, string role, CancellationToken ct) => Task.FromResult(true);
     }
 
+    private sealed class InMemoryCertificateStore : ICertificateStore
+    {
+        public Dictionary<Guid, Certificate> Certs { get; } = new();
+        public Task<Certificate?> FindByIdentityAsync(Guid ptUserId, string title, string issuedBy, string code, CancellationToken ct) => Task.FromResult<Certificate?>(null);
+        public Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct) => Task.FromResult<Certificate?>(Certs.GetValueOrDefault(certId));
+        public Task<IReadOnlyList<Certificate>> ListByPtAsync(Guid ptUserId, CancellationToken ct) => Task.FromResult<IReadOnlyList<Certificate>>(new List<Certificate>());
+        public Task<(IReadOnlyList<Certificate> Items, int Total)> ListPendingPagedAsync(int page, int pageSize, CancellationToken ct) => Task.FromResult<(IReadOnlyList<Certificate>, int)>((new List<Certificate>(), 0));
+        public Task AddAsync(Certificate cert, CancellationToken ct) { Certs[cert.Id] = cert; return Task.CompletedTask; }
+        public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
     private sealed class InMemorySocialStore : ISocialStore
     {
         public List<SocialPostRow> Posts { get; } = new();
         public List<SocialCommentRow> Comments { get; } = new();
         public List<SocialReactionRow> Reactions { get; } = new();
-        public List<(Guid ReporterId, ReportTargetKind Kind, Guid TargetId, string Reason, string? Details)> Reports { get; } = new();
+        public List<(Guid ReporterId, ReportTargetType Kind, Guid TargetId, string Reason, string? Details, string? IdempotencyKey)> Reports { get; } = new();
         public Dictionary<Guid, SocialAuthorRow> Authors { get; } = new();
 
         public Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
@@ -80,23 +94,29 @@ public class SocialServiceTests
             Posts[idx] = Posts[idx] with { CommentsCount = Math.Max(0, Posts[idx].CommentsCount + delta) };
             return Task.FromResult(Posts[idx].CommentsCount);
         }
-        public Task<bool> TargetExistsAsync(ReportTargetKind kind, Guid targetId, CancellationToken ct) => Task.FromResult(kind switch
+        public Task<bool> TargetExistsAsync(ReportTargetType kind, Guid targetId, CancellationToken ct) => Task.FromResult(kind switch
         {
-            ReportTargetKind.Post => Posts.Any(p => p.Id == targetId),
-            ReportTargetKind.Comment => Comments.Any(c => c.Id == targetId),
-            ReportTargetKind.User => Authors.ContainsKey(targetId),
+            ReportTargetType.Post => Posts.Any(p => p.Id == targetId),
+            ReportTargetType.Comment => Comments.Any(c => c.Id == targetId),
+            ReportTargetType.User => Authors.ContainsKey(targetId),
+            ReportTargetType.Certificate => false, // certificate handled separately in service
             _ => false
         });
-        public Task AddReportAsync(Guid reporterId, ReportTargetKind kind, Guid targetId, string reason, string? details, CancellationToken ct)
+        public Task<Guid> AddReportAsync(Guid reporterId, ReportTargetType kind, Guid targetId, string reason, string? details, string? idempotencyKey, CancellationToken ct)
         {
-            Reports.Add((reporterId, kind, targetId, reason, details));
-            return Task.CompletedTask;
+            Reports.Add((reporterId, kind, targetId, reason, details, idempotencyKey));
+            return Task.FromResult(Guid.NewGuid());
         }
+        public Task<SocialCommentRow?> GetCommentAsync(Guid commentId, CancellationToken ct)
+            => Task.FromResult<SocialCommentRow?>(Comments.FirstOrDefault(c => c.Id == commentId));
+        public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+        public Task<ReportRow?> FindOpenReportAsync(Guid reporterId, ReportTargetType targetType, Guid targetId, CancellationToken ct) => Task.FromResult<ReportRow?>(null);
+        public Task<ReportRow?> FindOpenReportByKeyAsync(Guid reporterId, string idempotencyKey, CancellationToken ct) => Task.FromResult<ReportRow?>(null);
         public Task<SocialAuthorRow?> GetAuthorAsync(Guid userId, CancellationToken ct)
             => Task.FromResult<SocialAuthorRow?>(Authors.GetValueOrDefault(userId));
     }
 
-    private static SocialService NewService(InMemorySocialStore store) => new(store, new AllowAllAuthz());
+    private static SocialService NewService(InMemorySocialStore store, InMemoryCertificateStore certStore) => new(store, certStore, new AllowAllAuthz());
 
     private static SocialPostRow NewPost(Guid author, PostVisibility vis, string content = "hi", DateTime? at = null, int reactions = 0, int comments = 0)
         => new(Guid.NewGuid(), author, content, null, null, new List<string>(), vis, false, reactions, comments, at ?? DateTime.UtcNow);
@@ -104,7 +124,7 @@ public class SocialServiceTests
     [Fact]
     public async Task CreatePost_Validates_Required_Content()
     {
-        var s = NewService(new InMemorySocialStore());
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.CreatePostAsync(Guid.NewGuid(),
             new PostInput("", null, null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.RequiredField);
@@ -113,7 +133,7 @@ public class SocialServiceTests
     [Fact]
     public async Task CreatePost_Rejects_TooLong_Content()
     {
-        var s = NewService(new InMemorySocialStore());
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.CreatePostAsync(Guid.NewGuid(),
             new PostInput(new string('x', 5001), null, null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooLong);
@@ -122,7 +142,7 @@ public class SocialServiceTests
     [Fact]
     public async Task CreatePost_Rejects_TooMany_Tags()
     {
-        var s = NewService(new InMemorySocialStore());
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var tags = Enumerable.Range(0, 11).Select(i => $"t{i}").ToList();
         var act = () => s.CreatePostAsync(Guid.NewGuid(),
             new PostInput("ok", null, null, tags, PostVisibility.Public, false), CancellationToken.None);
@@ -135,7 +155,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid();
         store.Authors[author] = new SocialAuthorRow(author, "A", null);
-        var s = NewService(store);
+        var s = NewService(store, new InMemoryCertificateStore());
 
         var post = await s.CreatePostAsync(author,
             new PostInput("hello", null, null, new List<string> { "fit" }, PostVisibility.Public, false), CancellationToken.None);
@@ -152,7 +172,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
         store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Private));
-        var page = await NewService(store).ListPostsAsync(viewerId: null, FeedScope.Public, cursor: null, limit: 10, CancellationToken.None);
+        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(viewerId: null, FeedScope.Public, cursor: null, limit: 10, CancellationToken.None);
         page.Items.Should().HaveCount(1);
     }
 
@@ -166,7 +186,7 @@ public class SocialServiceTests
         store.Posts.Add(NewPost(other, PostVisibility.Friends));
         store.Posts.Add(NewPost(other, PostVisibility.Public));
 
-        var page = await NewService(store).ListPostsAsync(viewer, FeedScope.Friends, null, 10, CancellationToken.None);
+        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(viewer, FeedScope.Friends, null, 10, CancellationToken.None);
         // Viewer thấy: chính mình friends + other's public = 2
         page.Items.Should().HaveCount(2);
     }
@@ -176,7 +196,7 @@ public class SocialServiceTests
     {
         var store = new InMemorySocialStore();
         for (var i = 0; i < 200; i++) store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
-        var page = await NewService(store).ListPostsAsync(null, FeedScope.Public, null, 1000, CancellationToken.None);
+        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(null, FeedScope.Public, null, 1000, CancellationToken.None);
         page.Items.Should().HaveCount(100); // MaxLimit
     }
 
@@ -186,7 +206,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid(); var viewer = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Private));
-        var act = () => NewService(store).GetPostAsync(viewer, store.Posts[0].Id, CancellationToken.None);
+        var act = () => NewService(store, new InMemoryCertificateStore()).GetPostAsync(viewer, store.Posts[0].Id, CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>();
     }
 
@@ -197,7 +217,7 @@ public class SocialServiceTests
         var author = Guid.NewGuid();
         store.Authors[author] = new SocialAuthorRow(author, "A", null);
         store.Posts.Add(NewPost(author, PostVisibility.Private, "secret"));
-        var p = await NewService(store).GetPostAsync(author, store.Posts[0].Id, CancellationToken.None);
+        var p = await NewService(store, new InMemoryCertificateStore()).GetPostAsync(author, store.Posts[0].Id, CancellationToken.None);
         p.Content.Should().Be("secret");
     }
 
@@ -207,7 +227,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        await NewService(store).DeletePostAsync(author, isAdmin: false, store.Posts[0].Id, CancellationToken.None);
+        await NewService(store, new InMemoryCertificateStore()).DeletePostAsync(author, isAdmin: false, store.Posts[0].Id, CancellationToken.None);
         store.Posts.Should().BeEmpty();
     }
 
@@ -217,7 +237,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid(); var other = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        var act = () => NewService(store).DeletePostAsync(other, false, store.Posts[0].Id, CancellationToken.None);
+        var act = () => NewService(store, new InMemoryCertificateStore()).DeletePostAsync(other, false, store.Posts[0].Id, CancellationToken.None);
         await act.Should().ThrowAsync<ForbiddenException>();
     }
 
@@ -227,7 +247,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        await NewService(store).DeletePostAsync(Guid.NewGuid(), isAdmin: true, store.Posts[0].Id, CancellationToken.None);
+        await NewService(store, new InMemoryCertificateStore()).DeletePostAsync(Guid.NewGuid(), isAdmin: true, store.Posts[0].Id, CancellationToken.None);
         store.Posts.Should().BeEmpty();
     }
 
@@ -237,14 +257,14 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        var act = () => NewService(store).AddCommentAsync(Guid.NewGuid(), store.Posts[0].Id, new string('x', 1001), CancellationToken.None);
+        var act = () => NewService(store, new InMemoryCertificateStore()).AddCommentAsync(Guid.NewGuid(), store.Posts[0].Id, new string('x', 1001), CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooLong);
     }
 
     [Fact]
     public async Task AddComment_PostNotFound_NotFound()
     {
-        var s = NewService(new InMemorySocialStore());
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.AddCommentAsync(Guid.NewGuid(), Guid.NewGuid(), "hi", CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>();
     }
@@ -255,7 +275,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        await NewService(store).AddCommentAsync(author, store.Posts[0].Id, "nice", CancellationToken.None);
+        await NewService(store, new InMemoryCertificateStore()).AddCommentAsync(author, store.Posts[0].Id, "nice", CancellationToken.None);
         store.Posts[0].CommentsCount.Should().Be(1);
     }
 
@@ -265,7 +285,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid(); var reactor = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        await NewService(store).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
+        await NewService(store, new InMemoryCertificateStore()).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
         store.Reactions.Should().HaveCount(1);
         store.Posts[0].ReactionsCount.Should().Be(1);
     }
@@ -276,26 +296,26 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid(); var reactor = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        await NewService(store).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
-        var act = () => NewService(store).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Flame, CancellationToken.None);
+        await NewService(store, new InMemoryCertificateStore()).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
+        var act = () => NewService(store, new InMemoryCertificateStore()).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Flame, CancellationToken.None);
         await act.Should().ThrowAsync<ConflictException>().Where(e => e.Code == ErrorCodes.Social.AlreadyReacted);
     }
 
     [Fact]
     public async Task Report_TooShort_Rejected()
     {
-        var s = NewService(new InMemorySocialStore());
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.CreateReportAsync(Guid.NewGuid(),
-            new ReportInputDto(ReportTargetKind.Post, Guid.NewGuid(), "abc", null), CancellationToken.None);
+            new ReportInputDto(ReportTargetType.Post, Guid.NewGuid(), "abc", null, null), null, CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooShort);
     }
 
     [Fact]
     public async Task Report_TargetNotFound_Rejected()
     {
-        var s = NewService(new InMemorySocialStore());
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.CreateReportAsync(Guid.NewGuid(),
-            new ReportInputDto(ReportTargetKind.Post, Guid.NewGuid(), "spam content here", null), CancellationToken.None);
+            new ReportInputDto(ReportTargetType.Post, Guid.NewGuid(), "spam content here", null, null), null, CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>().Where(e => e.Code == ErrorCodes.Social.ReportTargetNotFound);
     }
 
@@ -305,8 +325,8 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
-        var id = await NewService(store).CreateReportAsync(Guid.NewGuid(),
-            new ReportInputDto(ReportTargetKind.Post, store.Posts[0].Id, "spam content", "details"), CancellationToken.None);
+        var id = await NewService(store, new InMemoryCertificateStore()).CreateReportAsync(Guid.NewGuid(),
+            new ReportInputDto(ReportTargetType.Post, store.Posts[0].Id, "spam content", "details", null), null, CancellationToken.None);
         id.Should().NotBe(Guid.Empty);
         store.Reports.Should().HaveCount(1);
     }
@@ -314,8 +334,46 @@ public class SocialServiceTests
     [Fact]
     public async Task AnonymousViewer_Rejected()
     {
-        var s = NewService(new InMemorySocialStore());
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.GetPostAsync(Guid.Empty, Guid.NewGuid(), CancellationToken.None);
         await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    // === BE-211 tests ===
+
+    [Fact]
+    public async Task Report_Certificate_NotFound()
+    {
+        var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
+        var act = () => s.CreateReportAsync(Guid.NewGuid(),
+            new ReportInputDto(ReportTargetType.Certificate, Guid.NewGuid(), "fake cert", null, null), null, CancellationToken.None);
+        await act.Should().ThrowAsync<NotFoundException>().Where(e => e.Code == ErrorCodes.Social.ReportTargetNotFound);
+    }
+
+    [Fact]
+    public async Task Report_Certificate_Pending_Rejected()
+    {
+        var certStore = new InMemoryCertificateStore();
+        var cert = Certificate.Submit(Guid.NewGuid(), "T", "I", "C", DateOnly.FromDateTime(DateTime.UtcNow), null);
+        certStore.Certs[cert.Id] = cert;
+        var s = NewService(new InMemorySocialStore(), certStore);
+        var act = () => s.CreateReportAsync(Guid.NewGuid(),
+            new ReportInputDto(ReportTargetType.Certificate, cert.Id, "fake cert", null, null), null, CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Moderation.CertificateNotReportable);
+    }
+
+    [Fact]
+    public async Task Report_Certificate_Approved_Succeeds()
+    {
+        var certStore = new InMemoryCertificateStore();
+        var admin = Guid.NewGuid();
+        var cert = Certificate.Submit(Guid.NewGuid(), "T", "I", "C", DateOnly.FromDateTime(DateTime.UtcNow), null);
+        cert.Approve(admin);
+        certStore.Certs[cert.Id] = cert;
+        var store = new InMemorySocialStore();
+        var s = NewService(store, certStore);
+        var id = await s.CreateReportAsync(Guid.NewGuid(),
+            new ReportInputDto(ReportTargetType.Certificate, cert.Id, "fake cert", null, null), null, CancellationToken.None);
+        id.Should().NotBe(Guid.Empty);
     }
 }

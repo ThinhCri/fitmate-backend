@@ -158,8 +158,9 @@ builder.Services.AddScoped<IAdminMetricsService, Fitmate.Application.Admin.Admin
 builder.Services.AddScoped<ISocialStore, Fitmate.Infrastructure.Social.EfSocialStore>();
 builder.Services.AddScoped<ISocialService, Fitmate.Application.Social.SocialService>();
 
-// BE-210: Moderation (admin list/resolve/dismiss reports).
+// BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();
+builder.Services.AddScoped<IModerationActionStore, Fitmate.Infrastructure.Moderation.EfModerationActionStore>();
 builder.Services.AddScoped<IModerationService, Fitmate.Application.Moderation.ModerationService>();
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.

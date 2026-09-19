@@ -99,13 +99,25 @@ public class SocialController : ControllerBase
         var reporterId = GetUserId();
         var kind = body.TargetType.ToLowerInvariant() switch
         {
-            "post" => ReportTargetKind.Post,
-            "comment" => ReportTargetKind.Comment,
-            "user" => ReportTargetKind.User,
+            "post" => ReportTargetType.Post,
+            "comment" => ReportTargetType.Comment,
+            "user" => ReportTargetType.User,
+            "certificate" => ReportTargetType.Certificate,
             _ => throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "target_type invalid.",
-                new Dictionary<string, string[]> { ["target_type"] = new[] { "post|comment|user" } })
+                new Dictionary<string, string[]> { ["target_type"] = new[] { "post|comment|user|certificate" } })
         };
-        var id = await _svc.CreateReportAsync(reporterId, new ReportInputDto(kind, body.TargetId, body.Reason, body.Details), ct);
+        // BE-211: idempotency key (optional).
+        var idempotencyKey = Request.Headers.TryGetValue("Idempotency-Key", out var keyVal)
+            ? keyVal.ToString()
+            : null;
+        if (idempotencyKey is { Length: > 128 or < 8 })
+            throw new ValidationException(ErrorCodes.Moderation.IdempotencyKeyInvalid,
+                "Idempotency-Key length must be 8..128 chars.",
+                new Dictionary<string, string[]> { ["Idempotency-Key"] = new[] { "8..128 chars" } });
+
+        var id = await _svc.CreateReportAsync(reporterId,
+            new ReportInputDto(kind, body.TargetId, body.Reason, body.Details, idempotencyKey),
+            idempotencyKey, ct);
         return Created($"/api/v1/social/reports/{id}", new { id });
     }
 

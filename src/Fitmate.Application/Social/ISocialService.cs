@@ -7,7 +7,7 @@ public enum FeedScope { Public, Friends }
 
 public sealed record PostAuthor(Guid Id, string DisplayName, string? AvatarUrl);
 
-public sealed record PostView(
+    public sealed record PostView(
     Guid Id,
     Guid AuthorId,
     PostAuthor Author,
@@ -39,13 +39,14 @@ public sealed record CommentView(
     string Text,
     DateTime CreatedAt);
 
-public enum ReportTargetKind { Post, Comment, User }
-
+/// <summary>BE-211: đổi từ ReportTargetKind (3 value) sang ReportTargetType (4 value theo DEC-028).
+/// Controller parse string → enum tương ứng.</summary>
 public sealed record ReportInputDto(
-    ReportTargetKind TargetType,
+    ReportTargetType TargetType,
     Guid TargetId,
     string Reason,
-    string? Details);
+    string? Details,
+    string? IdempotencyKey);
 
 public interface ISocialService
 {
@@ -55,5 +56,7 @@ public interface ISocialService
     Task DeletePostAsync(Guid actorId, bool isAdmin, Guid postId, CancellationToken ct);
     Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, CancellationToken ct);
     Task ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct);
-    Task<Guid> CreateReportAsync(Guid reporterId, ReportInputDto input, CancellationToken ct);
+
+    /// <summary>BE-211: tạo report với idempotency key (optional). Throw ConflictException nếu đã có Open report trùng (DEC-028).</summary>
+    Task<Guid> CreateReportAsync(Guid reporterId, ReportInputDto input, string? idempotencyKey, CancellationToken ct);
 }

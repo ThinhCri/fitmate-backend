@@ -86,5 +86,15 @@ public static class ErrorCodes
     {
         public const string ReportNotFound = "FITMATE.MODERATION.REPORT_NOT_FOUND";
         public const string ReportNotPending = "FITMATE.MODERATION.REPORT_NOT_PENDING";
+        public const string DuplicateReport = "FITMATE.MODERATION.DUPLICATE_REPORT";
+        public const string IdempotencyKeyInvalid = "FITMATE.MODERATION.IDEMPOTENCY_KEY_INVALID";
+        public const string DeleteContentNotApplicable = "FITMATE.MODERATION.DELETE_CONTENT_NOT_APPLICABLE";
+        public const string CertificateNotReportable = "FITMATE.MODERATION.CERTIFICATE_NOT_REPORTABLE";
+        public const string InvalidResolveAction = "FITMATE.MODERATION.INVALID_RESOLVE_ACTION";
+    }
+
+    public static class Lock
+    {
+        public const string InvalidDuration = "FITMATE.LOCK.INVALID_DURATION";
     }
 }

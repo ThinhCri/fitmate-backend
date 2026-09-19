@@ -1,3 +1,4 @@
+using Fitmate.Application.Moderation;
 using Fitmate.Application.Social;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
@@ -143,27 +144,64 @@ public class EfSocialStore : ISocialStore
         return p.CommentsCount;
     }
 
-    public Task<bool> TargetExistsAsync(ReportTargetKind kind, Guid targetId, CancellationToken ct) => kind switch
+    public Task<bool> TargetExistsAsync(ReportTargetType kind, Guid targetId, CancellationToken ct) => kind switch
     {
-        ReportTargetKind.Post => _db.Posts.AnyAsync(p => p.Id == targetId && p.DeletedAt == null, ct),
-        ReportTargetKind.Comment => _db.Comments.AnyAsync(c => c.Id == targetId, ct),
-        ReportTargetKind.User => _users.Users.AnyAsync(u => u.Id == targetId, ct),
+        ReportTargetType.Post => _db.Posts.AnyAsync(p => p.Id == targetId && p.DeletedAt == null, ct),
+        ReportTargetType.Comment => _db.Comments.AnyAsync(c => c.Id == targetId && c.DeletedAt == null, ct),
+        ReportTargetType.User => _users.Users.AnyAsync(u => u.Id == targetId, ct),
+        ReportTargetType.Certificate => Task.FromResult(false), // Certificates have their own store
         _ => Task.FromResult(false)
     };
 
-    public async Task AddReportAsync(Guid reporterId, ReportTargetKind kind, Guid targetId, string reason, string? details, CancellationToken ct)
+    public async Task<Guid> AddReportAsync(Guid reporterId, ReportTargetType kind, Guid targetId, string reason, string? details, string? idempotencyKey, CancellationToken ct)
     {
-        var entityType = kind switch
-        {
-            ReportTargetKind.Post => ReportTargetType.Post,
-            ReportTargetKind.Comment => ReportTargetType.Comment,
-            ReportTargetKind.User => ReportTargetType.User,
-            _ => throw new ArgumentOutOfRangeException(nameof(kind))
-        };
-
-        _db.Reports.Add(Report.Create(reporterId, entityType, targetId, reason, details));
+        var entity = Report.Create(reporterId, kind, targetId, reason, details, idempotencyKey);
+        _db.Reports.Add(entity);
         await _db.SaveChangesAsync(ct);
+        return entity.Id;
     }
+
+    public async Task<SocialCommentRow?> GetCommentAsync(Guid commentId, CancellationToken ct)
+    {
+        var c = await _db.Comments.FirstOrDefaultAsync(x => x.Id == commentId && x.DeletedAt == null, ct);
+        return c is null ? null : new SocialCommentRow(c.Id, c.PostId, c.AuthorId, c.Text, c.CreatedAt);
+    }
+
+    public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
+
+    /// <summary>BE-211: spam check — DEC-028.</summary>
+    public async Task<ReportRow?> FindOpenReportAsync(Guid reporterId, ReportTargetType targetType, Guid targetId, CancellationToken ct)
+    {
+        var r = await _db.Reports.FirstOrDefaultAsync(
+            x => x.ReporterId == reporterId
+              && x.TargetType == targetType
+              && x.TargetId == targetId
+              && x.Status == ReportStatus.Pending, ct);
+        return r is null ? null : ToReportRow(r);
+    }
+
+    /// <summary>BE-211: idempotency check — tìm report cùng (reporter, idempotency_key) còn Pending/Resolved (cùng key).</summary>
+    public async Task<ReportRow?> FindOpenReportByKeyAsync(Guid reporterId, string idempotencyKey, CancellationToken ct)
+    {
+        var r = await _db.Reports.FirstOrDefaultAsync(
+            x => x.ReporterId == reporterId && x.IdempotencyKey == idempotencyKey, ct);
+        return r is null ? null : ToReportRow(r);
+    }
+
+    private static ReportRow ToReportRow(Report r) => new(
+        Id: r.Id,
+        ReporterId: r.ReporterId,
+        TargetType: r.TargetType,
+        TargetId: r.TargetId,
+        Reason: r.Reason,
+        Details: r.Details,
+        Status: r.Status,
+        AdminNote: r.AdminNote,
+        ResolvedByAdminId: r.ResolvedByAdminId,
+        IdempotencyKey: r.IdempotencyKey,
+        ResolveAction: r.ResolveAction,
+        CreatedAt: r.CreatedAt,
+        UpdatedAt: r.UpdatedAt);
 
     public async Task<SocialAuthorRow?> GetAuthorAsync(Guid userId, CancellationToken ct)
     {

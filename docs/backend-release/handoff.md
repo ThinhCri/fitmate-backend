@@ -4,6 +4,33 @@
 
 ## Phiên hiện tại
 
+### Phiên 24 — đã làm (2026-09-19) [BE-211]
+
+**BE-211: Moderation follow-up** — DONE.
+
+Triển khai xong các quyết định user đã chốt:
+- Idempotency cho POST /social/reports (header `Idempotency-Key` 8..128 chars; unique partial index `(reporter, key) WHERE key NOT NULL`).
+- Spam-check 1 reporter chỉ có 1 Open report cho cùng target (DEC-028).
+- Certificate report visibility — chỉ Approved mới report được (rejected với `CertificateNotReportable` 400).
+- Warn action → ghi `user_moderation_actions` (kind=Warn) + enqueue outbox `user.warning` payload `{UserId, ReportId, Reason, AdminId}` để phase 2 worker xử lý.
+- Lock action → 4 duration (`permanent|30d|7d|24h`); `UserManager.SetLockoutEndAsync` + `UpdateSecurityStampAsync` (session revoke) + `user_moderation_actions` row (kind=Lock, expires_at).
+- DeleteContent → soft-delete Post hoặc Comment; reject với `DeleteContentNotApplicable` cho User/Certificate target.
+- Audit log cho mọi resolve/dismiss: target = Report.Id, action = `report.resolve.warn` / `report.resolve.lock` / `report.resolve.delete_content` / `report.resolve.no_action` / `report.dismiss` + reason.
+- Bug fix `EfModerationStore.SaveReportAsync` không truyền `ResolvedByAdminId` đúng — đã sửa, truyền qua domain `Report.Resolve(adminId, action, note)`.
+
+**Kết quả**:
+- `dotnet build`: 0 warning, 0 error (1 warning pre-existing `AuthorizationGuardTests.cs:37` xUnit1031 không liên quan).
+- `dotnet test`: **242/243 PASS** (1 fail pre-existing `JwtTokenServiceTests.Validate_ReturnsNull_ForTamperedToken` đã có từ BE-030).
+- Migration `20260919102229_ModerationAction` apply OK trên local Postgres (fitmate-db); schema verified: `reports.idempotency_key`, 2 unique partial index, bảng `user_moderation_actions` với 2 index.
+
+**Files changed**:
+- Domain: `src/Fitmate.Domain/Moderation/UserModerationAction.cs` (new), `Report.cs` (IdempotencyKey + ResolveAction), `Social/Comment.cs` (SoftDelete), `Common/ErrorCodes.cs` (+6 codes).
+- Application: `Moderation/IModerationStore.cs` (FindOpenReportAsync + SaveChangesAsync + 2 soft-delete + ReportRow moved), `ReportRow.cs` (new), `IModerationService.cs` (LockDuration + ReportView.ResolveAction), `IModerationActionStore.cs` (new), `ModerationService.cs` (rewrite — 9 deps), `Social/ISocialService.cs` (ReportInputDto.IdempotencyKey + ReportTargetType), `Social/ISocialStore.cs` (FindOpenReportAsync/ByKey + GetCommentAsync + SaveChangesAsync), `Social/SocialService.cs` (CreateReportAsync signature + visibility check).
+- Infrastructure: `Moderation/EfModerationStore.cs` (rewrite — bug fix + 2 soft-delete + SaveChangesAsync + FindOpenReportAsync), `Moderation/EfModerationActionStore.cs` (new), `Social/EfSocialStore.cs` (AddReportAsync returns ID + FindOpenReportAsync/ByKey + GetCommentAsync), `Persistence/Configurations/ModerationConfiguration.cs` (IdempotencyKey + ResolveAction + 2 partial unique index + UserModerationAction entity), `Persistence/FitmateDbContext.cs` (UserModerationActions DbSet), `Persistence/DesignTimeDbContextFactory.cs` (new — để `dotnet ef` không cần Program.cs), `Persistence/Migrations/20260919102229_ModerationAction.cs` (new — auto-generated).
+- Api: `Admin/AdminReportsController.cs` (ResolveReportBody.LockDuration), `Social/SocialController.cs` (Idempotency-Key header + target_type `certificate`), `Program.cs` (DI: `IModerationActionStore`).
+- Tests: `tests/Fitmate.UnitTests/ModerationServiceTests.cs` (rewrite — 21 tests, 9 in-memory helpers), `tests/Fitmate.UnitTests/SocialServiceTests.cs` (rewrite — 24 tests).
+- Docs: `docs/backend-release/handoff.md` (plan + done), `docs/backend-release/tasks.md` (BE-210 → DONE; BE-211 → DONE).
+
 ### Commit message maintenance — 2026-09-19 [BE-350]
 
 - User authorized rewriting local commit messages in this repository only.
@@ -192,7 +219,7 @@
 
 ## Việc cần làm tiếp
 
-### Phiên sau (khi user trả lời UA-018..024)
+### Sau khi có câu trả lời (đã xong)
 
 **UA-018..022, UA-024 đã chốt (phiên 7)** — xem `decisions.md` DEC-026..035 + `user-actions.md`. UA-023 (cấp managed Postgres credentials qua secret manager) vẫn pending, nhưng **không chặn code BE local** — dev dùng Postgres Docker Compose.
 
@@ -256,6 +283,18 @@
 
 ## Bước tiếp theo (kế hoạch phiên sau)
 
-1. **BE-080**: Validation + ProblemDetails (FluentValidation toàn cục). Sửa `Program.cs` đã có sẵn `ConfigureApiBehaviorOptions`; chỉ cần thêm `AddFluentValidationAutoValidate` + viết các `IValidator<T>` cho DTO đầu tiên (RegisterRequest, LoginRequest).
-2. **BE-030**: Auth (JWT + refresh + rate limit + lockout). Tạo `TokenService`, `AuthController`, controller endpoints theo OpenAPI. Identity `SignInManager` đã chuẩn bị.
-3. Sau đó: BE-070 (Idempotency/Outbox) → BE-060 (Booking concurrency + transition matrix) → BE-090 (Authorization) → admin endpoints (BE-110..220 kèm `/admin/platform-policy`) → BE-300 (Compose) → BE-330 (k6).
+### BE-181 Friends
+- Scope: friend request + accept/reject + friend list + friend removal.
+- Depends on: BE-090 (Authz), BE-110 (AdminUserService lookup), BE-180 (Social integration với posts visibility).
+- Done when: 2 PT có thể kết bạn, list friend, unfriend; `SocialService.IsFriendAsync` dùng `IFriendService` thay vì stub false.
+- Status: TODO
+
+### BE-160 Status migration (Authenticator + VerifyEmail)
+- Scope: thêm `Status` enum mapping (`Active=0, Locked=1, PendingDeletion=2`); `AuthenticatorEnabled` flag; `EmailConfirmed` flow + resend email.
+- Depends on: BE-030 (Auth), BE-110.
+- Status: TODO
+
+### BE-151 GET /admin/platform-policy
+- Scope: read-only endpoint trả về 10% platform fee + terms version cho admin web.
+- Depends on: BE-110.
+- Status: TODO

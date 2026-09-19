@@ -1,4 +1,6 @@
 using Fitmate.Application.Auth;
+using Fitmate.Application.Moderation;
+using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
 
@@ -14,6 +16,7 @@ namespace Fitmate.Application.Social;
 public class SocialService : ISocialService
 {
     private readonly ISocialStore _store;
+    private readonly ICertificateStore _certStore;
     private readonly IAuthorizationGuard _authz;
 
     private const int DefaultLimit = 20;
@@ -25,9 +28,10 @@ public class SocialService : ISocialService
     private const int MaxTags = 10;
     private const int MaxTagLength = 32;
 
-    public SocialService(ISocialStore store, IAuthorizationGuard authz)
+    public SocialService(ISocialStore store, ICertificateStore certStore, IAuthorizationGuard authz)
     {
         _store = store;
+        _certStore = certStore;
         _authz = authz;
     }
 
@@ -168,7 +172,7 @@ public class SocialService : ISocialService
         await _store.ChangePostReactionsAsync(postId, +1, ct);
     }
 
-    public async Task<Guid> CreateReportAsync(Guid reporterId, ReportInputDto input, CancellationToken ct)
+    public async Task<Guid> CreateReportAsync(Guid reporterId, ReportInputDto input, string? idempotencyKey, CancellationToken ct)
     {
         EnsureAuthenticated(reporterId);
 
@@ -179,12 +183,45 @@ public class SocialService : ISocialService
         if (input.Details is { Length: > MaxDetailsLength })
             throw new ValidationException(ErrorCodes.Validation.TooLong, $"details > {MaxDetailsLength} chars.", new Dictionary<string, string[]> { ["details"] = new[] { $"max {MaxDetailsLength}" } });
 
-        if (!await _store.TargetExistsAsync(input.TargetType, input.TargetId, ct))
-            throw new NotFoundException(ErrorCodes.Social.ReportTargetNotFound, $"{input.TargetType} '{input.TargetId}' not found.");
+        // BE-211: Certificate target → chỉ report được cert Approved (visibility check).
+        if (input.TargetType == ReportTargetType.Certificate)
+        {
+            var cert = await _certStore.FindByIdAsync(input.TargetId, ct);
+            if (cert is null)
+                throw new NotFoundException(ErrorCodes.Social.ReportTargetNotFound, $"Certificate '{input.TargetId}' not found.");
+            if (cert.Status != CertificateStatus.Approved)
+                throw new ValidationException(ErrorCodes.Moderation.CertificateNotReportable,
+                    "Can only report Certificates with status Approved.",
+                    new Dictionary<string, string[]> { ["targetId"] = new[] { "approved certificate only" } });
+        }
+        else
+        {
+            // Post / Comment / User → generic existence check.
+            if (!await _store.TargetExistsAsync(input.TargetType, input.TargetId, ct))
+                throw new NotFoundException(ErrorCodes.Social.ReportTargetNotFound, $"{input.TargetType} '{input.TargetId}' not found.");
+        }
 
-        var id = Guid.NewGuid();
-        await _store.AddReportAsync(reporterId, input.TargetType, input.TargetId, input.Reason, input.Details, ct);
-        return id;
+        // BE-211: Idempotency check.
+        // Case 1: client gửi Idempotency-Key → check unique (reporter, key).
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            // Check if idempotency key already used.
+            var existingKeyReport = await _store.FindOpenReportByKeyAsync(reporterId, idempotencyKey, ct);
+            if (existingKeyReport is not null)
+                throw new ConflictException(ErrorCodes.Moderation.DuplicateReport,
+                    $"Report already created with this Idempotency-Key '{idempotencyKey}'.");
+        }
+        // Case 2: không có key → check spam (DEC-028): 1 user chỉ có 1 Open report cho cùng target.
+        else
+        {
+            var existingOpen = await _store.FindOpenReportAsync(reporterId, input.TargetType, input.TargetId, ct);
+            if (existingOpen is not null)
+                throw new ConflictException(ErrorCodes.Moderation.DuplicateReport,
+                    $"You already have an open report for this target. Report '{existingOpen.Id}'.");
+        }
+
+        var newId = await _store.AddReportAsync(reporterId, input.TargetType, input.TargetId, input.Reason, input.Details, idempotencyKey, ct);
+        return newId;
     }
 
     private static PostView ToView(SocialPostRow r, SocialAuthorRow? a)

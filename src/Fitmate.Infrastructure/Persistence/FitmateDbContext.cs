@@ -62,6 +62,7 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
 
     // Moderation
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<UserModerationAction> UserModerationActions => Set<UserModerationAction>();
 
     // Chat
     public DbSet<ChatThread> ChatThreads => Set<ChatThread>();

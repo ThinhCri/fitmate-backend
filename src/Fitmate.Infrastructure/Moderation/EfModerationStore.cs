@@ -38,29 +38,70 @@ public class EfModerationStore : IModerationStore
         return r is null ? null : ToRow(r);
     }
 
+    /// <summary>BE-211: tìm Open report trùng (chống spam DEC-028).</summary>
+    public async Task<ReportRow?> FindOpenReportAsync(Guid reporterId, ReportTargetType targetType, Guid targetId, CancellationToken ct)
+    {
+        var r = await _db.Reports.FirstOrDefaultAsync(
+            x => x.ReporterId == reporterId
+              && x.TargetType == targetType
+              && x.TargetId == targetId
+              && x.Status == ReportStatus.Pending, ct);
+        return r is null ? null : ToRow(r);
+    }
+
     public async Task SaveReportAsync(ReportRow row, CancellationToken ct)
     {
         var entity = await _db.Reports.FirstOrDefaultAsync(r => r.Id == row.Id, ct)
             ?? throw new InvalidOperationException($"Report '{row.Id}' not found.");
+
         // Apply transition via domain methods (preserve state machine invariants).
+        // Domain methods set AdminNote + ResolvedByAdminId + ResolveAction atomically.
         if (row.Status == ReportStatus.Resolved)
-            entity.Resolve(row.ResolvedByAdminId ?? Guid.Empty, ExtractAction(row.AdminNote), row.AdminNote);
+        {
+            entity.Resolve(
+                row.ResolvedByAdminId ?? Guid.Empty,
+                row.ResolveAction ?? string.Empty,
+                row.AdminNote);
+        }
         else if (row.Status == ReportStatus.Dismissed)
+        {
             entity.Dismiss(row.ResolvedByAdminId ?? Guid.Empty, row.AdminNote);
+        }
         await _db.SaveChangesAsync(ct);
     }
 
-    /// <summary>Extract leading "Action:" token from composed AdminNote (best-effort; falls back to original).</summary>
-    private static string ExtractAction(string? composed)
+    /// <summary>BE-211: soft-delete Post khi action=DeleteContent.</summary>
+    public async Task SoftDeletePostAsync(Guid postId, CancellationToken ct)
     {
-        if (string.IsNullOrEmpty(composed)) return string.Empty;
-        var i = composed.IndexOf(':');
-        return i > 0 ? composed[..i] : composed;
+        var p = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId, ct);
+        if (p is null) return;
+        p.SoftDelete();
+        // Do NOT save here — let caller control transaction boundary via SaveChangesAsync().
     }
 
+    /// <summary>BE-211: soft-delete Comment khi action=DeleteContent.</summary>
+    public async Task SoftDeleteCommentAsync(Guid commentId, CancellationToken ct)
+    {
+        var c = await _db.Comments.FirstOrDefaultAsync(x => x.Id == commentId, ct);
+        if (c is null) return;
+        c.SoftDelete();
+        // Do NOT save here — let caller control transaction boundary.
+    }
+
+    public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
+
     private static ReportRow ToRow(Report r) => new(
-        Id: r.Id, ReporterId: r.ReporterId, TargetType: r.TargetType, TargetId: r.TargetId,
-        Reason: r.Reason, Details: r.Details, Status: r.Status,
-        AdminNote: r.AdminNote, ResolvedByAdminId: r.ResolvedByAdminId,
-        CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt);
+        Id: r.Id,
+        ReporterId: r.ReporterId,
+        TargetType: r.TargetType,
+        TargetId: r.TargetId,
+        Reason: r.Reason,
+        Details: r.Details,
+        Status: r.Status,
+        AdminNote: r.AdminNote,
+        ResolvedByAdminId: r.ResolvedByAdminId,
+        IdempotencyKey: r.IdempotencyKey,
+        ResolveAction: r.ResolveAction,
+        CreatedAt: r.CreatedAt,
+        UpdatedAt: r.UpdatedAt);
 }

@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Fitmate.Api.Admin;
 
 /// <summary>
-/// BE-210: Admin reports endpoints (OpenAPI /admin/reports).
+/// BE-210 + BE-211: Admin reports endpoints (OpenAPI /admin/reports).
 /// </summary>
 [ApiController]
 [Authorize(Policy = "AdminOnly")]
@@ -41,10 +41,23 @@ public class AdminReportsController : ControllerBase
             "lock_target" => ReportResolveAction.LockTarget,
             "delete_content" => ReportResolveAction.DeleteContent,
             "no_action" => ReportResolveAction.NoAction,
-            _ => throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "action invalid.",
+            _ => throw new ValidationException(ErrorCodes.Moderation.InvalidResolveAction,
+                $"action invalid.",
                 new Dictionary<string, string[]> { ["action"] = new[] { "warn|lock_target|delete_content|no_action" } })
         };
-        var report = await _svc.ResolveReportAsync(adminId, id, action, body.Note, ct);
+        var lockDuration = body.LockDuration is null
+            ? (LockDuration?)null
+            : body.LockDuration.ToLowerInvariant() switch
+            {
+                "permanent" => LockDuration.Permanent,
+                "30d" => LockDuration.Days30,
+                "7d" => LockDuration.Days7,
+                "24h" => LockDuration.Hours24,
+                _ => throw new ValidationException(ErrorCodes.Moderation.InvalidResolveAction,
+                    "lock_duration invalid.",
+                    new Dictionary<string, string[]> { ["lock_duration"] = new[] { "permanent|30d|7d|24h" } })
+            };
+        var report = await _svc.ResolveReportAsync(adminId, id, action, lockDuration, body.Note, ct);
         return Ok(report);
     }
 
@@ -78,5 +91,5 @@ public class AdminReportsController : ControllerBase
     }
 }
 
-public sealed record ResolveReportBody(string Action, string? Note);
+public sealed record ResolveReportBody(string Action, string? LockDuration, string? Note);
 public sealed record DismissReportBody(string? Note);

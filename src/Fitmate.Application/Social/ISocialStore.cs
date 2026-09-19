@@ -1,3 +1,4 @@
+using Fitmate.Application.Moderation;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
 
@@ -22,8 +23,20 @@ public interface ISocialStore
     Task<int> ChangePostReactionsAsync(Guid postId, int delta, CancellationToken ct);
     Task<int> ChangePostCommentsAsync(Guid postId, int delta, CancellationToken ct);
 
-    Task<bool> TargetExistsAsync(ReportTargetKind kind, Guid targetId, CancellationToken ct);
-    Task AddReportAsync(Guid reporterId, ReportTargetKind kind, Guid targetId, string reason, string? details, CancellationToken ct);
+    Task<bool> TargetExistsAsync(ReportTargetType kind, Guid targetId, CancellationToken ct);
+    Task<Guid> AddReportAsync(Guid reporterId, ReportTargetType kind, Guid targetId, string reason, string? details, string? idempotencyKey, CancellationToken ct);
+
+    /// <summary>BE-211: get comment by id.</summary>
+    Task<SocialCommentRow?> GetCommentAsync(Guid commentId, CancellationToken ct);
+
+    /// <summary>BE-211: commit transaction cho 1 hoặc nhiều operation cùng DB context.</summary>
+    Task SaveChangesAsync(CancellationToken ct);
+
+    /// <summary>BE-211: spam check — tìm Open report trùng từ cùng reporter (DEC-028).</summary>
+    Task<ReportRow?> FindOpenReportAsync(Guid reporterId, ReportTargetType targetType, Guid targetId, CancellationToken ct);
+
+    /// <summary>BE-211: idempotency check — tìm report đã tạo với cùng (reporterId, idempotencyKey).</summary>
+    Task<ReportRow?> FindOpenReportByKeyAsync(Guid reporterId, string idempotencyKey, CancellationToken ct);
 
     Task<SocialAuthorRow?> GetAuthorAsync(Guid userId, CancellationToken ct);
 }

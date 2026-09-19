@@ -487,6 +487,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
 
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
                     b.Property<string>("Reason")
                         .IsRequired()
                         .HasMaxLength(64)
@@ -494,6 +498,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("ReporterId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ResolveAction")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
 
                     b.Property<Guid?>("ResolvedByAdminId")
                         .HasColumnType("uuid");
@@ -512,11 +520,66 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ReporterId", "IdempotencyKey")
+                        .IsUnique()
+                        .HasFilter("\"IdempotencyKey\" IS NOT NULL");
+
                     b.HasIndex("Status", "CreatedAt");
 
                     b.HasIndex("TargetType", "TargetId");
 
+                    b.HasIndex("ReporterId", "TargetType", "TargetId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 0");
+
                     b.ToTable("reports", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Moderation.UserModerationAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Action")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("ActorAdminId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid?>("ReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReportId");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("user_moderation_actions", (string)null);
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Notifications.Device", b =>
