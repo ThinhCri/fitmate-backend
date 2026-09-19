@@ -155,7 +155,7 @@
 - Scope: list, resolve, dismiss, audit. Theo DEC-028 — `ReportTargetType ∈ {Post, Comment, User, Certificate}`. PT map sang user (BE không có targetType riêng). Idempotency chống spam báo cáo trùng. Visibility check trước khi nhận report (không leak certificate riêng tư).
 - Depends on: BE-090
 - Done when: resolve tạo audit row; idempotency test (cùng reporter+target+Open → 409).
-- Status: TODO.
+- Status: **PARTIAL DONE (phiên 23, 2026-09-19)** — Application: `IModerationService` (ListReports/ResolveReport/DismissReport) + `IModerationStore`. Resolve actions: Warn/LockTarget/DeleteContent/NoAction (admin note = "Action: note"). Idempotency + audit log + visibility check + Certificate target sẽ làm ở phiên follow-up (BE-211). Pagination page/pageSize (1..100, default 20). Authorization: `[Authorize(Policy=AdminOnly)]` + `AuthorizationGuard.EnsureRoleAsync(Admin)`. Conflict nếu report không ở Pending. Infrastructure: `EfModerationStore` (skip/take + OrderByDescending CreatedAt); gọi domain `Report.Resolve/Dismiss` để giữ state machine. ErrorCodes: `Moderation.ReportNotFound/ReportNotPending`. API: GET /api/v1/admin/reports (filter status), POST /admin/reports/{id}/resolve, POST /admin/reports/{id}/dismiss. Unit tests: 15/15 mới PASS (234/234 tổng).
 
 ### BE-220 Admin metrics + action-required
 - Scope: KPIs endpoint + aggregation.

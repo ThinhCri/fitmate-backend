@@ -81,4 +81,10 @@ public static class ErrorCodes
         public const string AlreadyReacted = "FITMATE.SOCIAL.ALREADY_REACTED";
         public const string ReportTargetNotFound = "FITMATE.SOCIAL.REPORT_TARGET_NOT_FOUND";
     }
+
+    public static class Moderation
+    {
+        public const string ReportNotFound = "FITMATE.MODERATION.REPORT_NOT_FOUND";
+        public const string ReportNotPending = "FITMATE.MODERATION.REPORT_NOT_PENDING";
+    }
 }
