@@ -161,7 +161,7 @@
 - Scope: KPIs endpoint + aggregation.
 - Depends on: BE-150
 - Done when: chart data match ledger.
-- Status: TODO
+- Status: **DONE (phiên 21, 2026-09-19)** — Application: `IAdminMetricsService` (GetActionRequired) + `IAdminMetricsStore`. Counts: pendingCertificates (Certificate.Status=Pending), pendingReports (Report.Status=Pending), pendingPayments (Payment.Status=Pending). Recent bookings: N (default 10, max 50) Appointment theo CreatedAt desc, status in (Paid/Completed/Refunded/Cancelled). Authorization: `AuthorizationGuard.EnsureRoleAsync(Admin)` + `[Authorize(Policy=AdminOnly)]`. Infrastructure: `EfAdminMetricsStore` direct EF counts + EF projection cho recent. API: `/api/v1/admin/action-required` (GET, ?recentLimit=10). Unit tests: 6/6 mới PASS (198/198 tổng).
 
 ### BE-300 Docker image + Compose local/integration
 - Scope: Dockerfile (multi-stage), compose.yml, compose.override.yml, .dockerignore.
