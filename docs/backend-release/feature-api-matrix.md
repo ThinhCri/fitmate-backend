@@ -138,9 +138,14 @@
 | FP-SC-04 | App | owner | Comment | social | post_id, text | comment | POST `/api/v1/social/posts/{id}/comments` | member | — | Chưa có | BE-181 | unknown post | — |
 | FP-SC-05 | App | owner | React | social | post_id, type | 204 | POST `/api/v1/social/posts/{id}/reactions` | member | one reaction per user per post | Chưa có | BE-181 | duplicate | — |
 | FP-SC-06 | App | owner | Report post/comment/user/certificate | social | target_id, target_type∈{post,comment,user,certificate}, reason | report | POST `/api/v1/social/reports` | member | DEC-028: 4 value, PT map sang user; reporter visibility-check; reason `minLength=5, maxLength=500`; idempotent (cùng reporter+target+status=Open → 409); không auto-lock user | Chưa có | BE-182 | — | — |
-| FP-SC-07 | App | owner | Send friend request | social | to_email | friend_request | POST `/api/v1/social/friends/requests` | member | idempotent | Chưa có | BE-183 | already friend | — |
-| FP-SC-08 | App | owner | Accept/reject friend request | social | id, action | friend | POST `/api/v1/social/friends/requests/{id}` | member owner | — | Chưa có | BE-183 | — | — |
-| FP-SC-09 | App | owner | List friends | social | — | user[] | GET `/api/v1/social/friends` | member owner | — | Chưa có | BE-183 | — | — |
+| FP-SC-07 | App | owner | Send friend request | social | to_user_id | friend_request | POST `/api/v1/social/friends/requests` | member | idempotent; block check 2 chiều; canonical pair; outbox event | Đã có (BE-181) | BE-181 | self, blocked, already friend, cross | — |
+| FP-SC-08 | App | owner | Accept / reject / cancel friend request | social | id, action∈{accept,reject,cancel} | friend | POST `/api/v1/social/friends/requests/{id}` | member owner (recipient for accept/reject, sender for cancel) | atomic + block re-check; KHÔNG notify sender on reject | Đã có (BE-181) | BE-181 | not owner, already processed, concurrent block | — |
+| FP-SC-09 | App | owner | List friends | social | cursor, limit | page<friend> | GET `/api/v1/social/friends` | member owner | cursor pagination; canonical pair query | Đã có (BE-181) | BE-181 | — | — |
+| FP-SC-09a | App | owner | Unfriend | social | user_id | 204 | DELETE `/api/v1/social/friends/{user_id}` | member owner | idempotent; outbox `friendship.removed` (no notification) | Đã có (BE-181) | BE-181 | — | — |
+| FP-SC-09b | App | owner | Friend relation status | social | user_id | relation_view | GET `/api/v1/social/friends/status/{user_id}` | member owner | `none\|outgoing_pending\|incoming_pending\|friends\|blocked_either` | Đã có (BE-181) | BE-181 | — | — |
+| FP-SC-09c | App | owner | Block user | social | user_id | 204 | POST `/api/v1/social/blocks` | member owner | cancel pending + remove friendship; outbox `user.blocked` | Đã có (BE-181) | BE-181 | self, unknown, already blocked | — |
+| FP-SC-09d | App | owner | Unblock user | social | user_id | 204 | DELETE `/api/v1/social/blocks/{user_id}` | member owner | KHÔNG restore friendship; outbox `user.unblocked` | Đã có (BE-181) | BE-181 | not blocked | — |
+| FP-SC-09e | App | owner | List blocked users | social | cursor, limit | page<blocked> | GET `/api/v1/social/blocks` | member owner | cursor pagination | Đã có (BE-181) | BE-181 | — | — |
 
 ---
 

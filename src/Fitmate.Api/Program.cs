@@ -158,6 +158,12 @@ builder.Services.AddScoped<IAdminMetricsService, Fitmate.Application.Admin.Admin
 builder.Services.AddScoped<ISocialStore, Fitmate.Infrastructure.Social.EfSocialStore>();
 builder.Services.AddScoped<ISocialService, Fitmate.Application.Social.SocialService>();
 
+// BE-181: Friend + Block (request/accept/reject/cancel/unfriend + block/unblock).
+builder.Services.AddScoped<IFriendStore, Fitmate.Infrastructure.Social.EfFriendStore>();
+builder.Services.AddScoped<IBlockStore, Fitmate.Infrastructure.Social.EfBlockStore>();
+builder.Services.AddScoped<IFriendService, Fitmate.Application.Social.FriendService>();
+builder.Services.AddScoped<IBlockService, Fitmate.Application.Social.BlockService>();
+
 // BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();
 builder.Services.AddScoped<IModerationActionStore, Fitmate.Infrastructure.Moderation.EfModerationActionStore>();

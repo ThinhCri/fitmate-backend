@@ -18,6 +18,7 @@ public class SocialService : ISocialService
     private readonly ISocialStore _store;
     private readonly ICertificateStore _certStore;
     private readonly IAuthorizationGuard _authz;
+    private readonly IFriendService _friend;
 
     private const int DefaultLimit = 20;
     private const int MaxLimit = 100;
@@ -28,11 +29,12 @@ public class SocialService : ISocialService
     private const int MaxTags = 10;
     private const int MaxTagLength = 32;
 
-    public SocialService(ISocialStore store, ICertificateStore certStore, IAuthorizationGuard authz)
+    public SocialService(ISocialStore store, ICertificateStore certStore, IAuthorizationGuard authz, IFriendService friend)
     {
         _store = store;
         _certStore = certStore;
         _authz = authz;
+        _friend = friend;
     }
 
     public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct)
@@ -265,6 +267,6 @@ public class SocialService : ISocialService
         }
     }
 
-    /// <summary>Stub: Social friends check sẽ chuyển sang FriendService (BE-181). Hiện false để không lộ post friends-only.</summary>
-    private Task<bool> IsFriendAsync(Guid viewerId, Guid authorId, CancellationToken ct) => Task.FromResult(false);
+    /// <summary>BE-181: delegate Friend check sang FriendService.</summary>
+    private Task<bool> IsFriendAsync(Guid viewerId, Guid authorId, CancellationToken ct) => _friend.IsFriendAsync(viewerId, authorId, ct);
 }

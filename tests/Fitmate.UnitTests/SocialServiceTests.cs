@@ -116,7 +116,20 @@ public class SocialServiceTests
             => Task.FromResult<SocialAuthorRow?>(Authors.GetValueOrDefault(userId));
     }
 
-    private static SocialService NewService(InMemorySocialStore store, InMemoryCertificateStore certStore) => new(store, certStore, new AllowAllAuthz());
+    private static SocialService NewService(InMemorySocialStore store, InMemoryCertificateStore certStore) => new(store, certStore, new AllowAllAuthz(), new StubFriendService());
+
+    /// <summary>BE-181: minimal stub cho FriendService — IsFriendAsync trả false (giống stub cũ) để SocialService test không phụ thuộc friend state.</summary>
+    private sealed class StubFriendService : IFriendService
+    {
+        public Task<FriendRequestView> SendRequestAsync(Guid s, Guid r, CancellationToken ct) => throw new NotImplementedException();
+        public Task AcceptRequestAsync(Guid a, Guid id, CancellationToken ct) => throw new NotImplementedException();
+        public Task RejectRequestAsync(Guid a, Guid id, CancellationToken ct) => throw new NotImplementedException();
+        public Task CancelRequestAsync(Guid a, Guid id, CancellationToken ct) => throw new NotImplementedException();
+        public Task UnfriendAsync(Guid a, Guid o, CancellationToken ct) => throw new NotImplementedException();
+        public Task<FriendPage> ListFriendsAsync(Guid u, string? c, int l, CancellationToken ct) => throw new NotImplementedException();
+        public Task<bool> IsFriendAsync(Guid a, Guid b, CancellationToken ct) => Task.FromResult(false);
+        public Task<FriendRequestStatusView> GetRelationStatusAsync(Guid v, Guid o, CancellationToken ct) => throw new NotImplementedException();
+    }
 
     private static SocialPostRow NewPost(Guid author, PostVisibility vis, string content = "hi", DateTime? at = null, int reactions = 0, int comments = 0)
         => new(Guid.NewGuid(), author, content, null, null, new List<string>(), vis, false, reactions, comments, at ?? DateTime.UtcNow);

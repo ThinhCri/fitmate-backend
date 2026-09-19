@@ -40,9 +40,19 @@ public class EfSocialStore : ISocialStore
         }
         else // Friends
         {
-            var friendIds = viewerId.HasValue
-                ? _db.Friends.Where(f => f.UserId == viewerId.Value).Select(f => f.FriendUserId)
-                : Enumerable.Empty<Guid>().AsQueryable();
+            // BE-181: query canonical friendship — user có thể nằm ở low hoặc high.
+            IQueryable<Guid> friendIds;
+            if (viewerId.HasValue)
+            {
+                var v = viewerId.Value;
+                friendIds = _db.Friendships
+                    .Where(f => f.UserLowId == v || f.UserHighId == v)
+                    .Select(f => f.UserLowId == v ? f.UserHighId : f.UserLowId);
+            }
+            else
+            {
+                friendIds = Enumerable.Empty<Guid>().AsQueryable();
+            }
             q = q.Where(p => p.Visibility == PostVisibility.Public
                           || (viewerId.HasValue && p.AuthorId == viewerId.Value)
                           || (viewerId.HasValue && friendIds.Contains(p.AuthorId)));

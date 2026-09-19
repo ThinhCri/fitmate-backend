@@ -119,10 +119,17 @@
 | Comment | — | 🔒 | 🔒 | ❌ |
 | React | — | 🔒 | 🔒 | ❌ |
 | Report content | — | 🔒 | 🔒 | 🔒 (self-report allowed) |
-| Send friend request | — | 🔒 | 🔒 | ❌ |
-| Accept/reject friend request | — | 🔒 | 🔒 | ❌ |
+| Send friend request | — | 🔒 (block check 2 chiều) | 🔒 (block check 2 chiều) | ❌ |
+| Accept/reject friend request | — | 🔒 (recipient only) | 🔒 (recipient only) | ❌ |
+| Cancel friend request (sender) | — | 🔒 (sender only) | 🔒 (sender only) | ❌ |
 | List friends | — | 🔒 | 🔒 | ❌ |
+| Unfriend | — | 🔒 (either side) | 🔒 (either side) | ❌ |
+| Get friend relation status | — | 🔒 | 🔒 | ❌ |
+| Block / unblock user | — | 🔒 | 🔒 | ❌ |
+| List blocked users | — | 🔒 | 🔒 | ❌ |
 | Delete any post | — | ❌ | ❌ | ✅ (moderation) |
+
+**Block note**: block chặn gửi/accept friend request + huỷ pending request + xoá friendship hiện tại. KHÔNG ảnh hưởng booking/finance. Xem `domain-rules.md §11.2`.
 
 ## 9. Chat
 

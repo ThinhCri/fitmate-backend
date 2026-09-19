@@ -192,3 +192,44 @@ Mỗi audit row: `actor_id`, `actor_role`, `action`, `target_type`, `target_id`,
 - [ ] Data retention từng loại dữ liệu.
 - [ ] Account deletion: hard delete vs anonymize sau bao lâu.
 - [ ] Mức giá min/max cho service PT.
+
+## 11. Friend + Block policy (BE-181, chốt 2026-09-19)
+
+### 11.1 Friend
+
+- **Recipient**: client gửi `to_user_id` (UUID). Không dùng email. Lấy `from_user_id` từ authenticated principal.
+- **FriendRequest**: 1 row hướng `(SenderId, RecipientId, Status)`. Status: `Pending | Accepted | Rejected | Cancelled`.
+- **Friendship**: 1 row canonical duy nhất cho mỗi cặp `(UserLowId, UserHighId)` với `UserLowId < UserHighId` (PostgreSQL `<` so sánh UUID qua value byte order; .NET `Guid.CompareTo` cùng quy ước). Application phải dùng `Friendship.CanonicalPair(a, b)` trước khi insert; DB có `CHECK (user_low_id < user_high_id)` để từ chối row nghịch trận.
+- **Partial unique**: `(sender_id, recipient_id)` unique khi `Status = 0` (Pending). Cho phép nhiều row `Accepted/Rejected/Cancelled` giữa cùng cặp (audit history).
+- **Cross request**: nếu A→B đang pending, B gửi lại cho A → `409 FRIEND_REQUEST_ALREADY_EXISTS`. Client dùng `GET /social/friends/status/{user_id}` để phát hiện `incoming_pending` và accept.
+- **Accept atomic**: 1 transaction — status guard + block re-check + insert Friendship (canonical) + outbox `friend.request.accepted`.
+- **Idempotency**: gửi duplicate request cùng `(sender, recipient)` Pending → trả row cũ, không enqueue outbox thêm.
+- **Outbox events**:
+  - `friend.request.created` → thông báo cho recipient.
+  - `friend.request.accepted` → thông báo cho sender ban đầu.
+  - `friend.request.rejected` / `friend.request.cancelled` → KHÔNG gửi notification.
+  - `friendship.removed` → KHÔNG gửi notification cho người bị huỷ kết bạn.
+- **Friends list**: cursor pagination (`limit` ≤ 100). Outbox chỉ enqueue khi có consumer thực sự; không tạo event thừa.
+
+### 11.2 Block
+
+- **BlockedUsers**: `(BlockerId, BlockedId)` PK. Composite index `(blocked_id)` để query 2 chiều.
+- **Block policy** (chốt 2026-09-19):
+  - Chặn `sendFriendRequest` theo cả 2 chiều (`IsBlockedEitherWayAsync`).
+  - Khi block: huỷ mọi pending `FriendRequest` giữa 2 người + xoá Friendship nếu có (hard delete).
+  - Khi unblock: KHÔNG tự khôi phục Friendship.
+  - KHÔNG tự gửi notification cho người bị block.
+- **Block tách khỏi moderation/report**: report KHÔNG tự tạo block. UI có thể đề nghị block sau report, nhưng là action riêng.
+- **Block KHÔNG ảnh hưởng booking/finance**: không tự huỷ booking, hoàn tiền hay xoá giao dịch khi block. Hai bên vẫn truy cập booking record của mình.
+- **Feed/profile visibility**:
+  - Post `visibility = friends`: ẩn với người bị block (cả 2 chiều).
+  - Friend list filter: người bị block không xuất hiện.
+  - Block list KHÔNG lộ cho người khác (admin moderation exception chưa chốt — ghi UA-FUTURE).
+- **Friend chat (BE-191, chưa implement)**: block cản gửi message mới và mở thread mới; thông báo giao dịch/hệ thống vẫn gửi. Khi chat module chưa sẵn, integration task cụ thể sẽ được ghi ở `tasks.md`.
+
+### 11.3 Outbox + retry
+
+- Mọi outbox event ghi trong cùng `SaveChangesAsync` với business row (transaction).
+- Retry worker kiểm tra block + request status trước khi dispatch notification. Không tạo notification trùng (event ID + dedup).
+- Block / unblock enqueue outbox cho audit/đồng bộ (consumer chưa có → không có user-visible notification).
+

@@ -970,6 +970,32 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.ToTable("reviews", (string)null);
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Social.BlockedUser", b =>
+                {
+                    b.Property<Guid>("BlockerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("blocker_id");
+
+                    b.Property<Guid>("BlockedId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("blocked_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("BlockerId", "BlockedId");
+
+                    b.HasIndex("BlockedId");
+
+                    b.ToTable("blocked_users", (string)null);
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Social.Comment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1004,28 +1030,6 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.ToTable("comments", (string)null);
                 });
 
-            modelBuilder.Entity("Fitmate.Domain.Social.Friend", b =>
-                {
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("FriendUserId")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("DeletedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime>("UpdatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.HasKey("UserId", "FriendUserId");
-
-                    b.ToTable("friends", (string)null);
-                });
-
             modelBuilder.Entity("Fitmate.Domain.Social.FriendRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1039,24 +1043,58 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<Guid>("FromUserId")
-                        .HasColumnType("uuid");
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("RecipientId");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("SenderId");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
-
-                    b.Property<Guid>("ToUserId")
-                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("FromUserId", "ToUserId")
-                        .IsUnique();
+                    b.HasIndex("RecipientId", "Status");
+
+                    b.HasIndex("SenderId", "RecipientId")
+                        .IsUnique()
+                        .HasFilter("\"Status\" = 0");
 
                     b.ToTable("friend_requests", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Social.Friendship", b =>
+                {
+                    b.Property<Guid>("UserLowId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_low_id");
+
+                    b.Property<Guid>("UserHighId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_high_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserLowId", "UserHighId");
+
+                    b.HasIndex("UserHighId");
+
+                    b.ToTable("friendships", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_friendships_canonical_order", "\"user_low_id\" < \"user_high_id\"");
+                        });
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Social.Post", b =>

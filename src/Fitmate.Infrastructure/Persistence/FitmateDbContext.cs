@@ -58,7 +58,8 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<Reaction> Reactions => Set<Reaction>();
     public DbSet<FriendRequest> FriendRequests => Set<FriendRequest>();
-    public DbSet<Friend> Friends => Set<Friend>();
+    public DbSet<Friendship> Friendships => Set<Friendship>();
+    public DbSet<BlockedUser> BlockedUsers => Set<BlockedUser>();
 
     // Moderation
     public DbSet<Report> Reports => Set<Report>();

@@ -4,6 +4,37 @@
 
 ## Phiên hiện tại
 
+### Phiên 25 — đã làm (2026-09-19) [BE-181]
+
+**BE-181: Friend + Friendship + Block** — DONE.
+
+Triển khai đúng 6 quyết định user chốt 2026-09-19 (ghi `decisions.md` DEC-036..039):
+1. **Recipient dùng `to_user_id`** (UUID, không email). Sender lấy từ authenticated principal. OpenAPI đổi `to_email` → `to_user_id`. Migration rename `FromUserId→RecipientId`, `ToUserId→SenderId`.
+2. **Friendship: 1 row canonical** `(UserLowId, UserHighId)` với `CHECK (low<high)`. Application dùng `Friendship.CanonicalPair(a, b)` chuẩn hoá trước khi insert. .NET `Guid.CompareTo` và PostgreSQL `<` đều so sánh UUID theo value byte order — khớp nhau.
+3. **Unfriend: hard delete** Friendship row canonical. Idempotent nếu không phải bạn. KHÔNG xoá chat / post / booking kèm theo. Outbox `friendship.removed` không gửi notification.
+4. **Block: bảng `blocked_users` riêng**, tách khỏi moderation. Block huỷ pending FriendRequest 2 chiều + xoá Friendship hiện tại. Unblock KHÔNG tự khôi phục. KHÔNG gửi notification cho người bị block. KHÔNG ảnh hưởng booking/finance.
+5. **Outbox events** chuẩn hoá: `friend.request.created/accepted` enqueue; `rejected/cancelled/friendship.removed/user.blocked/user.unblocked` KHÔNG notification.
+6. **Accept atomic**: 1 transaction — status guard + block re-check (race) + insert Friendship + outbox. Race accept vs block → reject silent, không tạo friendship.
+
+**Kết quả**:
+- `dotnet build`: 0 error, 1 warning pre-existing (`xUnit1031` không liên quan).
+- `dotnet test`: **266/266 PASS** (47 mới + 219 cũ; 0 failed, 0 skipped).
+- Migration `20260919111325_FriendshipAndBlock` apply OK trên local Postgres. Schema verify: drop `friends`, create `friendships` + `blocked_users` với CHECK constraint, partial unique index `(sender_id, recipient_id) WHERE "Status"=0`.
+
+**Files changed**:
+- Domain: `src/Fitmate.Domain/Social/Friendship.cs` (new — canonical pair + helper), `Social/BlockedUser.cs` (new), `Social/FriendRequest.cs` (rename fields + Cancel), `Common/Enums.cs` (+Cancelled), `Common/ErrorCodes.cs` (+9 codes).
+- Application: `Social/IFriendStore.cs` (new), `Social/IFriendService.cs` (new — FriendPage/BlockListPage/FriendRequestStatusView), `Social/FriendService.cs` (new — 7 use cases), `Social/BlockService.cs` (new), `Social/CursorEncoder.cs` (new — share với BE-180), `Social/ISocialService.cs` + `Social/SocialService.cs` (delegate `IsFriendAsync` qua `FriendService`).
+- Infrastructure: `Social/EfFriendStore.cs` (new — canonical query + cursor pagination), `Social/EfBlockStore.cs` (new), `Social/EfSocialStore.cs` (Friends-only feed query canonical), `Persistence/Configurations/SocialConfiguration.cs` (FriendRequestConfiguration + FriendshipConfiguration + BlockedUserConfiguration), `Persistence/FitmateDbContext.cs` (DbSet).
+- Api: `Social/FriendsController.cs` (new — 6 endpoints), `Social/BlocksController.cs` (new — 3 endpoints), `Program.cs` (DI).
+- Tests: `tests/Fitmate.UnitTests/FriendServiceTests.cs` (new — 20 tests), `tests/Fitmate.UnitTests/SocialServiceTests.cs` (add `StubFriendService`).
+- Migrations: `Persistence/Migrations/20260919111325_FriendshipAndBlock.cs` (new — drop `friends`, create `friendships` + `blocked_users`, rename columns, partial unique index), `Migrations/20260919111325_FriendshipAndBlock.Designer.cs`, `Migrations/FitmateDbContextModelSnapshot.cs`.
+- Docs: `docs/backend-release/decisions.md` (DEC-036/037/038/039), `docs/backend-release/domain-rules.md` (§11 Friend/Block policy), `docs/backend-release/authorization-matrix.md` (§8 Social + block note), `docs/backend-release/feature-api-matrix.md` (FP-SC-07..09e), `docs/backend-release/openapi/fitmate-v1.yaml` (to_user_id + canonical Friend schema + 7 endpoints), `docs/backend-release/tasks.md` (BE-181 → DONE), `docs/backend-release/handoff.md` (phiên 25 này).
+
+**Pending integration (ghi tasks.md, không block)**:
+- BE-200 Notifications worker — chưa có, outbox events vẫn được ghi để chờ consumer; service-side KHÔNG báo "đã gửi notification".
+- BE-191 Chat friend message — chưa implement; block policy đã chốt (chặn message mới + thread mới) sẽ được áp dụng khi BE-191 làm.
+- Admin moderation exception đọc block list (UA-FUTURE).
+
 ### Phiên 24 — đã làm (2026-09-19) [BE-211]
 
 **BE-211: Moderation follow-up** — DONE.

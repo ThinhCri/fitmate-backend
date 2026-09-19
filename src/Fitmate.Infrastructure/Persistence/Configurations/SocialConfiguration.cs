@@ -57,20 +57,39 @@ public class FriendRequestConfiguration : IEntityTypeConfiguration<FriendRequest
         e.ToTable("friend_requests");
         e.HasKey(x => x.Id);
         e.Property(x => x.Id).HasColumnName("id");
-        e.Property(x => x.FromUserId).IsRequired();
-        e.Property(x => x.ToUserId).IsRequired();
+        e.Property(x => x.SenderId).HasColumnName("sender_id").IsRequired();
+        e.Property(x => x.RecipientId).HasColumnName("recipient_id").IsRequired();
         e.Property(x => x.Status).HasConversion<int>();
-        e.HasIndex(x => new { x.FromUserId, x.ToUserId }).IsUnique();
+        // BE-181: chỉ 1 Pending request cho mỗi cặp — partial unique index.
+        e.HasIndex(x => new { x.SenderId, x.RecipientId })
+            .IsUnique()
+            .HasFilter("\"Status\" = 0");
+        e.HasIndex(x => new { x.RecipientId, x.Status });
     }
 }
 
-public class FriendConfiguration : IEntityTypeConfiguration<Friend>
+public class FriendshipConfiguration : IEntityTypeConfiguration<Friendship>
 {
-    public void Configure(EntityTypeBuilder<Friend> e)
+    public void Configure(EntityTypeBuilder<Friendship> e)
     {
-        e.ToTable("friends");
-        e.HasKey(x => new { x.UserId, x.FriendUserId });
-        e.Property(x => x.UserId).IsRequired();
-        e.Property(x => x.FriendUserId).IsRequired();
+        e.ToTable("friendships");
+        e.HasKey(x => new { x.UserLowId, x.UserHighId });
+        e.Property(x => x.UserLowId).HasColumnName("user_low_id").IsRequired();
+        e.Property(x => x.UserHighId).HasColumnName("user_high_id").IsRequired();
+        // DB CHECK enforce canonical order; < so sánh UUID theo value.
+        e.ToTable(t => t.HasCheckConstraint("ck_friendships_canonical_order", "\"user_low_id\" < \"user_high_id\""));
+        e.HasIndex(x => x.UserHighId);
+    }
+}
+
+public class BlockedUserConfiguration : IEntityTypeConfiguration<BlockedUser>
+{
+    public void Configure(EntityTypeBuilder<BlockedUser> e)
+    {
+        e.ToTable("blocked_users");
+        e.HasKey(x => new { x.BlockerId, x.BlockedId });
+        e.Property(x => x.BlockerId).HasColumnName("blocker_id").IsRequired();
+        e.Property(x => x.BlockedId).HasColumnName("blocked_id").IsRequired();
+        e.HasIndex(x => x.BlockedId);
     }
 }

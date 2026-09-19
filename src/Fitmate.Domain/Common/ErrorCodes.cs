@@ -80,6 +80,16 @@ public static class ErrorCodes
         public const string PostDeleteForbidden = "FITMATE.SOCIAL.POST_DELETE_FORBIDDEN";
         public const string AlreadyReacted = "FITMATE.SOCIAL.ALREADY_REACTED";
         public const string ReportTargetNotFound = "FITMATE.SOCIAL.REPORT_TARGET_NOT_FOUND";
+        // BE-181: Friend + FriendRequest lifecycle.
+        public const string FriendRequestAlreadyProcessed = "FITMATE.SOCIAL.FRIEND_REQUEST_ALREADY_PROCESSED";
+        public const string FriendRequestAlreadyExists = "FITMATE.SOCIAL.FRIEND_REQUEST_ALREADY_EXISTS";
+        public const string AlreadyFriends = "FITMATE.SOCIAL.ALREADY_FRIENDS";
+        public const string FriendshipNotFound = "FITMATE.SOCIAL.FRIENDSHIP_NOT_FOUND";
+        public const string RecipientBlocked = "FITMATE.SOCIAL.RECIPIENT_BLOCKED";
+        public const string CannotSelfFriend = "FITMATE.SOCIAL.CANNOT_SELF_FRIEND";
+        // BE-181 Block policy.
+        public const string AlreadyBlocked = "FITMATE.SOCIAL.ALREADY_BLOCKED";
+        public const string BlockNotFound = "FITMATE.SOCIAL.BLOCK_NOT_FOUND";
     }
 
     public static class Moderation

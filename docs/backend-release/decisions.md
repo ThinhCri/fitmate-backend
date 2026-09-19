@@ -438,3 +438,76 @@
   - `admin-integration-guide.md` bổ sung: web admin `BookingManagement.jsx` payment filter chip chỉ hiển thị `VNPay` (1 chip), không hiển thị 4 chip như mock hiện tại.
   - Việc sửa FE mock thực tế nằm ngoài scope backend release. Ghi TODO `out-of-scope` trong tasks.md.
 - **Trạng thái**: ✅ Accepted.
+
+## DEC-036 — Friend Request dùng `to_user_id`, không dùng email
+
+- **Ngày**: 2026-09-19
+- **Người chốt**: User (qua turn trực tiếp, sau khi xem xét 5 lựa chọn thiết kế)
+- **Bối cảnh**: BE-181 Friends. OpenAPI draft trước đó dùng `to_email`; email không phù hợp vì (a) user lookup UI không cần trả email, (b) email thay đổi được còn user ID ổn định, (c) privacy — admin/PT khác không nên thấy email để gửi lời mời.
+- **Quyết định**:
+  - `POST /api/v1/social/friends/requests` nhận `to_user_id` (UUID), bắt buộc.
+  - `from_user_id` lấy từ authenticated principal; client không gửi.
+  - OpenAPI đổi `to_email` → `to_user_id`. Integration guide cập nhật tương ứng.
+  - Tìm kiếm / profile API (FP-ID-12, chưa làm) phải trả public user ID để FE lookup.
+  - Server kiểm tra: người nhận tồn tại (`UserExistsAsync`), không phải self, không có block theo cả 2 chiều, chưa là bạn, không có pending request ngược chiều.
+- **Hệ quả**:
+  - Migration đổi column `FromUserId` → `RecipientId`, `ToUserId` → `SenderId` (PascalCase, EF Core convention).
+  - OpenAPI schema `FriendRequest` đổi field names.
+  - Không có client production nào gọi `to_email` (mock chỉ) — không cần compat plan.
+- **Trạng thái**: ✅ Accepted (BE-181 → IN_PROGRESS).
+
+## DEC-037 — Friendship: 1 row canonical (canonical pair), không 2 row hai chiều
+
+- **Ngày**: 2026-09-19
+- **Người chốt**: User
+- **Bối cảnh**: BE-181 Friends. User chọn giữa 2-row mutual (A,B) + (B,A) và single canonical `(low, high)`. Quyết định cuối: canonical pair.
+- **Quyết định**:
+  - Bảng `friendships(user_low_id, user_high_id, ...)` với PK composite.
+  - Application dùng `Friendship.CanonicalPair(a, b)` để chuẩn hoá. Quy ước: `low = (a.CompareTo(b) < 0) ? a : b` (.NET `Guid.CompareTo` lexical byte order).
+  - DB `CHECK (user_low_id < user_high_id)` — PostgreSQL `<` UUID so sánh value byte order, khớp .NET. Test xác nhận canonical pair khớp giữa application và DB.
+  - Index phụ: `(user_high_id)` để query từ cả 2 phía (user có thể nằm low hoặc high).
+  - FriendRequest vẫn là bảng riêng có hướng `(SenderId, RecipientId, Status)`.
+- **Hệ quả**:
+  - Drop table `friends` cũ; tạo `friendships` mới.
+  - List friends query: `WHERE user_low_id = @me OR user_high_id = @me` rồi map sang `other_id`.
+  - Outbox event `friendship.removed` KHÔNG gửi notification cho người bị unfriend.
+- **Trạng thái**: ✅ Accepted (BE-181 → IN_PROGRESS).
+
+## DEC-038 — User Block: bảng riêng, tách khỏi moderation/report
+
+- **Ngày**: 2026-09-19
+- **Người chốt**: User
+- **Bối cảnh**: BE-181 chốt nhiều policy nghiệp vụ. User chọn triển khai block ngay (không out-of-scope) nhưng tách khỏi moderation, không gộp report.
+- **Quyết định**:
+  - Bảng `blocked_users(blocker_id, blocked_id, ...)` riêng; 1 chiều (blocker là user chủ động block).
+  - Composite PK + index `(blocked_id)`.
+  - Khi block: huỷ mọi pending FriendRequest giữa 2 người + xoá Friendship (nếu có). KHÔNG ảnh hưởng booking/finance.
+  - Khi unblock: KHÔNG tự khôi phục friendship.
+  - Report moderation KHÔNG tự tạo block; UI có thể đề nghị block sau report nhưng là action riêng.
+  - Outbox `user.blocked` / `user.unblocked` chỉ cho audit / consumer chưa có. KHÔNG gửi user-visible notification.
+  - Feed visibility `friends`: ẩn với người bị block (cả 2 chiều). Friend list filter tương ứng.
+  - Block list KHÔNG lộ cho user khác (admin moderation exception chưa chốt — ghi UA-FUTURE).
+  - Chat (BE-191 chưa implement): block cản message mới + mở thread mới. Khi chat chưa có, ghi pending integration trong tasks.md, không đánh dấu hoàn thành.
+- **Hệ quả**:
+  - `block_service` thuộc module Social, không thuộc Moderation.
+  - Test block policy: idempotent, không tự khôi phục, huỷ pending request 2 chiều, xoá friendship.
+- **Trạng thái**: ✅ Accepted (BE-181 → IN_PROGRESS).
+
+## DEC-039 — Friend/Block outbox event semantics
+
+- **Ngày**: 2026-09-19
+- **Người chốt**: User
+- **Bối cảnh**: User chốt rõ event nào sinh notification, event nào chỉ audit.
+- **Quyết định**:
+  - `friend.request.created` → thông báo recipient.
+  - `friend.request.accepted` → thông báo sender ban đầu.
+  - `friend.request.rejected` / `friend.request.cancelled` → KHÔNG notification.
+  - `friendship.removed` → KHÔNG notification cho người bị unfriend.
+  - `user.blocked` / `user.unblocked` → KHÔNG notification cho đối tượng bị tác động.
+  - Outbox enqueue **cùng `SaveChangesAsync`** với business row (transaction).
+  - Consumer retry: kiểm tra block + request status trước khi dispatch. Dedup theo event ID.
+  - Worker notification (BE-200) chưa có → ghi pending integration. Service-side outbox vẫn ghi để khi worker sẵn sàng có history. Không báo "đã gửi notification".
+  - Outbox delivery ≠ user-visible notification (2 khái niệm tách biệt).
+- **Hệ quả**:
+  - Application service tự quyết định `Enqueue` dựa trên policy ở trên; không consumer-side filter.
+- **Trạng thái**: ✅ Accepted (BE-181 → IN_PROGRESS).
