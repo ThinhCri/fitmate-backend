@@ -1,0 +1,179 @@
+using Fitmate.Application.Auth;
+using Fitmate.Application.Finance;
+using Fitmate.Domain.Common;
+using FluentAssertions;
+
+namespace Fitmate.UnitTests;
+
+/// <summary>
+/// BE-150: AdminFinanceService — overview totals + ledger paging + AuthorizationGuard.
+/// </summary>
+public class AdminFinanceServiceTests
+{
+    private sealed class RoleRequireAuthz : IAuthorizationGuard
+    {
+        public string? RequiredRole { get; set; }
+        public Task EnsureRoleAsync(Guid userId, string role, CancellationToken ct)
+        {
+            if (RequiredRole != null && !string.Equals(role, RequiredRole, StringComparison.OrdinalIgnoreCase))
+                throw new ForbiddenException(ErrorCodes.Identity.Forbidden, $"Requires role {role}.");
+            return Task.CompletedTask;
+        }
+        public Task EnsureAnyRoleAsync(Guid userId, IReadOnlyCollection<string> roles, CancellationToken ct) => Task.CompletedTask;
+        public Task EnsureOwnerAsync(string r, Guid u, Guid o, CancellationToken ct) => Task.CompletedTask;
+        public Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct) => Task.FromResult<string?>(RequiredRole);
+        public Task<bool> HasRoleAsync(Guid userId, string role, CancellationToken ct) => Task.FromResult(RequiredRole != null);
+    }
+
+    private sealed class InMemoryFinanceStore : IAdminFinanceStore
+    {
+        public List<FinanceBookingRow> Bookings { get; } = new();
+        public List<FinanceLedgerRow> Ledger { get; } = new();
+        public int MemberCount { get; set; }
+        public int ActivePtCount { get; set; }
+
+        public Task<IReadOnlyList<FinanceBookingRow>> ListBookingsInRangeAsync(DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+        {
+            var filtered = Bookings.Where(b => b.CreatedAt >= fromUtc && b.CreatedAt < toUtc).ToList();
+            return Task.FromResult<IReadOnlyList<FinanceBookingRow>>(filtered);
+        }
+        public Task<int> CountMembersAsync(CancellationToken ct) => Task.FromResult(MemberCount);
+        public Task<int> CountActivePtsAsync(CancellationToken ct) => Task.FromResult(ActivePtCount);
+        public Task<IReadOnlyList<FinanceLedgerRow>> ListLedgerAsync(LedgerEntryType? type, int skip, int take, CancellationToken ct)
+        {
+            var rows = Ledger.Where(r => type == null || TypeMatches(r.Type, type.Value)).OrderByDescending(r => r.OccurredAt).ToList();
+            return Task.FromResult<IReadOnlyList<FinanceLedgerRow>>(rows.Skip(skip).Take(take).ToList());
+        }
+        public Task<int> CountLedgerAsync(LedgerEntryType? type, CancellationToken ct)
+            => Task.FromResult(Ledger.Count(r => type == null || TypeMatches(r.Type, type.Value)));
+
+        private static bool TypeMatches(string rowType, LedgerEntryType t) => rowType switch
+        {
+            "platform_fee" => t == LedgerEntryType.PlatformFee,
+            "trainer_share" => t == LedgerEntryType.TrainerShare,
+            "refund" => t == LedgerEntryType.Refund,
+            "payout" => t == LedgerEntryType.Payout,
+            _ => false
+        };
+    }
+
+    private static FinanceBookingRow PaidRow(long actual, long fee, long share, DateTime utc, bool completed = false, bool refunded = false, long refundedAmount = 0)
+        => new(Guid.NewGuid(), utc, actual, fee, share, refundedAmount, IsPaid: !completed && !refunded, IsCompleted: completed, IsRefunded: refunded);
+
+    private static AdminFinanceService NewService(IAdminFinanceStore store, string? requiredRole = "Admin") => new(store, new RoleRequireAuthz { RequiredRole = requiredRole });
+
+    [Fact]
+    public async Task Overview_AggregatesGmv_Fee_Share_Refunded()
+    {
+        var store = new InMemoryFinanceStore { MemberCount = 10, ActivePtCount = 5 };
+        var t0 = DateTime.UtcNow.AddDays(-3);
+        store.Bookings.Add(PaidRow(500_000, 50_000, 450_000, t0));
+        store.Bookings.Add(PaidRow(700_000, 70_000, 630_000, t0.AddHours(2), completed: true));
+        store.Bookings.Add(PaidRow(1_000_000, 100_000, 900_000, t0.AddHours(4), refunded: true, refundedAmount: 1_000_000));
+        var svc = NewService(store);
+
+        var ov = await svc.GetOverviewAsync(Guid.NewGuid(), FinanceRange._30d, CancellationToken.None);
+        ov.GmvPaidVnd.Should().Be(2_200_000); // 500k + 700k + 1_000_000 (Paid + Completed + Refunded cùng đã trả)
+        ov.PlatformFeeVnd.Should().Be(220_000);
+        ov.TrainerShareVnd.Should().Be(1_980_000);
+        ov.RefundedVnd.Should().Be(1_000_000);
+        ov.BookingsInPeriod.Should().Be(3);
+        ov.MembersTotal.Should().Be(10);
+        ov.ActivePts.Should().Be(5);
+        ov.Range.Should().Be("30d");
+        ov.Chart.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task Overview_NonAdmin_Forbidden()
+    {
+        var authz = new RoleRequireAuthz { RequiredRole = "Pt" }; // khác Admin
+        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz);
+        var act = () => svc.GetOverviewAsync(Guid.NewGuid(), FinanceRange._30d, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task Overview_Range7d_Applied()
+    {
+        var store = new InMemoryFinanceStore();
+        var old = PaidRow(500_000, 50_000, 450_000, DateTime.UtcNow.AddDays(-100));
+        var fresh = PaidRow(300_000, 30_000, 270_000, DateTime.UtcNow.AddDays(-2));
+        store.Bookings.AddRange(new[] { old, fresh });
+        var svc = NewService(store);
+
+        var ov = await svc.GetOverviewAsync(Guid.NewGuid(), FinanceRange._7d, CancellationToken.None);
+        ov.GmvPaidVnd.Should().Be(300_000);
+        ov.BookingsInPeriod.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Overview_AllRange_IncludesEverything()
+    {
+        var store = new InMemoryFinanceStore();
+        store.Bookings.Add(PaidRow(500_000, 50_000, 450_000, DateTime.UtcNow.AddYears(-1)));
+        var svc = NewService(store);
+
+        var ov = await svc.GetOverviewAsync(Guid.NewGuid(), FinanceRange.All, CancellationToken.None);
+        ov.GmvPaidVnd.Should().Be(500_000);
+    }
+
+    [Fact]
+    public async Task Overview_EmptyStore_AllZeros()
+    {
+        var svc = NewService(new InMemoryFinanceStore());
+        var ov = await svc.GetOverviewAsync(Guid.NewGuid(), FinanceRange._30d, CancellationToken.None);
+        ov.GmvPaidVnd.Should().Be(0);
+        ov.PlatformFeeVnd.Should().Be(0);
+        ov.TrainerShareVnd.Should().Be(0);
+        ov.RefundedVnd.Should().Be(0);
+        ov.BookingsInPeriod.Should().Be(0);
+        ov.Chart.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Ledger_NoFilter_OrdersByOccurredDesc()
+    {
+        var store = new InMemoryFinanceStore();
+        var t0 = DateTime.UtcNow.AddHours(-3);
+        var p1 = Guid.NewGuid(); var p2 = Guid.NewGuid(); var p3 = Guid.NewGuid();
+        store.Ledger.Add(new FinanceLedgerRow(p1, "platform_fee", 50_000, p1, null, t0));
+        store.Ledger.Add(new FinanceLedgerRow(p2, "trainer_share", 450_000, p2, null, t0.AddHours(1)));
+        store.Ledger.Add(new FinanceLedgerRow(p3, "refund", 100_000, p3, null, t0.AddHours(2)));
+
+        var page = await NewService(store).GetLedgerAsync(Guid.NewGuid(), type: null, page: 1, pageSize: 2, CancellationToken.None);
+        page.Items.Should().HaveCount(2);
+        page.Total.Should().Be(3);
+        page.Items[0].Type.Should().Be(LedgerEntryType.Refund);
+        page.Items[1].Type.Should().Be(LedgerEntryType.TrainerShare);
+    }
+
+    [Fact]
+    public async Task Ledger_FilteredByRefund_ReturnsOnlyRefund()
+    {
+        var store = new InMemoryFinanceStore();
+        var t0 = DateTime.UtcNow.AddHours(-1);
+        store.Ledger.Add(new FinanceLedgerRow(Guid.NewGuid(), "platform_fee", 50_000, null, null, t0));
+        store.Ledger.Add(new FinanceLedgerRow(Guid.NewGuid(), "refund", 50_000, null, null, t0));
+        var page = await NewService(store).GetLedgerAsync(Guid.NewGuid(), LedgerEntryType.Refund, page: 1, pageSize: 50, CancellationToken.None);
+        page.Items.Should().HaveCount(1).And.OnlyContain(x => x.Type == LedgerEntryType.Refund);
+        page.Total.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Ledger_PageSizeClampedToMax()
+    {
+        var store = new InMemoryFinanceStore();
+        var page = await NewService(store).GetLedgerAsync(Guid.NewGuid(), null, page: 1, pageSize: 1000, CancellationToken.None);
+        page.PageSize.Should().Be(100); // MaxPageSize = 100
+    }
+
+    [Fact]
+    public async Task Ledger_NonAdmin_Forbidden()
+    {
+        var authz = new RoleRequireAuthz { RequiredRole = "Pt" };
+        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz);
+        var act = () => svc.GetLedgerAsync(Guid.NewGuid(), null, 1, 50, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+}

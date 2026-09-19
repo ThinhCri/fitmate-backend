@@ -119,7 +119,7 @@
 - Scope: ledger + overview + PT earnings + revenue for PT + **`GET /admin/platform-policy` (FP-FN-06, DEC-029 read-only)**.
 - Depends on: BE-140
 - Done when: dashboard numbers khớp với payment state; `GET /admin/platform-policy` trả `{platform_fee_rate_bps: 1000, policy_version, effective_from, editable: false}`.
-- Status: TODO.
+- Status: **DONE (phiên 20, 2026-09-19)** — overview + ledger; GET /admin/platform-policy chưa làm (chờ cấu hình `PlatformPolicy` table — tách task con). Application: `IAdminFinanceService` (GetOverview + GetLedger) + abstraction `IAdminFinanceStore`. Money: lấy từ snapshot `Appointment.{ActualPaidVnd, PlatformFeeVnd, TrainerShareVnd}` (DEC-029). Refund = `Σ Payment.RefundedSoFarVnd`. Range: 7d/30d/90d/all (chart gom theo local UTC+7). Ledger types: `platform_fee`/`trainer_share`/`refund`. Payout rows = 0 (blocked UA-019). Authorization: `AuthorizationGuard.EnsureRoleAsync(Admin)` + `[Authorize(Policy=AdminOnly)]`. Pagination: max=100, default=50. Validation: range/type unknown → 400. Infrastructure: `EfAdminFinanceStore` query Appointments (Paid/Completed/Refunded) + Refunds (Succeeded); member count qua Identity roles. API: `/api/v1/admin/finance/overview`, `/api/v1/admin/finance/ledger`. Unit tests: 9/9 mới PASS (192/192 tổng).
 
 ### BE-160 Workout + Weight
 - Scope: plans, exercises, sessions, weight log. Idempotency qua client_id.
