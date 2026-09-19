@@ -21,6 +21,7 @@ public static class ErrorCodes
         public const string UserNotFound = "FITMATE.IDENTITY.USER_NOT_FOUND";
         public const string Forbidden = "FITMATE.IDENTITY.FORBIDDEN";
         public const string CannotSelfElevate = "FITMATE.IDENTITY.CANNOT_SELF_ELEVATE";
+        public const string NotAuthenticated = "FITMATE.IDENTITY.NOT_AUTHENTICATED";
     }
 
     public static class Trainer
@@ -61,11 +62,23 @@ public static class ErrorCodes
     public static class Validation
     {
         public const string FieldInvalid = "FITMATE.VALIDATION.FIELD_INVALID";
+        public const string RequiredField = "FITMATE.VALIDATION.REQUIRED_FIELD";
+        public const string TooLong = "FITMATE.VALIDATION.TOO_LONG";
+        public const string TooShort = "FITMATE.VALIDATION.TOO_SHORT";
+        public const string TooMany = "FITMATE.VALIDATION.TOO_MANY";
     }
 
     public static class General
     {
         public const string NotFound = "FITMATE.GENERAL.NOT_FOUND";
         public const string Internal = "FITMATE.GENERAL.INTERNAL";
+    }
+
+    public static class Social
+    {
+        public const string PostNotFound = "FITMATE.SOCIAL.POST_NOT_FOUND";
+        public const string PostDeleteForbidden = "FITMATE.SOCIAL.POST_DELETE_FORBIDDEN";
+        public const string AlreadyReacted = "FITMATE.SOCIAL.ALREADY_REACTED";
+        public const string ReportTargetNotFound = "FITMATE.SOCIAL.REPORT_TARGET_NOT_FOUND";
     }
 }

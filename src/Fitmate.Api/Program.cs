@@ -22,6 +22,7 @@ using Fitmate.Application.Booking;
 using Fitmate.Application.Identity;
 using Fitmate.Application.Finance;
 using Fitmate.Application.Admin;
+using Fitmate.Application.Social;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -151,6 +152,10 @@ builder.Services.AddScoped<IAdminFinanceService, Fitmate.Application.Finance.Adm
 // BE-220: Admin metrics + action-required.
 builder.Services.AddScoped<IAdminMetricsStore, Fitmate.Infrastructure.Admin.EfAdminMetricsStore>();
 builder.Services.AddScoped<IAdminMetricsService, Fitmate.Application.Admin.AdminMetricsService>();
+
+// BE-180: Social (post + comment + reaction + report).
+builder.Services.AddScoped<ISocialStore, Fitmate.Infrastructure.Social.EfSocialStore>();
+builder.Services.AddScoped<ISocialService, Fitmate.Application.Social.SocialService>();
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
 // - IIdempotencyStore: EF Core backed.

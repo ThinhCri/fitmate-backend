@@ -137,7 +137,7 @@
 - Scope: visibility filter, idempotent react.
 - Depends on: BE-080
 - Done when: visibility filter pass.
-- Status: TODO
+- Status: **DONE (phiên 22, 2026-09-19)** — Application: `ISocialService` (ListPosts/GetPost/CreatePost/DeletePost/AddComment/ToggleReaction/CreateReport) + `ISocialStore` abstraction. Auth: `[Authorize]` (Bearer) + Application `EnsureAuthenticated` (Guid.Empty → Forbidden). Visibility: public feed filter; private chỉ author xem; friends cần friend check (stub `IsFriendAsync` = false sẽ chuyển sang BE-181). Cursor pagination: base64(`<unix-ms>|<guid>`) theo (CreatedAt desc, Id desc); limit 1..100, default 20. Reactions: idempotent toggle — Conflict 409 nếu user đã react (1 user 1 reaction/post). Comment: tăng `Post.CommentsCount +1`. Report: validate target tồn tại (Post/Comment/User), reason >=5 chars, max 500. Validation: content max 5000, comment max 1000, tags max 10 mỗi tag max 32. Infrastructure: `EfSocialStore` EF Core query, soft delete (`DeletedAt != null`) ẩn khỏi feed, friend filter qua `_db.Friends`. ErrorCodes bổ sung: `Social.PostNotFound/PostDeleteForbidden/AlreadyReacted/ReportTargetNotFound`, `Identity.NotAuthenticated`, `Validation.{RequiredField,TooLong,TooShort,TooMany}`. API: GET /api/v1/social/posts, GET/POST/DELETE /api/v1/social/posts/{id}, POST /api/v1/social/posts/{id}/comments, POST /api/v1/social/posts/{id}/reactions, POST /api/v1/social/reports. Unit tests: 21/21 mới PASS (219/219 tổng). Friend requests BE-181 sẽ làm sau.
 
 ### BE-190 Chat (AI + friend)
 - Scope: thread, message, AI_UNAVAILABLE.

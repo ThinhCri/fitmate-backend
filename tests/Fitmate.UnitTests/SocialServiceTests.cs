@@ -1,0 +1,321 @@
+using Fitmate.Application.Auth;
+using Fitmate.Application.Social;
+using Fitmate.Domain.Common;
+using Fitmate.Domain.Moderation;
+using Fitmate.Domain.Social;
+using FluentAssertions;
+
+namespace Fitmate.UnitTests;
+
+/// <summary>
+/// BE-180: SocialService — post feed pagination + create + visibility filter + comment + reaction toggle + report.
+/// </summary>
+public class SocialServiceTests
+{
+    private sealed class AllowAllAuthz : IAuthorizationGuard
+    {
+        public Task EnsureRoleAsync(Guid userId, string role, CancellationToken ct) => Task.CompletedTask;
+        public Task EnsureAnyRoleAsync(Guid userId, IReadOnlyCollection<string> roles, CancellationToken ct) => Task.CompletedTask;
+        public Task EnsureOwnerAsync(string r, Guid u, Guid o, CancellationToken ct) => Task.CompletedTask;
+        public Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct) => Task.FromResult<string?>("Member");
+        public Task<bool> HasRoleAsync(Guid userId, string role, CancellationToken ct) => Task.FromResult(true);
+    }
+
+    private sealed class InMemorySocialStore : ISocialStore
+    {
+        public List<SocialPostRow> Posts { get; } = new();
+        public List<SocialCommentRow> Comments { get; } = new();
+        public List<SocialReactionRow> Reactions { get; } = new();
+        public List<(Guid ReporterId, ReportTargetKind Kind, Guid TargetId, string Reason, string? Details)> Reports { get; } = new();
+        public Dictionary<Guid, SocialAuthorRow> Authors { get; } = new();
+
+        public Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
+            Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
+        {
+            IEnumerable<SocialPostRow> q = Posts;
+            if (scope == FeedScope.Public)
+                q = q.Where(p => p.Visibility == PostVisibility.Public);
+            else
+                q = q.Where(p => p.Visibility == PostVisibility.Public || (viewerId.HasValue && p.AuthorId == viewerId.Value));
+            if (cursorCreatedAt.HasValue && cursorId.HasValue)
+                q = q.Where(p => p.CreatedAt < cursorCreatedAt.Value
+                              || (p.CreatedAt == cursorCreatedAt.Value && p.Id.CompareTo(cursorId.Value) < 0));
+            var ordered = q.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id).Take(limit).ToList();
+            return Task.FromResult<(IReadOnlyList<SocialPostRow>, string?)>((ordered, null));
+        }
+
+        public Task<SocialPostRow?> GetPostByIdAsync(Guid postId, CancellationToken ct)
+            => Task.FromResult<SocialPostRow?>(Posts.FirstOrDefault(p => p.Id == postId));
+        public Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct) => GetPostByIdAsync(postId, ct);
+
+        public Task AddPostAsync(SocialPostRow row, CancellationToken ct) { Posts.Add(row); return Task.CompletedTask; }
+        public Task<bool> RemovePostAsync(Guid postId, CancellationToken ct)
+        {
+            var p = Posts.FirstOrDefault(x => x.Id == postId);
+            if (p is null) return Task.FromResult(false);
+            Posts.Remove(p);
+            return Task.FromResult(true);
+        }
+        public Task<bool> PostExistsAsync(Guid postId, CancellationToken ct)
+            => Task.FromResult(Posts.Any(p => p.Id == postId));
+        public Task AddCommentAsync(SocialCommentRow row, CancellationToken ct) { Comments.Add(row); return Task.CompletedTask; }
+        public Task<bool> HasReactionAsync(Guid postId, Guid userId, CancellationToken ct)
+            => Task.FromResult(Reactions.Any(r => r.PostId == postId && r.UserId == userId));
+        public Task AddReactionAsync(SocialReactionRow row, CancellationToken ct)
+        {
+            Reactions.Add(row);
+            return Task.CompletedTask;
+        }
+        public Task<int> ChangePostReactionsAsync(Guid postId, int delta, CancellationToken ct)
+        {
+            var idx = Posts.FindIndex(x => x.Id == postId);
+            if (idx < 0) return Task.FromResult(0);
+            Posts[idx] = Posts[idx] with { ReactionsCount = Math.Max(0, Posts[idx].ReactionsCount + delta) };
+            return Task.FromResult(Posts[idx].ReactionsCount);
+        }
+        public Task<int> ChangePostCommentsAsync(Guid postId, int delta, CancellationToken ct)
+        {
+            var idx = Posts.FindIndex(x => x.Id == postId);
+            if (idx < 0) return Task.FromResult(0);
+            Posts[idx] = Posts[idx] with { CommentsCount = Math.Max(0, Posts[idx].CommentsCount + delta) };
+            return Task.FromResult(Posts[idx].CommentsCount);
+        }
+        public Task<bool> TargetExistsAsync(ReportTargetKind kind, Guid targetId, CancellationToken ct) => Task.FromResult(kind switch
+        {
+            ReportTargetKind.Post => Posts.Any(p => p.Id == targetId),
+            ReportTargetKind.Comment => Comments.Any(c => c.Id == targetId),
+            ReportTargetKind.User => Authors.ContainsKey(targetId),
+            _ => false
+        });
+        public Task AddReportAsync(Guid reporterId, ReportTargetKind kind, Guid targetId, string reason, string? details, CancellationToken ct)
+        {
+            Reports.Add((reporterId, kind, targetId, reason, details));
+            return Task.CompletedTask;
+        }
+        public Task<SocialAuthorRow?> GetAuthorAsync(Guid userId, CancellationToken ct)
+            => Task.FromResult<SocialAuthorRow?>(Authors.GetValueOrDefault(userId));
+    }
+
+    private static SocialService NewService(InMemorySocialStore store) => new(store, new AllowAllAuthz());
+
+    private static SocialPostRow NewPost(Guid author, PostVisibility vis, string content = "hi", DateTime? at = null, int reactions = 0, int comments = 0)
+        => new(Guid.NewGuid(), author, content, null, null, new List<string>(), vis, false, reactions, comments, at ?? DateTime.UtcNow);
+
+    [Fact]
+    public async Task CreatePost_Validates_Required_Content()
+    {
+        var s = NewService(new InMemorySocialStore());
+        var act = () => s.CreatePostAsync(Guid.NewGuid(),
+            new PostInput("", null, null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.RequiredField);
+    }
+
+    [Fact]
+    public async Task CreatePost_Rejects_TooLong_Content()
+    {
+        var s = NewService(new InMemorySocialStore());
+        var act = () => s.CreatePostAsync(Guid.NewGuid(),
+            new PostInput(new string('x', 5001), null, null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooLong);
+    }
+
+    [Fact]
+    public async Task CreatePost_Rejects_TooMany_Tags()
+    {
+        var s = NewService(new InMemorySocialStore());
+        var tags = Enumerable.Range(0, 11).Select(i => $"t{i}").ToList();
+        var act = () => s.CreatePostAsync(Guid.NewGuid(),
+            new PostInput("ok", null, null, tags, PostVisibility.Public, false), CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooMany);
+    }
+
+    [Fact]
+    public async Task CreatePost_PersistsAndReturns()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Authors[author] = new SocialAuthorRow(author, "A", null);
+        var s = NewService(store);
+
+        var post = await s.CreatePostAsync(author,
+            new PostInput("hello", null, null, new List<string> { "fit" }, PostVisibility.Public, false), CancellationToken.None);
+
+        post.Content.Should().Be("hello");
+        post.Tags.Should().ContainSingle("fit");
+        post.ReactionsCount.Should().Be(0);
+        store.Posts.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task ListPosts_PublicScope_FiltersOutPrivate()
+    {
+        var store = new InMemorySocialStore();
+        store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
+        store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Private));
+        var page = await NewService(store).ListPostsAsync(viewerId: null, FeedScope.Public, cursor: null, limit: 10, CancellationToken.None);
+        page.Items.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task ListPosts_FriendsScope_OnlyForViewer()
+    {
+        var store = new InMemorySocialStore();
+        var viewer = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        store.Posts.Add(NewPost(viewer, PostVisibility.Friends));
+        store.Posts.Add(NewPost(other, PostVisibility.Friends));
+        store.Posts.Add(NewPost(other, PostVisibility.Public));
+
+        var page = await NewService(store).ListPostsAsync(viewer, FeedScope.Friends, null, 10, CancellationToken.None);
+        // Viewer thấy: chính mình friends + other's public = 2
+        page.Items.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ListPosts_LimitClampedToMax()
+    {
+        var store = new InMemorySocialStore();
+        for (var i = 0; i < 200; i++) store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
+        var page = await NewService(store).ListPostsAsync(null, FeedScope.Public, null, 1000, CancellationToken.None);
+        page.Items.Should().HaveCount(100); // MaxLimit
+    }
+
+    [Fact]
+    public async Task GetPost_Private_NotVisible_ToOthers()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid(); var viewer = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Private));
+        var act = () => NewService(store).GetPostAsync(viewer, store.Posts[0].Id, CancellationToken.None);
+        await act.Should().ThrowAsync<NotFoundException>();
+    }
+
+    [Fact]
+    public async Task GetPost_AuthorCanSeeOwnPrivate()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Authors[author] = new SocialAuthorRow(author, "A", null);
+        store.Posts.Add(NewPost(author, PostVisibility.Private, "secret"));
+        var p = await NewService(store).GetPostAsync(author, store.Posts[0].Id, CancellationToken.None);
+        p.Content.Should().Be("secret");
+    }
+
+    [Fact]
+    public async Task DeletePost_Author_Allowed()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        await NewService(store).DeletePostAsync(author, isAdmin: false, store.Posts[0].Id, CancellationToken.None);
+        store.Posts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DeletePost_OtherUser_Forbidden()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid(); var other = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        var act = () => NewService(store).DeletePostAsync(other, false, store.Posts[0].Id, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task DeletePost_Admin_AnyPost()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        await NewService(store).DeletePostAsync(Guid.NewGuid(), isAdmin: true, store.Posts[0].Id, CancellationToken.None);
+        store.Posts.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AddComment_TooLong_Rejected()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        var act = () => NewService(store).AddCommentAsync(Guid.NewGuid(), store.Posts[0].Id, new string('x', 1001), CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooLong);
+    }
+
+    [Fact]
+    public async Task AddComment_PostNotFound_NotFound()
+    {
+        var s = NewService(new InMemorySocialStore());
+        var act = () => s.AddCommentAsync(Guid.NewGuid(), Guid.NewGuid(), "hi", CancellationToken.None);
+        await act.Should().ThrowAsync<NotFoundException>();
+    }
+
+    [Fact]
+    public async Task AddComment_IncrementsCounter()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        await NewService(store).AddCommentAsync(author, store.Posts[0].Id, "nice", CancellationToken.None);
+        store.Posts[0].CommentsCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ToggleReaction_FirstTime_Succeeds()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid(); var reactor = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        await NewService(store).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
+        store.Reactions.Should().HaveCount(1);
+        store.Posts[0].ReactionsCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ToggleReaction_SecondTime_Conflict()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid(); var reactor = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        await NewService(store).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
+        var act = () => NewService(store).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Flame, CancellationToken.None);
+        await act.Should().ThrowAsync<ConflictException>().Where(e => e.Code == ErrorCodes.Social.AlreadyReacted);
+    }
+
+    [Fact]
+    public async Task Report_TooShort_Rejected()
+    {
+        var s = NewService(new InMemorySocialStore());
+        var act = () => s.CreateReportAsync(Guid.NewGuid(),
+            new ReportInputDto(ReportTargetKind.Post, Guid.NewGuid(), "abc", null), CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooShort);
+    }
+
+    [Fact]
+    public async Task Report_TargetNotFound_Rejected()
+    {
+        var s = NewService(new InMemorySocialStore());
+        var act = () => s.CreateReportAsync(Guid.NewGuid(),
+            new ReportInputDto(ReportTargetKind.Post, Guid.NewGuid(), "spam content here", null), CancellationToken.None);
+        await act.Should().ThrowAsync<NotFoundException>().Where(e => e.Code == ErrorCodes.Social.ReportTargetNotFound);
+    }
+
+    [Fact]
+    public async Task Report_Valid_ReturnsId()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        var id = await NewService(store).CreateReportAsync(Guid.NewGuid(),
+            new ReportInputDto(ReportTargetKind.Post, store.Posts[0].Id, "spam content", "details"), CancellationToken.None);
+        id.Should().NotBe(Guid.Empty);
+        store.Reports.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task AnonymousViewer_Rejected()
+    {
+        var s = NewService(new InMemorySocialStore());
+        var act = () => s.GetPostAsync(Guid.Empty, Guid.NewGuid(), CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+}
