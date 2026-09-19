@@ -5,7 +5,7 @@
 ## Phiên hiện tại
 
 - **Ngày**: 2026-09-19
-- **Phiên 21**: Triển khai **BE-220** (Admin metrics + action-required).
+- **Phiên 22**: Triển khai **BE-180** (Social: post, comment, reaction, report).
   - **Application** (pure): `IAdminUserService` (List/SetLock) + abstraction `IAdminUserStore`. Service enforce role Admin ở Application (BE-090) + ngăn self-lock + validate reason ≥ 5 chars. Audit: `user.lock` / `user.unlock` với reason qua `IAuditLogger`. SecurityStamp bump → invalidate JWT/refresh tokens.
   - **Infrastructure**: `EfAdminUserStore` dùng `UserManager.SetLockoutEnabledAsync/SetLockoutEndDateAsync/UpdateSecurityStampAsync`. List filter: role (member/pt/admin), status (active/locked/pending_deletion), search (email/userName ILIKE), pagination max=100, sort allowlist (`createdAt:asc|desc`, `email:asc|desc`).
   - **Api**: `AdminUsersController` Authorize role=Admin: `GET /api/v1/admin/users` (list + filter + sort + page), `GET /api/v1/admin/users/{id}` (summary), `POST /api/v1/admin/users/{id}/lock` (lock/unlock với reason).
@@ -86,12 +86,13 @@
   - **Kết quả**: `dotnet build` 0 warning 0 error; `dotnet test` **37/37 PASS** (0 failed, 0 skipped). Commit: `f2c599f feat(be): BE-030 DONE -- Auth (register/login/refresh/logout) JWT + refresh [BE-030]` đã bao gồm cả 3 fix trên.
 - **Phiên 10**: Triển khai BE-030 (Auth: register/login/refresh/logout). Tạo `src/Fitmate.Application/Auth/JwtTokenService.cs` (HS256, claims `sub/email/jti/role/full_name`) + `RefreshTokenService.cs` (SHA-256 hash, rotate-on-use, revoke idempotent) + `IRefreshTokenStore` interface. Contracts: `RegisterRequest`/`LoginRequest`/`RefreshRequest`/`AuthResponse`/`UserSummaryDto`. Validators FluentValidation (member-only vs pt-only). Controller `/api/v1/auth/{register,login,refresh,logout}` với `[Authorize]` cho logout. Program.cs: `AddAuthentication` + `AddJwtBearer` + `AddAuthorization` + `AddValidatorsFromAssemblyContaining`. `FitmateProblemDetails` (rename từ `ProblemDetailsFactory` để tránh xung đột với ASP.NET Core's `ProblemDetailsFactory`). Unit tests: 17/17 mới PASS (37/37 tổng).
 - **Lưu ý**: BE-030 dùng JWT HS256 với key từ `JWT_SIGNING_KEY` env (đã có sẵn trong `.env.example`). Production cần key ≥64 bytes (HS512) — đã ghi warning ở Program.cs. Auto-review chặn web host + DB nên chưa có integration test cho route 4xx (sẽ làm ở BE-070 khi có WebApplicationFactory + Testcontainers Postgres).
-- **Tiếp theo** (BE-160 Status migration hoặc BE-180 Social):
-  - **BE-160 Status migration** — schema migration: `Appointment.HoldId FK`, tách enum `BookingStatus` → `AppointmentStatus` (DEC-026), `booking_reschedule_events`. Cho phép BE-060 hoàn thiện Confirm/Accept + analytics chính xác (phân biệt trạng thái buổi tập vs trạng thái thanh toán).
-  - **BE-180 Social (post + comment + react + report)** — community feed; report queue BE-220 đã có đếm pending. Không phụ thuộc schema migration.
-  - **BE-151 platform-policy read** — `GET /admin/platform-policy` chưa làm (BE-150 follow-up), sẽ cần `PlatformPolicy` table + migration.
-  - Đề xuất: đi **BE-180 (social)** tiếp — community feed là 1 trong 2 phần lớn còn thiếu cho mobile app, không phụ thuộc schema migration. Report pipeline sẽ làm ở BE-210 (moderation).
-  - Sau BE-180 → BE-210 (moderation) → BE-160 (status migration) → BE-151 (platform-policy). Khi có payment integration (VNPay) sẽ triển khai BE-130 + BE-140 + BE-600.
+- **Tiếp theo** (BE-210 Moderation hoặc BE-181 Friends):
+  - **BE-210 Moderation** — admin xử lý reports (list/resolve/dismiss) + audit log. Sử dụng `Report` entity đã có; cần `/admin/reports` endpoints + `/admin/reports/{id}/resolve|dismiss`.
+  - **BE-181 Friends** — friend requests + friend list (POST /social/friends/requests, accept/reject, list friends). BE-180 đã có stub `IsFriendAsync` = false; BE-181 sẽ thay bằng query thật.
+  - **BE-160 Status migration** — schema migration cho Confirm/Accept + phân biệt trạng thái buổi tập vs thanh toán.
+  - **BE-151 platform-policy read** — read-only endpoint cho phí nền tảng.
+  - Đề xuất: đi **BE-210 (moderation)** tiếp — `/admin/reports` cần cho Admin Web ViolationReports module (đã có action-required count `pending_reports` từ BE-220). BE-210 phụ thuộc Report entity đã có (BE-180 đã có POST /reports).
+  - Sau BE-210 → BE-181 (friends) → BE-160 (status migration) → BE-151 (platform-policy). Khi có payment integration (VNPay) sẽ triển khai BE-130 + BE-140 + BE-600.
 
 ### Phiên 7 — đã làm
 
