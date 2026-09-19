@@ -4,6 +4,35 @@
 
 ## Phiên hiện tại
 
+### Phiên 26 — đã làm (2026-09-19) [BE-151]
+
+**BE-151: GET /admin/platform-policy (read-only theo DEC-029)** — DONE.
+
+Triển khai endpoint read-only để Admin Web (`Settings.jsx`) hiển thị chính sách phí nền tảng cố định 10%, đồng thời cung cấp foundation cho FE convert sang % và policy_version cho audit.
+
+**Triển khai:**
+- `PlatformPolicyOptions` (Application/Common): bind section `PlatformPolicy` qua env `PLATFORM_POLICY__FEEBPS/POLICYVERSION/EFFECTIVEFROMUTC`. Default 1000 bps / "v1" / 2026-09-19 UTC. Bps ∈ [0,10000] validate qua `Money.ValidateBps`.
+- `IPlatformPolicyService` + `PlatformPolicyService` + record `PlatformPolicy` (PlatformFeeRateBps, PolicyVersion, EffectiveFrom, Editable=false, DisplayHint). Service enforce role Admin qua `IAuthorizationGuard.EnsureRoleAsync` (BE-090) — chống bypass controller filter.
+- `AdminPlatformPolicyController` (`/api/v1/admin/platform-policy`): `[Authorize(Policy=AdminOnly")]` + route `[HttpGet]` chỉ.
+- `Program.cs`: bind section + register service.
+- `.env.example` + `.env`: thêm block `# ===== Platform policy (DEC-029 read-only) =====` với default 10%.
+- `tasks.md` BE-151 → DONE.
+
+**Kết quả**:
+- `dotnet build`: 0 error (1 warning pre-existing xUnit1031 trong `AuthorizationGuardTests.cs:37`, không liên quan).
+- `dotnet test`: **275/275 PASS** (9 mới + 266 cũ; 0 failed, 0 skipped). Note: `JwtTokenServiceTests.Validate_ReturnsNull_ForTamperedToken` được ghi pre-existing fail ở phiên 24 không còn fail khi chạy sau BE-151 — có thể do build cache refresh. Đã verify bằng cách chạy lại full test suite.
+- OpenAPI spec cho endpoint đã có sẵn (BE-150 scope mở rộng), không cần update.
+
+**Files changed**:
+- Domain/Application: `src/Fitmate.Application/Common/PlatformPolicyOptions.cs` (new), `src/Fitmate.Application/Finance/PlatformPolicyService.cs` (new — interface + record + impl), `src/Fitmate.Application/Common/AppOptions.cs` (+PlatformPolicy property).
+- Api: `src/Fitmate.Api/Admin/AdminPlatformPolicyController.cs` (new), `src/Fitmate.Api/Program.cs` (Configure section + DI).
+- Tests: `tests/Fitmate.UnitTests/PlatformPolicyTests.cs` (new — 9 tests).
+- Docs: `docs/backend-release/tasks.md` (BE-151 entry + DONE summary update), `docs/backend-release/handoff.md` (phiên 26 này).
+
+**Pending integration (ghi tasks.md, không block)**:
+- BE-310 Integration test WebApplicationFactory sẽ cover route 200 + 401/403 cho endpoint này.
+- Post-MVP: `POST /admin/platform-policy` cho phép admin sửa (DEC-029 §"Khi scale") — cần `platform_policies` table + audit + version + cool-down. Chưa có trong release đầu.
+
 ### Phiên 25 — đã làm (2026-09-19) [BE-181]
 
 **BE-181: Friend + Friendship + Block** — DONE.
@@ -289,6 +318,7 @@ Triển khai xong các quyết định user đã chốt:
 - **Phiên 16**: `dotnet test` **154/154 PASS** (BookingService 15 + 139 cũ). 0 failed, 0 skipped.
 - **Phiên 17**: `dotnet test` **164/164 PASS** (AuthorizationGuard 8 + BookingAuthzIntegration 2 + 154 cũ). 0 failed, 0 skipped. 1 warning cosmetic xUnit1031 (HasRoleAsync gọi `.Result` trong AuthorizationGuardTests).
 - **Phiên 18**: `dotnet test` **173/173 PASS** (AdminUserService 9 + 164 cũ). 0 failed, 0 skipped.
+- **Phiên 26**: `dotnet test` **275/275 PASS** (PlatformPolicyTests 9 + 266 cũ). 0 failed, 0 skipped. Pre-existing fail `JwtTokenServiceTests.Validate_ReturnsNull_ForTamperedToken` (ghi từ phiên 24) không tái diễn.
 
 ## Kết quả đo tải
 

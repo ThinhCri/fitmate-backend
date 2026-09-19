@@ -11,6 +11,7 @@ public class AppOptions
     public AiOptions Ai { get; set; } = new();
     public CorsOptions Cors { get; set; } = new();
     public RateLimitOptions RateLimit { get; set; } = new();
+    public PlatformPolicyOptions PlatformPolicy { get; set; } = new();
 }
 
 public class JwtOptions

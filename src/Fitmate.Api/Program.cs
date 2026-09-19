@@ -57,6 +57,8 @@ builder.Configuration.AddEnvironmentVariables();
 // Options binding.
 builder.Services.Configure<AppOptions>(builder.Configuration);
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
+builder.Services.Configure<Fitmate.Application.Common.PlatformPolicyOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Common.PlatformPolicyOptions.SectionName));
 
 // DB.
 var dbHost = builder.Configuration["DB_HOST"] ?? "localhost";
@@ -149,6 +151,9 @@ builder.Services.AddScoped<IAdminUserService, Fitmate.Application.Identity.Admin
 // BE-150: Admin finance.
 builder.Services.AddScoped<IAdminFinanceStore, Fitmate.Infrastructure.Finance.EfAdminFinanceStore>();
 builder.Services.AddScoped<IAdminFinanceService, Fitmate.Application.Finance.AdminFinanceService>();
+
+// BE-151: Platform policy (read-only).
+builder.Services.AddScoped<IPlatformPolicyService, Fitmate.Application.Finance.PlatformPolicyService>();
 
 // BE-220: Admin metrics + action-required.
 builder.Services.AddScoped<IAdminMetricsStore, Fitmate.Infrastructure.Admin.EfAdminMetricsStore>();

@@ -129,6 +129,12 @@
 - Done when: dashboard numbers khớp với payment state; `GET /admin/platform-policy` trả `{platform_fee_rate_bps: 1000, policy_version, effective_from, editable: false}`.
 - Status: **DONE (phiên 20, 2026-09-19)** — overview + ledger; GET /admin/platform-policy chưa làm (chờ cấu hình `PlatformPolicy` table — tách task con). Application: `IAdminFinanceService` (GetOverview + GetLedger) + abstraction `IAdminFinanceStore`. Money: lấy từ snapshot `Appointment.{ActualPaidVnd, PlatformFeeVnd, TrainerShareVnd}` (DEC-029). Refund = `Σ Payment.RefundedSoFarVnd`. Range: 7d/30d/90d/all (chart gom theo local UTC+7). Ledger types: `platform_fee`/`trainer_share`/`refund`. Payout rows = 0 (blocked UA-019). Authorization: `AuthorizationGuard.EnsureRoleAsync(Admin)` + `[Authorize(Policy=AdminOnly)]`. Pagination: max=100, default=50. Validation: range/type unknown → 400. Infrastructure: `EfAdminFinanceStore` query Appointments (Paid/Completed/Refunded) + Refunds (Succeeded); member count qua Identity roles. API: `/api/v1/admin/finance/overview`, `/api/v1/admin/finance/ledger`. Unit tests: 9/9 mới PASS (192/192 tổng).
 
+### BE-151 GET /admin/platform-policy
+- Scope: read-only endpoint trả `{platform_fee_rate_bps: 1000, policy_version, effective_from, editable: false}` theo DEC-029. Không có POST trong release đầu.
+- Depends on: BE-110 (admin authz), BE-100 (Money.ValidateBps + FormatPercent).
+- Done when: GET /admin/platform-policy trả 200 đúng schema, default 10% (1000 bps), override qua env `PLATFORM_POLICY__FEEBPS` cho staging test, bps ngoài [0,10000] throw.
+- Status: **DONE (phiên 26, 2026-09-19)** — `PlatformPolicyOptions` (Application/Common) bind section `PlatformPolicy` qua env `PLATFORM_POLICY__FEEBPS/POLICYVERSION/EFFECTIVEFROMUTC` (default 1000/v1/2026-09-19). `IPlatformPolicyService` + `PlatformPolicyService` + record `PlatformPolicy` (PlatformFeeRateBps/PolicyVersion/EffectiveFrom/Editable/DisplayHint). Service enforce role Admin qua `IAuthorizationGuard.EnsureRoleAsync` (BE-090) + validate bps qua `Money.ValidateBps`. Controller `AdminPlatformPolicyController` `[Authorize(Policy=AdminOnly)]` route `/api/v1/admin/platform-policy`. DI bind section `PlatformPolicy` trong Program.cs. Unit tests: 9/9 mới PASS (275/275 tổng) — default, override, boundary 0/10000, negative/out-of-range throws ArgumentOutOfRangeException, Editable=false invariant, PolicyVersion/EffectiveFrom propagate, options defaults sanity.
+
 ### BE-160 Workout + Weight
 - Scope: plans, exercises, sessions, weight log. Idempotency qua client_id.
 - Depends on: BE-080
@@ -259,7 +265,7 @@
 
 | Status | Count |
 |---|---|
-| DONE | 12 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110) |
+| DONE | 13 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151) |
 | IN_PROGRESS | 0 |
 | PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
 | TODO | ~16 |
