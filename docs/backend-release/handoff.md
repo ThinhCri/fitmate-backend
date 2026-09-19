@@ -4,6 +4,18 @@
 
 ## Phiên hiện tại
 
+### Commit message maintenance — 2026-09-19 [BE-350]
+
+- User authorized rewriting local commit messages in this repository only.
+- Normalized all 33 commits after local `main` into descriptive English Conventional Commits. Translated Vietnamese message bodies and removed repetitive bullet prefixes. No `Co-authored-by` trailers remained in this range at the start; the new policy prevents adding them to future messages.
+- Preserved every commit tree, mapped parent chain, author/committer identity, and author/committer timestamp. No application code changes, squash, reorder, push, or remote history rewrite.
+- Previous HEAD: `18ae101d8183e3124cf933042765870351af6cba`; rewritten HEAD before the policy commit: `99849d9584e55f61ec49f7156f9f6a5bd67753fc`.
+- Backup: `backup/english-messages-2026-09-19T07-21-40-817Z`. Recovery without disturbing the current branch: `git switch -c recovery/before-message-cleanup backup/english-messages-2026-09-19T07-21-40-817Z` (use a clean working tree).
+- Full old/new mapping: `.git/commit-message-cleanup/2026-09-19T07-21-40-817Z/mapping.json`. Earlier handoff entries contain historical hashes from prior Cursor rewrites; use Git subjects, task IDs, and backup history rather than assuming those old hashes identify current commits.
+- Added English-only and no-attribution instructions to `AGENTS.md` and `.cursor/rules/commit-policy.mdc`. No active Git message hooks were found; global Git settings were not changed.
+- Remote verification found that `origin/main` was already rewritten externally to `c1c7a71`; local `main` remains `22eadf2`. None of the 33 target commits occur in remote history. Do not automatically rebase or push to reconcile the separate histories.
+- Next: continue the existing backend task plan; this maintenance does not mark any backend feature complete.
+
 - **Ngày**: 2026-09-19
 - **Phiên 23**: Triển khai **BE-210** (Moderation: list/resolve/dismiss reports).
   - **Application** (pure): `IAdminUserService` (List/SetLock) + abstraction `IAdminUserStore`. Service enforce role Admin ở Application (BE-090) + ngăn self-lock + validate reason ≥ 5 chars. Audit: `user.lock` / `user.unlock` với reason qua `IAuditLogger`. SecurityStamp bump → invalidate JWT/refresh tokens.

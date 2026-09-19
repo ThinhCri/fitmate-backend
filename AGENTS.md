@@ -63,6 +63,10 @@ Tài liệu nguồn chuẩn: [`docs/backend-release/README.md`](docs/backend-rel
 
 ## Commit
 
+- Write all commit subjects and bodies in English, using imperative summaries that describe the actual change.
+- Do not add `Co-authored-by` trailers, AI attribution, or tool-generated signatures.
+- Preserve existing task IDs and meaningful non-attribution trailers; do not invent task IDs when rewriting messages.
+- Inspect the final message after committing. History rewrites require explicit user authorization for the specific scope.
 - Conventional Commits: `<type>(<scope>): <desc> [BE-NNN]`
 - Không push/merge/amend/reset --hard.
 - Không commit secrets.

@@ -4,6 +4,14 @@
 
 ## Giai đoạn 1 — Nền tảng (không cần provider)
 
+### BE-350 Normalize local commit messages and define commit policy
+- Scope: normalize the 33 local commits after `main`; preserve every commit tree, parent relationship, author/committer identity, and timestamp. Add an English-only, attribution-free commit policy.
+- Authorization: user explicitly requested this local history rewrite on 2026-09-19. No remote history changes or push authorized.
+- Status: DONE — all 33 rewritten commit trees and metadata verified; no merge or signed commits in the target range. Existing base and backup branches retained.
+- Backup: `backup/english-messages-2026-09-19T07-21-40-817Z`.
+- Mapping: `.git/commit-message-cleanup/2026-09-19T07-21-40-817Z/mapping.json` (local recovery metadata, not committed).
+- Validation: English-only messages; no attribution trailers in the rewritten range; old and new HEAD trees identical before this documentation update. No application tests required for message-only changes.
+
 ### BE-001 Scaffold .NET solution
 - Repo: FitmateAI_BE
 - Scope: solution + projects (Api, Application, Domain, Infrastructure, Tests). .gitignore chuẩn .NET.
