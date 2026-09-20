@@ -283,24 +283,51 @@ paths:
   /users/me/devices:
     post:
       tags: [Users]
-      summary: Đăng ký push device
+      summary: Register push device token
       operationId: registerDevice
+      description: |
+        Registers or refreshes a device token for push delivery.
+        Idempotent: re-registering the same token updates the last_used_at timestamp.
+        The token is stored encrypted (DataProtection) and never echoed back.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [device_token, platform]
+              required: [device_token, platform, provider]
               properties:
                 device_token:
                   type: string
+                  minLength: 32
+                  maxLength: 4096
+                  description: Raw push token from FCM / Expo Push API. Never stored in plain text.
+                  example: "fcm:dQw4w9WgXcQ:APA91bH..."
                 platform:
                   type: string
                   enum: [android, ios, web]
+                provider:
+                  type: string
+                  enum: [fcm, expo]
+      responses:
+        '200':
+          description: Device registered or refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+    delete:
+      tags: [Users]
+      summary: Revoke a device
+      operationId: revokeDevice
+      description: Soft-revokes a device so it stops receiving push notifications.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
       responses:
         '204':
-          description: No Content
+          description: Device revoked
 
   /trainers:
     get:
@@ -1570,6 +1597,9 @@ paths:
       tags: [Chat]
       summary: Gửi message cho bạn
       operationId: sendFriendMessage
+      description: |
+        BE-191. Sender lấy từ authenticated context. Chỉ gửi được khi vẫn là
+        bạn và không bị block ở cả 2 chiều. Idempotent qua `client_message_id`.
       requestBody:
         required: true
         content:
@@ -1578,13 +1608,18 @@ paths:
               type: object
               required: [peer_email, text]
               properties:
-                peer_email:
+                peer_user_id:
                   type: string
-                  format: email
+                  format: uuid
+                  description: BE-191: thay peer_email (DEC-036). UUID của người nhận.
                 text:
                   type: string
                   minLength: 1
                   maxLength: 2000
+                client_message_id:
+                  type: string
+                  format: uuid
+                  nullable: true
       responses:
         '201':
           description: Created
@@ -1593,7 +1628,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChatMessage'
         '403':
-          description: Không phải bạn bè
+          description: Không phải bạn hoặc đã bị block 1 trong 2 chiều
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: |
+            Cùng `client_message_id` nhưng payload khác
+            (`FITMATE.CHAT.IDEMPOTENCY_MISMATCH`).
           content:
             application/json:
               schema:
@@ -1604,15 +1647,133 @@ paths:
       tags: [Chat]
       summary: Conversations của tôi
       operationId: listConversations
+      description: |
+        BE-191. Cursor pagination theo (last_message_at desc, id desc).
+        `limit` 1..100, default 30. Trả last_message + unread_count cho mỗi
+        conversation (count = message do peer gửi sau marker read).
+      parameters:
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Conversation'
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Conversation'
+                  nextCursor:
+                    type: string
+                    nullable: true
+
+  /chat/friends/conversations/{id}:
+    get:
+      tags: [Chat]
+      summary: 1 conversation của tôi
+      operationId: getConversation
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '404':
+          description: Không phải participant hoặc không tồn tại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /chat/friends/conversations/{id}/messages:
+    get:
+      tags: [Chat]
+      summary: Messages của 1 conversation
+      operationId: listFriendMessages
+      description: |
+        BE-191. Cursor (created_at desc, id desc). `limit` 1..100, default 30.
+        Caller phải là participant (404 nếu không — không leak existence).
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatMessage'
+                  nextCursor:
+                    type: string
+                    nullable: true
+        '404':
+          description: Không phải participant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /chat/friends/conversations/{id}/read:
+    post:
+      tags: [Chat]
+      summary: Đánh dấu đã đọc đến message
+      operationId: markFriendMessagesRead
+      description: |
+        BE-191. Marker read chỉ tiến lên — multi-device không lùi. Caller
+        phải là participant và `last_read_message_id` phải thuộc conversation.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkReadRequest'
+      responses:
+        '204':
+          description: Marked (no-op nếu marker cũ hơn hoặc trùng)
+        '400':
+          description: last_read_message_id không tồn tại hoặc không thuộc conversation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Không phải participant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
 
   /me/notifications:
     get:
@@ -2364,6 +2525,18 @@ components:
           description: seconds
         user:
           $ref: '#/components/schemas/UserSummary'
+
+    DeviceRegistrationResponse:
+      type: object
+      properties:
+        device_id:
+          type: string
+          format: uuid
+          description: Persistent id for this device registration.
+        registered_at:
+          type: string
+          format: date-time
+          description: UTC timestamp of registration or last refresh.
 
     UserSummary:
       type: object
@@ -3352,14 +3525,27 @@ components:
       properties:
         id:
           type: string
-        thread_id:
+          format: uuid
+        conversation_id:
           type: string
+          format: uuid
+          nullable: true
+          description: BE-191: null khi message thuộc AI thread; non-null cho friend chat.
+        sender_user_id:
+          type: string
+          format: uuid
           nullable: true
         sender:
           type: string
           enum: [user, ai, peer]
         text:
           type: string
+          maxLength: 2000
+        client_message_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: BE-191: idempotency key do client sinh. Unique per conversation.
         created_at:
           type: string
           format: date-time
@@ -3367,28 +3553,60 @@ components:
     Conversation:
       type: object
       properties:
+        conversation_id:
+          type: string
+          format: uuid
         peer:
           $ref: '#/components/schemas/UserSummary'
         last_message:
           $ref: '#/components/schemas/ChatMessage'
         unread_count:
           type: integer
+        last_message_at:
+          type: string
+          format: date-time
+
+    MarkReadRequest:
+      type: object
+      required: [last_read_message_id]
+      properties:
+        last_read_message_id:
+          type: string
+          format: uuid
 
     Notification:
       type: object
       properties:
         id:
           type: string
+          format: uuid
         type:
           type: string
           enum: [friend_request, system, reminder, booking, payment]
         title:
           type: string
+          maxLength: 120
         message:
           type: string
+          maxLength: 500
+        summary:
+          type: string
+          nullable: true
+          description: Short text for lock-screen / push payload (max 120 chars).
         payload:
           type: object
+          nullable: true
           additionalProperties: true
+          description: Per-type JSON payload. friend_request → {requestId, senderId}; system → {reportId, reason}.
+        sourceEventId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Domain event id for idempotency dedup.
+        sourceType:
+          type: string
+          nullable: true
+          description: 'Source domain: e.g. friend_request_sent, friend_request_accepted, moderation_warning.'
         read:
           type: boolean
         created_at:

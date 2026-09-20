@@ -107,4 +107,18 @@ public static class ErrorCodes
     {
         public const string InvalidDuration = "FITMATE.LOCK.INVALID_DURATION";
     }
+
+    // BE-191: friend chat error codes
+    public static class Chat
+    {
+        public const string NotFriend = "FITMATE.CHAT.NOT_FRIEND";
+        public const string Blocked = "FITMATE.CHAT.BLOCKED";
+        public const string CannotSelfMessage = "FITMATE.CHAT.CANNOT_SELF_MESSAGE";
+        public const string ConversationNotFound = "FITMATE.CHAT.CONVERSATION_NOT_FOUND";
+        public const string NotParticipant = "FITMATE.CHAT.NOT_PARTICIPANT";
+        public const string MessageNotFound = "FITMATE.CHAT.MESSAGE_NOT_FOUND";
+        public const string IdempotencyMismatch = "FITMATE.CHAT.IDEMPOTENCY_MISMATCH";
+        public const string EmptyText = "FITMATE.CHAT.EMPTY_TEXT";
+        public const string TextTooLong = "FITMATE.CHAT.TEXT_TOO_LONG";
+    }
 }

@@ -233,3 +233,59 @@ Mỗi audit row: `actor_id`, `actor_role`, `action`, `target_type`, `target_id`,
 - Retry worker kiểm tra block + request status trước khi dispatch notification. Không tạo notification trùng (event ID + dedup).
 - Block / unblock enqueue outbox cho audit/đồng bộ (consumer chưa có → không có user-visible notification).
 
+## 12. Friend chat policy (BE-191, chốt 2026-09-20)
+
+### 12.1 Conversation canonical
+
+- Mỗi cặp friend có đúng 1 `FriendConversation` canonical `(UserLowId, UserHighId)` với `UserLowId < UserHighId`. Đồng bộ với Friendship (DEC-037).
+- `CHECK (user_low_id < user_high_id)` + `UNIQUE (user_low_id, user_high_id)` ở DB.
+- 2 request đồng thời tạo conversation → chỉ 1 row (UNIQUE constraint); retry qua lookup.
+- Không cascade delete với Friendship.
+
+### 12.2 Idempotency
+
+- Client cung cấp `client_message_id` (UUID v4) optional trong `POST /chat/friends/messages`.
+- Partial unique `(conversation_id, client_message_id) WHERE ConversationId IS NOT NULL AND ClientMessageId IS NOT NULL`.
+- Retry cùng key + cùng payload → trả row cũ (201).
+- Retry cùng key + khác payload → `409 FITMATE.CHAT.IDEMPOTENCY_MISMATCH` (xem DEC-043).
+
+### 12.3 Authorization cho send
+
+- Sender lấy từ authenticated context. KHÔNG nhận từ client.
+- Kiểm tra (theo thứ tự, atomic trong transaction):
+  - Self → `400 FITMATE.CHAT.CANNOT_SELF_MESSAGE`.
+  - Block 2 chiều (`IsBlockedEitherWayAsync`) → `403 FITMATE.CHAT.BLOCKED`.
+  - Không phải friend (`FriendshipExistsAsync`) → `403 FITMATE.CHAT.NOT_FRIEND`.
+- Race: re-check block trong transaction khi send. Nếu block xảy ra giữa check và insert → `403`. UNIQUE constraint `(low, high)` bảo vệ conversation creation race.
+
+### 12.4 Read marker
+
+- Bảng `chat_thread_reads(conversation_id, user_id, last_read_message_id, last_read_at)`, PK composite.
+- Marker chỉ tiến lên. So sánh `candidate_message.CreatedAt > current.LastReadAt`. Cũ hơn hoặc trùng → no-op (idempotent 204).
+- `last_read_message_id` KHÔNG so sánh trực tiếp (UUID ngẫu nhiên, không order-stable). Dùng `created_at` của message đó.
+- Mark-read KHÔNG tự trigger khi GET messages.
+
+### 12.5 Unread count
+
+- Đếm `chat_messages` where `conversation_id = X AND sender_user_id != viewer AND created_at > viewer_marker.last_read_at`.
+- Tin của chính mình KHÔNG tính.
+- Race: tin mới đến sau marker → count tăng đúng (cursor theo `created_at`).
+
+### 12.6 History + block/unfriend
+
+- Block / unfriend KHÔNG xoá conversation, messages, hay read markers.
+- Sau block: cả 2 bên vẫn xem được history, KHÔNG gửi mới.
+- Kết bạn lại → dùng lại conversation cũ.
+
+### 12.7 Pagination + ordering
+
+- Conversations list: cursor `(last_message_at desc, id desc)`.
+- Messages list: cursor `(created_at desc, id desc)`.
+- Limit 1..100, default 30.
+- Không dùng UUID order (không order-stable).
+
+### 12.8 Privacy
+
+- Admin KHÔNG đọc mặc định nội dung chat friend (xem §5).
+- Log KHÔNG chứa `text` message; chỉ log `message_id`, `conversation_id`, `sender_id`.
+

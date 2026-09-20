@@ -133,14 +133,32 @@
 
 ## 9. Chat
 
+> BE-191 (friend-only, không AI). AI chat đang chờ provider (BE-430). Friend chat policy xem `domain-rules.md §12`.
+>
+> - Send friend message: chỉ friend (canonical pair) + không bị block 2 chiều.
+> - Self-message: `400 FITMATE.CHAT.CANNOT_SELF_MESSAGE`.
+> - Idempotency: `client_message_id` (DEC-043). Cùng key + khác payload → `409 idempotency_mismatch`.
+> - Read marker monotonic: cũ hơn marker hiện tại → no-op 204 (không lùi).
+> - Block / unfriend KHÔNG xoá conversation; chỉ chặn send (DEC-045).
+> - Admin KHÔNG đọc nội dung chat mặc định; chỉ với moderation audit.
+
 | Action | public | member | pt | admin |
 |---|---|---|---|---|
 | Send AI message | — | 🔒 | 🔒 | ❌ |
 | List AI threads | — | 🔒 | 🔒 | ❌ |
 | Get AI thread messages | — | 🔒 | 🔒 | 🛡️ (audit) |
-| Send friend message | — | 🔒 (friend only) | 🔒 (friend only) | ❌ |
-| List conversations | — | 🔒 | 🔒 | ❌ |
+| Send friend message (`POST /chat/friends/messages`) | — | 🔒 (friend only, no block) | 🔒 (friend only, no block) | ❌ |
+| List conversations (`GET /chat/friends/conversations`) | — | 🔒 | 🔒 | ❌ |
+| Get conversation (`GET /chat/friends/conversations/{id}`) | — | 🔒 (participant) | 🔒 (participant) | ❌ |
+| List messages (`GET /chat/friends/conversations/{id}/messages`) | — | 🔒 (participant) | 🔒 (participant) | 🛡️ (audit) |
+| Mark read (`POST /chat/friends/conversations/{id}/read`) | — | 🔒 (participant) | 🔒 (participant) | ❌ |
 | Read any conversation | — | ❌ | ❌ | 🛡️ (audit) |
+
+**Participant check**: `GET .../conversations/{id}` + `.../messages` + `.../read` đều yêu cầu caller là 1 trong 2 participant. Không phải participant → `404` (không leak existence).
+
+**Idempotency**: cùng `(conversation_id, client_message_id)` + cùng payload → trả row cũ. Khác payload → `409 FITMATE.CHAT.IDEMPOTENCY_MISMATCH`. Không tự retry ở server — client dùng `client_message_id` cho retry semantics.
+
+**Marker monotonic**: `last_read_message_id` không dùng để so sánh thứ tự (UUID không order-stable). So sánh `candidate_message.CreatedAt > current.LastReadAt`.
 
 ## 10. Notifications
 

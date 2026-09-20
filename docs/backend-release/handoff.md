@@ -4,6 +4,46 @@
 
 ## Phiên hiện tại
 
+### Phiên 28 — đã làm (2026-09-20) [BE-191]
+
+**BE-191: Chat (friend message) — friend-only scope** — DONE.
+
+Triển khai 5 friend chat endpoints trong OpenAPI. AI chat KHÔNG thuộc scope này (BE-430 chờ provider); schema AI thread giữ nguyên để không vướng. User chốt scope ở AskQuestion:
+- Friend-only (5 endpoints hiện có, không AI).
+- `peer_email` → `peer_user_id` (DEC-036 đồng bộ).
+- 1 conversation canonical cho mỗi cặp user, CHECK low<high, không cascade delete với Friendship.
+- `ChatThreadRead` riêng (unique `(thread_id, user_id)`), `last_read_message_id` + thời điểm server xác định, monotonic.
+- `client_message_id` cho idempotency retry, marker không lùi khi nhiều thiết bị.
+- Block/unfriend KHÔNG xoá history; chỉ chặn send mới.
+
+**Triển khai:**
+- **Domain (commit 1):** `FriendConversation(UserLowId, UserHighId, LastMessageAt)` với `CanonicalPair` helper (Guid.CompareTo lexical byte order, đồng bộ `Friendship.CanonicalPair`), `IsParticipant` + `OtherParticipant` helpers. `ChatThreadRead(ConversationId, UserId, LastReadMessageId, LastReadAt)` với PK composite + `TryAdvance` (chỉ update khi có advance). `ChatMessage` extend thêm `ConversationId` (nullable, null = AI thread) + `ClientMessageId` (nullable, idempotency). Migration `20260920121331_ChatFriendV1`: alter `chat_messages.ThreadId` → nullable; thêm `chat_messages.ConversationId` (nullable) + `chat_messages.ClientMessageId` (nullable); tạo `friend_conversations` (CHECK `UserLowId<UserHighId`, UNIQUE pair) + `chat_thread_reads` (PK composite); indexes `(UserHighId)`, `(ConversationId+CreatedAt+Id)`, partial unique `(ConversationId+ClientMessageId) WHERE ConversationId IS NOT NULL AND ClientMessageId IS NOT NULL`. Apply OK trên local Postgres.
+- **Application (commit 2):** `IChatStore` abstraction (GetOrCreate/FindConversation/FindConversationForPair/AddMessage/FindMessageByClientMessageId/GetLastMessage/ListConversations với aggregate ConversationSummaryRow/ListMessages/FindMessage/GetThreadRead/UpsertThreadRead/CountUnread/SaveChanges). `IChatService` (SendFriendMessage/ListConversations/ListMessages/MarkRead/GetConversation) + DTOs (`ChatMessageDto`, `FriendSummaryDto`, `ConversationDto`, `ConversationPage`, `MessagesPage`). `ChatService` inject `IChatStore`, `IFriendService` (qua `IsFriendAsync`), `IBlockStore` (`IsBlockedEitherWayAsync`), `IOutboxDispatcher`, `TimeProvider`. Send flow: validate (self 400 / empty/long 400 / auth 401) → block check 2 chiều → friend check → GetOrCreate conversation (race-safe qua UNIQUE constraint) → dedup check (same client_message_id + same payload → trả row cũ; khác payload → 409 `IDEMPOTENCY_MISMATCH`) → add message + outbox `chat.message.sent` (cùng transaction). MarkRead: monotonic (`candidate_message.CreatedAt > current.LastReadAt`); cũ hơn hoặc trùng → no-op 204. Cursor pagination: `(last_message_at desc, id desc)` cho conversations, `(created_at desc, id desc)` cho messages. Limit 1..100, default 30.
+- **Infrastructure (commit 3):** `EfChatStore`: `GetOrCreateConversationAsync` với catch `DbUpdateException` cho race (request thứ 2 retry qua `FindConversationForPairAsync`); `ListConversationsAsync` aggregate query 1 round-trip (conversations + last_messages GroupBy + reads map + unread count); `UpsertThreadReadAsync` update in-place. Pagination clamp + cursor encode/decode base64(ticks|guid).
+- **API (commit 4):** `ChatController` (`POST /api/v1/chat/friends/messages` body `{peer_user_id, text, client_message_id?}` → 201 `ChatMessageDto`), `GET /api/v1/chat/friends/conversations?cursor&limit`, `GET /api/v1/chat/friends/conversations/{id}`, `GET /api/v1/chat/friends/conversations/{id}/messages?cursor&limit`, `POST /api/v1/chat/friends/conversations/{id}/read` body `{last_read_message_id}` → 204. DI wiring `IChatStore` + `IChatService` trong `Program.cs`.
+- **Docs (commit 5):** OpenAPI: schema `ChatMessage` + `Conversation` extend (thêm `conversation_id`, `client_message_id`, `last_message_at`); schema mới `MarkReadRequest`; `peer_email` → `peer_user_id` (DEC-036); thêm 3 endpoints mới (conversations/{id}, messages, read). Authorization matrix §9 cập nhật (participant check 404, monotonic, idempotency). Domain-rules §12 mới (friend chat policy: canonical, idempotency, authorization, read marker monotonic, unread count, history retention, pagination, privacy). Decisions DEC-042 (canonical pair), DEC-043 (idempotency client_message_id), DEC-044 (read marker monotonic), DEC-045 (block/unfriend không xoá history) — Accepted. Feature-api-matrix FP-CH-04..07 cập nhật status.
+- **Tests (commit 6):** `ChatServiceTests.cs` mới — **29/29 PASS** (full suite 350/350 từ 321). Coverage: permission (self/block 2 chiều/non-friend/empty/long/auth), idempotency (same payload/same key + different payload → 409), conversation lifecycle (canonical pair khi 2 user cùng tạo, unfriend preserved, block prevent send + history kept), read marker (advance/no-op old/non-participant 404/wrong message 400/unknown 400), unread count (own messages excluded, decreases after mark-read, increases on new messages after marker), pagination (limit clamp, empty conversation), GetConversation (participant/non-participant 404), outbox same-transaction, FindConversationForPair reverse-order.
+
+**Kết quả:**
+- `dotnet build`: 0 warning, 0 error (1 pre-existing xUnit1031 trong `AuthorizationGuardTests.cs:37` không liên quan).
+- `dotnet test`: **350/350 PASS** (29 mới + 321 cũ; 0 failed, 0 skipped).
+- Migration `ChatFriendV1` apply OK trên local Postgres (32 → 35 tables).
+- OpenAPI YAML update — schema ChatMessage + Conversation extend + MarkReadRequest schema + 3 endpoints mới (conversations/{id}, messages, read) + peer_user_id.
+
+**Files changed (BE-191):**
+- Domain: `src/Fitmate.Domain/Chat/FriendConversation.cs` (new), `src/Fitmate.Domain/Chat/ChatThreadRead.cs` (new), `src/Fitmate.Domain/Chat/ChatMessage.cs` (extend ConversationId + ClientMessageId), `src/Fitmate.Domain/Common/ErrorCodes.cs` (+Chat section).
+- Application: `src/Fitmate.Application/Chat/IChatStore.cs` (new), `src/Fitmate.Application/Chat/IChatService.cs` (new + DTOs), `src/Fitmate.Application/Chat/ChatService.cs` (new).
+- Infrastructure: `src/Fitmate.Infrastructure/Persistence/Chat/EfChatStore.cs` (new), `src/Fitmate.Infrastructure/Persistence/Configurations/ChatConfiguration.cs` (extend — FriendConversationConfig + ChatThreadReadConfig + ChatMessage partial unique), `src/Fitmate.Infrastructure/Persistence/FitmateDbContext.cs` (+2 DbSet), `src/Fitmate.Infrastructure/Persistence/Migrations/20260920121331_ChatFriendV1.cs` + `.Designer.cs`, `FitmateDbContextModelSnapshot.cs` (auto).
+- Api: `src/Fitmate.Api/Chat/ChatController.cs` (new — 5 endpoints), `src/Fitmate.Api/Program.cs` (+using +DI).
+- Tests: `tests/Fitmate.UnitTests/ChatServiceTests.cs` (new — 29 tests).
+- Docs: `docs/backend-release/openapi/fitmate-v1.yaml` (ChatMessage + Conversation + MarkReadRequest + 3 endpoints mới + peer_user_id), `docs/backend-release/decisions.md` (DEC-042..045), `docs/backend-release/domain-rules.md` (§12 mới), `docs/backend-release/authorization-matrix.md` (§9 update), `docs/backend-release/feature-api-matrix.md` (FP-CH-04..07), `docs/backend-release/tasks.md` (BE-191 → DONE), `docs/backend-release/handoff.md` (phiên 28 này).
+
+**Pending integration (ghi tasks.md, không block):**
+- BE-200 worker phase 2: consume outbox `chat.message.sent` → push notification cho peer. Schema `ux_notifications_dedup` đã handle idempotent. Cần wire handler khi BE-200 mở rộng.
+- BE-310 Integration test WebApplicationFactory sẽ cover route 200/401/403/404 cho 5 endpoint này.
+- BE-160 Booking confirm/accept (PARTIAL_DONE ở BE-060).
+- AI chat (BE-430 chờ provider).
+
 ### Phiên 27 — đã làm (2026-09-20) [BE-200]
 
 **BE-200: Notifications — Phase 1 (in-app + push delivery abstraction)** — PARTIAL_DONE.

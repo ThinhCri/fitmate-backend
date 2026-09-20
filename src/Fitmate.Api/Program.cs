@@ -23,6 +23,7 @@ using Fitmate.Application.Identity;
 using Fitmate.Application.Finance;
 using Fitmate.Application.Admin;
 using Fitmate.Application.Social;
+using Fitmate.Application.Chat;
 using Fitmate.Application.Moderation;
 using Fitmate.Application.Notifications;
 using Fitmate.Application.Notifications.Handlers;
@@ -170,6 +171,10 @@ builder.Services.AddScoped<IFriendStore, Fitmate.Infrastructure.Social.EfFriendS
 builder.Services.AddScoped<IBlockStore, Fitmate.Infrastructure.Social.EfBlockStore>();
 builder.Services.AddScoped<IFriendService, Fitmate.Application.Social.FriendService>();
 builder.Services.AddScoped<IBlockService, Fitmate.Application.Social.BlockService>();
+
+// BE-191: friend chat (5 endpoints, friend scope only — AI chat is out of scope).
+builder.Services.AddScoped<IChatStore, Fitmate.Infrastructure.Persistence.Chat.EfChatStore>();
+builder.Services.AddScoped<IChatService, Fitmate.Application.Chat.ChatService>();
 
 // BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();

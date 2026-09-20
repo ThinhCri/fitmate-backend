@@ -149,8 +149,14 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<Guid?>("ClientMessageId")
+                        .HasColumnType("uuid");
+
                     b.Property<decimal?>("Confidence")
                         .HasColumnType("numeric(3,2)");
+
+                    b.Property<Guid?>("ConversationId")
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -169,7 +175,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(8000)
                         .HasColumnType("character varying(8000)");
 
-                    b.Property<Guid>("ThreadId")
+                    b.Property<Guid?>("ThreadId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -177,7 +183,13 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ConversationId", "ClientMessageId")
+                        .IsUnique()
+                        .HasFilter("\"ConversationId\" IS NOT NULL AND \"ClientMessageId\" IS NOT NULL");
+
                     b.HasIndex("ThreadId", "CreatedAt");
+
+                    b.HasIndex("ConversationId", "CreatedAt", "Id");
 
                     b.ToTable("chat_messages", (string)null);
                 });
@@ -211,6 +223,78 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("chat_threads", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Chat.ChatThreadRead", b =>
+                {
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("conversation_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LastReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_read_at");
+
+                    b.Property<Guid?>("LastReadMessageId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_read_message_id");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ConversationId", "UserId");
+
+                    b.HasIndex("ConversationId", "LastReadMessageId");
+
+                    b.ToTable("chat_thread_reads", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Chat.FriendConversation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("LastMessageAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserHighId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("UserLowId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserHighId");
+
+                    b.HasIndex("UserLowId", "UserHighId")
+                        .IsUnique();
+
+                    b.ToTable("friend_conversations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_friend_conversations_canonical", "\"UserLowId\" < \"UserHighId\"");
+                        });
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Identity.ApplicationUser", b =>

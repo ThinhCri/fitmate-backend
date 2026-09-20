@@ -156,8 +156,10 @@
 | FP-CH-01 | App | member | Send AI message | chat | text | ai_reply | POST `/api/v1/chat/ai/messages` | member owner | rate limit; không lưu payload nhạy cảm | Có ChatMessage.isAiCompanion | BE-190 | AI unavailable | AI |
 | FP-CH-02 | App | member | List AI chat threads | chat | — | thread[] | GET `/api/v1/chat/ai/threads` | member owner | — | Chưa có | BE-190 | — | — |
 | FP-CH-03 | App | member | List AI chat messages | chat | thread_id | message[] | GET `/api/v1/chat/ai/threads/{id}/messages` | member owner | pagination | Chưa có | BE-190 | — | — |
-| FP-CH-04 | App | member | Send friend message | chat | peer_email, text | message | POST `/api/v1/chat/friends/messages` | member owner | chỉ friend; rate limit | Chưa có | BE-191 | not friend | — |
-| FP-CH-05 | App | member | List conversations | chat | — | conversation[] | GET `/api/v1/chat/friends/conversations` | member owner | — | Chưa có | BE-191 | — | — |
+| FP-CH-04 | App | member | Send friend message | chat | peer_user_id, text, client_message_id? | message | POST `/api/v1/chat/friends/messages` | member owner | chỉ friend; không block 2 chiều; idempotent qua client_message_id | Có FriendConversation + ChatMessage.ConversationId | BE-191 | not friend, blocked, idempotency_mismatch | — |
+| FP-CH-05 | App | member | List conversations | chat | — | conversation[] | GET `/api/v1/chat/friends/conversations` | member owner | cursor pagination; unread_count | Có ChatThreadRead + ConversationDto | BE-191 | — | — |
+| FP-CH-06 | App | member | List friend messages | chat | conversation_id, cursor?, limit? | message[] | GET `/api/v1/chat/friends/conversations/{id}/messages` | participant only | cursor pagination | Có ChatMessage.ConversationId | BE-191 | not participant | — |
+| FP-CH-07 | App | member | Mark friend messages read | chat | conversation_id, last_read_message_id | — | POST `/api/v1/chat/friends/conversations/{id}/read` | participant only | monotonic; no-op nếu cũ hơn marker | Có ChatThreadRead | BE-191 | message not in conversation | — |
 
 ---
 

@@ -544,3 +544,71 @@
   - Delivery statuses: `Pending` → (provider sends) `Sent` | (expired TTL) `Expired` | (perm fail) `FailedPermanent` | (token invalid) `TokenInvalid` | (retryable fail) `FailedRetryable` | (deferred) `Deferred` | (sweep) `Sweeping → Expired`.
   - Sweep only processes `Pending` (0), `FailedRetryable` (2), `Deferred` (3) rows.
 - **Trạng thái**: ✅ Accepted (BE-200 PARTIAL DONE — `PushDeliverySweepService` + `SweepBackgroundService(30 min)` + 4 tests committed phiên 27).
+
+## DEC-042 — Friend chat canonical pair (UserLowId < UserHighId), tách khỏi AI thread
+
+- **Ngày**: 2026-09-20
+- **Người chốt**: User (BE-191 planning)
+- **Bối cảnh**: BE-191 Chat (friend message). User chốt mỗi cặp friend chỉ có 1 conversation canonical, không gắn với Friendship cascade.
+- **Quyết định**:
+  - Bảng riêng `friend_conversations(user_low_id, user_high_id, ...)` với PK composite, `CHECK (user_low_id < user_high_id)`, UNIQUE `(user_low_id, user_high_id)`.
+  - Application dùng `FriendConversation.CanonicalPair(a, b)` (Guid.CompareTo lexical byte order) đồng bộ với `Friendship.CanonicalPair` (BE-181/DEC-037).
+  - Race 2 request đồng thời tạo conversation → chỉ 1 row (UNIQUE constraint), request thứ 2 retry qua `FindConversationForPairAsync`.
+  - **Tách khỏi `ChatThread` AI**: entity `FriendConversation` riêng; `ChatMessage` có thêm nullable `ConversationId` (null = AI thread). Không sửa schema `chat_messages.ThreadId` nullable? — có: alter sang nullable (BE-191 migration `ChatFriendV1`).
+- **Hệ quả**:
+  - Migration `ChatFriendV1` (2026-09-20): `chat_messages.ThreadId` → nullable; thêm `chat_messages.ConversationId` (nullable, FK conceptual) + `chat_messages.ClientMessageId` (nullable, idempotency); tạo `friend_conversations` + `chat_thread_reads`; indexes (UserHighId, ConversationId+CreatedAt+Id, partial unique ConversationId+ClientMessageId).
+  - Không cascade delete: unfriend / block KHÔNG xoá messages.
+  - Unfriend → KHÔNG xoá conversation; chỉ chặn gửi message mới (xem DEC-045).
+- **Trạng thái**: ✅ Accepted (BE-191 PARTIAL DONE — Domain + Infrastructure + Application committed phiên 28).
+
+## DEC-043 — Friend chat idempotency qua `client_message_id`
+
+- **Ngày**: 2026-09-20
+- **Người chốt**: User (BE-191 planning)
+- **Bối cảnh**: Mobile retry khi mạng lỗi có thể gửi trùng 1 message. User chốt cơ chế idempotency cho friend chat.
+- **Quyết định**:
+  - Client cung cấp `client_message_id` (UUID v4) optional trong `POST /chat/friends/messages`. Server lưu vào `chat_messages.client_message_id`.
+  - Partial unique index `(conversation_id, client_message_id) WHERE ConversationId IS NOT NULL AND ClientMessageId IS NOT NULL` — chống duplicate row trong cùng conversation.
+  - Retry với cùng `(conversation, client_message_id)` + cùng `text` → trả row cũ (200/201 tương đương).
+  - Retry với cùng key + khác `text` → `409 FITMATE.CHAT.IDEMPOTENCY_MISMATCH`. KHÔNG âm thầm thay nội dung.
+  - Thiếu `client_message_id` → server cấp Idempotency-Key qua header (BE-070 middleware) nếu client cung cấp; nếu không → tạo mới (acceptable vì không có retry semantics ở server level).
+  - Outbox event `chat.message.sent` dùng `message_id` làm `source_event_id` + `source_type = "chat_message_sent"` để dedup khi notification worker (BE-200 phase 2) consume.
+- **Hệ quả**:
+  - OpenAPI: `client_message_id` thêm vào `SendFriendMessageRequest` + response `ChatMessage`.
+  - 409 `idempotency_mismatch` có error code `FITMATE.CHAT.IDEMPOTENCY_MISMATCH`.
+  - Không đổi `Idempotency-Key` middleware của BE-070 — nó vẫn hoạt động cho mutation tài chính; chat dùng `client_message_id` cho retry.
+- **Trạng thái**: ✅ Accepted (BE-191 PARTIAL DONE — committed phiên 28).
+
+## DEC-044 — Read marker monotonic per (conversation, user)
+
+- **Ngày**: 2026-09-20
+- **Người chốt**: User (BE-191 planning)
+- **Bối cảnh**: User có nhiều thiết bị; cần đảm bảo marker read không bị lùi khi 1 thiết bị đọc cũ hơn thiết bị khác.
+- **Quyết định**:
+  - Bảng `chat_thread_reads(conversation_id, user_id, last_read_message_id, last_read_at)` với PK composite `(conversation_id, user_id)`.
+  - Marker chỉ tiến lên: so sánh `candidate_message.CreatedAt > current_marker.LastReadAt`. Nếu candidate mới hơn → update; nếu cũ hơn hoặc trùng → no-op idempotent (204 No Content).
+  - `last_read_message_id` không dùng để so sánh thứ tự (UUID ngẫu nhiên), mà dùng `created_at` của message đó.
+  - Mark-read KHÔNG tự động khi `GET .../messages` — client phải gọi endpoint riêng (`POST .../read`) sau khi user thực sự xem.
+- **Hệ quả**:
+  - OpenAPI: thêm `POST /chat/friends/conversations/{id}/read` body `MarkReadRequest{last_read_message_id}`.
+  - Unread count: đếm `chat_messages` where `conversation_id = X AND sender_user_id != viewer AND created_at > viewer_marker.last_read_at`.
+  - Tin của chính mình KHÔNG tính vào unread.
+  - Race: tin mới đến sau khi marker update → unread tăng đúng (cursor pagination `created_at desc` chứ không phải `id` UUID).
+- **Trạng thái**: ✅ Accepted (BE-191 PARTIAL DONE — committed phiên 28).
+
+## DEC-045 — Block / unfriend KHÔNG xoá chat history
+
+- **Ngày**: 2026-09-20
+- **Người chốt**: User (BE-191 planning)
+- **Bối cảnh**: BE-181 chốt block policy, BE-191 thêm chat. User chốt rõ history được giữ lại.
+- **Quyết định**:
+  - Block / unfriend KHÔNG xoá `friend_conversations` + `chat_messages` + `chat_thread_reads`.
+  - Sau block: cả 2 bên vẫn xem được history (`GET .../messages` của conversation cũ) nhưng KHÔNG gửi message mới (block 2 chiều qua `IsBlockedEitherWayAsync`).
+  - Sau unfriend: tương tự — history giữ, KHÔNG gửi mới.
+  - Kết bạn lại → dùng lại conversation cũ (cùng canonical pair `(UserLowId, UserHighId)`); `LastMessageAt` cập nhật khi có message mới.
+  - Cascade delete KHÔNG được gắn vào `friendships` row.
+- **Hệ quả**:
+  - Không thêm DB cascade; KHÔNG code xoá messages khi block/unfriend.
+  - Authorization matrix §9 cập nhật: `GET /chat/friends/conversations/{id}/messages` vẫn OK sau block (chỉ chặn send).
+  - Privacy: cả 2 bên vẫn thấy peer trong conversation list (1 conversation / 1 peer), unread count vẫn cập nhật từ peer side. Admin KHÔNG đọc được content (DEC-005 + domain-rules §5) trừ khi có report → moderation.
+- **Trạng thái**: ✅ Accepted (BE-191 PARTIAL DONE — committed phiên 28).
