@@ -87,6 +87,13 @@
 - Done when: mỗi endpoint admin test 401/403/200.
 - Status: **DONE (phiên 17, 2026-09-19)** — Abstractions `IAuthorizationGuard` + `AuthorizationGuard` (Application) dùng `IUserRoleLookup.GetPrimaryRoleAsync` (mở rộng ở phiên này với priority order Admin > PT > Member). Enforce role ở Application cho: `CertificateService.SubmitAsync/ListMineAsync` (PT), `CertificateService.ApproveAsync/RejectAsync` (Admin — chống bypass controller filter), `ServiceOfferingService.CreateAsync/UpdateAsync/DeactivateAsync` (PT), `AvailabilityService.ReplaceMineAsync` (PT), `BookingService.CompleteAsync` (PT). `PtProfileService.EnsureDraftAsync` enforce PT từ BE-040. Các ownership check (resource → userId) vẫn ở service; `EnsureOwnerAsync` helper cho controller/admin. Unit tests: 10/10 mới PASS (164/164 tổng) — AuthorizationGuard (8) + BookingAuthzIntegration (2). Note: BE-090 chưa thêm guard cho endpoint admin *sắp tới* (BE-110/210/220/600) — sẽ enforce ở Application service tương ứng trong từng task.
 
+### BE-380 JwtOptions config wiring fix (env alias + DI registration)
+- Repo: FitmateAI_BE
+- Scope: `JwtOptions` load + validate tại một nơi duy nhất (`JwtOptionsLoader`), hỗ trợ 3 nguồn: env canonical `JWT_SIGNING_KEY`, env alias `Jwt__SigningKey` (ASP.NET Core convention), section `Jwt:SigningKey`. Register raw instance vào DI để `RefreshTokenService` (inject `JwtOptions` trực tiếp) resolve được; `JwtTokenService` + Bearer middleware cùng dùng instance này. Fail-fast khi: thiếu key, key < 32 bytes UTF-8, hoặc các nguồn xung đột giá trị. Không log giá trị key.
+- Depends on: phát hiện trong BE-300 verify (2026-09-21).
+- Done when: `dotnet test` 363/363 PASS, api container `up` không crash vì `InvalidOperationException: JwtOptions.SigningKey must be configured`.
+- Status: **DONE (phiên 30, 2026-09-21)** — `JwtOptionsLoader.Load` cover 3 nguồn + 4 fail-fast cases; `Program.cs` đơn giản hóa (xoá inline throw + `GetSection("Jwt").Get<JwtOptions>()` trùng lặp). Unit tests: 13 mới JwtOptionsLoaderTests. Commit: `84b61da fix(auth): JwtOptions dual-alias load, DI, validation [BE-380]`.
+
 ### BE-099 Xóa Supabase secrets khỏi Git history
 - Scope: dùng `git filter-repo` hoặc BFG sau khi UA-001 rotate.
 - Depends on: UA-001
@@ -266,7 +273,7 @@
 
 | Status | Count |
 |---|---|
-| DONE | 13 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151) |
+| DONE | 14 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151, **BE-380**) |
 | IN_PROGRESS | 0 |
 | PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
 | TODO | ~16 |

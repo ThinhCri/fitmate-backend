@@ -91,6 +91,35 @@ Hai bug:
 1. `chore(docker): fix builds and migration workflow [BE-300]`
 2. `docs(docker): document local setup and verification [BE-300]`
 
+**CẬP NHẬT 2026-09-21:** commit 1 + 2 đã thực hiện (`33c18f0` + `253448d`), handoff pending update.
+
+### Phiên 30 — đã làm (2026-09-21) [BE-380]
+
+**BE-380: Config/JWT_OPTIONS wiring fix** — DONE.
+
+Phát hiện trong BE-300 verify: api container crash liên tục vì `JwtOptions.SigningKey` rỗng (env `JWT_SIGNING_KEY` không map sang `Jwt:SigningKey`), và `RefreshTokenService` inject raw `JwtOptions` nhưng không register DI.
+
+**Triển khai:**
+- **`src/Fitmate.Application/Common/JwtOptionsLoader.cs` (mới):** helper load + validate `JwtOptions` tại một nơi duy nhất.
+  - Env canonical: `JWT_SIGNING_KEY` (đã dùng trong `.env.example` + compose).
+  - Alias ASP.NET Core: `Jwt__SigningKey`.
+  - Section: `Jwt:SigningKey`.
+  - **Một trong ba set** → dùng giá trị đó. **Cả ba set và giống nhau** → chấp nhận. **Khác nhau** → throw fail-fast, không chọn ngầm. **Thiếu** hoặc **key < 32 bytes UTF-8** → throw fail-fast, không fallback default. Không log giá trị key.
+  - Issuer/Audience/TTLs đọc từ section `Jwt:*` (backward-compat).
+- **`src/Fitmate.Api/Program.cs`:** dùng `JwtOptionsLoader.Load(builder.Configuration)` ngay sau khi bind `AppOptions`. Register raw instance `AddSingleton(jwtOptions)`. `IJwtTokenService` + `IRefreshTokenService` factories cùng resolve instance này (RefreshTokenService giờ resolve được DI — bug 2). Bearer middleware dùng cùng instance. Loại bỏ khối `GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions()` rồi check empty — việc validate đã chuyển cho loader.
+- **`src/Fitmate.Application/Fitmate.Application.csproj`:** thêm `Microsoft.Extensions.Configuration.Abstractions` 8.0.0 + `Microsoft.Extensions.Configuration.Binder` 8.0.0 (loader cần `IConfigurationSection.Get<T>()`).
+- **`tests/Fitmate.UnitTests/JwtOptionsLoaderTests.cs` (mới, 13 tests):** only canonical / only alias / only section / canonical+alias equal / canonical+alias mismatch (conflict message) / all-three equal / no key (missing) / key 31/16/1 bytes (too short) / key 32 bytes (boundary OK) / null configuration / keeps issuer/audience/TTLs from section.
+- **`docs/backend-release/runbooks/local-dev.md`:** sửa dòng 24 — thay "Code map `Jwt:SigningKey` ← `JWT_SIGNING_KEY`" bằng "Code dùng `JwtOptionsLoader` hỗ trợ cả `JWT_SIGNING_KEY` (canonical) và `Jwt__SigningKey` (alias)".
+- **`src/Fitmate.Infrastructure/Persistence/DesignTimeDbContextFactory.cs`:** cập nhật comment cũ (ghi "Program.cs throw nếu JWT_SIGNING_KEY rỗng" — không còn đúng).
+
+**Kết quả:**
+- `dotnet build`: 0 error.
+- `dotnet test`: **363/363 PASS** (13 mới JwtOptionsLoader + 350 cũ).
+- Commit: `84b61da fix(auth): JwtOptions dual-alias load, DI, validation [BE-380]` — 6 files, +282/-15.
+- Branch: `backend-release/contract-and-foundation`. Chưa push (per AGENTS).
+
+**Verify recipe tiếp theo (BE-300 follow-up):** chạy `docker compose -p fitmate-verify300 -f compose.yml -f compose.verify300.yml up -d postgres mailhog` rồi `docker compose ... --profile migrate run --rm migrate` đã PASS (phiên 29). Tiếp theo `up api` (cần `.env` có `JWT_SIGNING_KEY`) → `/health/ready` 200 → smoke `POST /api/v1/auth/login`. Nếu thành công → BE-300 → DONE, mở BE-310 (GitHub Actions CI).
+
 ### Phiên 28 — đã làm (2026-09-20) [BE-191]
 
 **BE-191: Chat (friend message) — friend-only scope** — DONE.
@@ -483,6 +512,7 @@ Triển khai xong các quyết định user đã chốt:
 - **Phiên 17**: `dotnet test` **164/164 PASS** (AuthorizationGuard 8 + BookingAuthzIntegration 2 + 154 cũ). 0 failed, 0 skipped. 1 warning cosmetic xUnit1031 (HasRoleAsync gọi `.Result` trong AuthorizationGuardTests).
 - **Phiên 18**: `dotnet test` **173/173 PASS** (AdminUserService 9 + 164 cũ). 0 failed, 0 skipped.
 - **Phiên 26**: `dotnet test` **275/275 PASS** (PlatformPolicyTests 9 + 266 cũ). 0 failed, 0 skipped. Pre-existing fail `JwtTokenServiceTests.Validate_ReturnsNull_ForTamperedToken` (ghi từ phiên 24) không tái diễn.
+- **Phiên 30**: `dotnet test` **363/363 PASS** (JwtOptionsLoaderTests 13 + 350 cũ). 0 failed, 0 skipped.
 
 ## Kết quả đo tải
 
