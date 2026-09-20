@@ -120,6 +120,25 @@ Phát hiện trong BE-300 verify: api container crash liên tục vì `JwtOption
 
 **Verify recipe tiếp theo (BE-300 follow-up):** chạy `docker compose -p fitmate-verify300 -f compose.yml -f compose.verify300.yml up -d postgres mailhog` rồi `docker compose ... --profile migrate run --rm migrate` đã PASS (phiên 29). Tiếp theo `up api` (cần `.env` có `JWT_SIGNING_KEY`) → `/health/ready` 200 → smoke `POST /api/v1/auth/login`. Nếu thành công → BE-300 → DONE, mở BE-310 (GitHub Actions CI).
 
+### Phiên 31 — đã làm (2026-09-21) [BE-310]
+
+**BE-310: GitHub Actions CI** — DONE (definition only, chưa chạy thật vì cần UA-002 repo GitHub public).
+
+**Triển khai:**
+- **`.github/workflows/ci.yml` (mới):** 3 jobs gate độc lập.
+  - `lint-test`: `actions/checkout@v4` + `actions/setup-dotnet@v4` (DOTNET_VERSION=8.0.x). `dotnet restore Fitmate.slnx` → `dotnet build` với `-warnaserror` + `/p:NoWarn=xUnit1031` (loại warning cosmetic duy nhất). `dotnet test` ghi TRX artifact upload qua `actions/upload-artifact@v4`.
+  - `docker-build` (needs `lint-test`): `docker/setup-buildx-action@v3` + `actions/cache@v4` (path `/tmp/.buildx-cache`, key `runner.os-buildx-sha`). Build 2 image (`src/Fitmate.Api/Dockerfile` → `fitmate-ci-api`, `Dockerfile.migrate` → `fitmate-ci-migrate`) với `--cache-from`/`--cache-to` local. **Không push** image (UA-002/003 + BE-500/340 pending).
+  - `smoke` (needs `docker-build`): verify `docker compose version`, generate ephemeral `JWT_SIGNING_KEY` qua `openssl rand -base64 64` + ghi `.env` (DB_PASSWORD/JWT_SIGNING_KEY/FEATURE_*). `docker compose up -d postgres` → wait `(healthy)` 60s → `--profile migrate run --rm migrate` → `up -d api` → poll `http://127.0.0.1:8080/health/ready` 90s (`SECONDS` elapsed counter, curl fail log `docker compose logs api` rồi exit 1). Smoke `/health/live` 200. `if: always()` teardown `docker compose down -v` + rm `.env`.
+  - `on: push/PR branches: [main, 'backend-release/*']`.
+- **`docs/backend-release/runbooks/ci.md` (mới):** 8 sections — workflow structure, trigger rules, secrets & ephemeral, local preview qua `act`, tại sao chưa push image (UA-002/003 + BE-500/340), lỗi thường gặp (NU1603 drift / EF version / readiness timeout), branch protection recommend (gồm 3 required checks), files map.
+
+**Kết quả:**
+- YAML: structure 2-space indent, multi-line shell scripts dùng `|` block, không có anchor/alias phức tạp. Không có yaml parser local (Python/Node `yaml` package không cài) — verified manual review + cross-check với GitHub Actions schema docs.
+- Chưa chạy workflow thật (cần UA-002 repo public trên GitHub + runner có quyền `contents: read`). Khi có UA-002, branch protection rule theo runbook §7 sẽ require 3 jobs PASS trước merge.
+
+**Commit:**
+- (sẽ commit riêng 2 message: ci.yml + docs, theo policy BE không auto-commit)
+
 ### Phiên 28 — đã làm (2026-09-20) [BE-191]
 
 **BE-191: Chat (friend message) — friend-only scope** — DONE.
@@ -513,6 +532,7 @@ Triển khai xong các quyết định user đã chốt:
 - **Phiên 18**: `dotnet test` **173/173 PASS** (AdminUserService 9 + 164 cũ). 0 failed, 0 skipped.
 - **Phiên 26**: `dotnet test` **275/275 PASS** (PlatformPolicyTests 9 + 266 cũ). 0 failed, 0 skipped. Pre-existing fail `JwtTokenServiceTests.Validate_ReturnsNull_ForTamperedToken` (ghi từ phiên 24) không tái diễn.
 - **Phiên 30**: `dotnet test` **363/363 PASS** (JwtOptionsLoaderTests 13 + 350 cũ). 0 failed, 0 skipped.
+- **Phiên 31**: chưa chạy test thật (CI workflow defined only, cần UA-002 để trigger).
 
 ## Kết quả đo tải
 

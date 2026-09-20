@@ -202,10 +202,12 @@
 - Status: **PARTIAL_DONE (phiên 29, 2026-09-20)** — Dockerfile (slnx-free, no tests/, curl pre-USER, DataProtection dir), Dockerfile.dev, Dockerfile.migrate (sdk pin dotnet-ef 8.0.10 → efbundle self-contained linux-x64 → runtime-deps Debian + non-root fitmate UID 1001 + DOTNET_BUNDLE_EXTRACT_BASE_DIR=/tmp/bundle-extract), compose.yml (bỏ container_name, ports qua override, dpkeys named volume, migrate dùng image ENTRYPOINT), compose.verify300.yml (ports/volumes riêng), Program.cs PersistKeysToFileSystem + SetApplicationName("Fitmate.Api"), .dockerignore bổ sung tests/ + tasks/, runbook local-dev.md (7 bước). Evidence: build OK (api 526 MB, migrate 101 MB); migrate exit 0 trên empty DB apply 6 migrations + idempotent lần 2; `\dt` 44 bảng; `dotnet test` 350/350 PASS. **Bị gián đoạn ở api readiness** do pre-existing bug `JwtOptions` env alias + DI registration (không thuộc BE-300) → đề xuất task mới BE-380. Plan rev 3 tại `docs/backend-release/tasks/BE-300-plan.md`. Commit 2 message đã duyệt nhưng chưa thực hiện.
 
 ### BE-310 GitHub Actions CI
-- Scope: lint, test, docker build, smoke container.
-- Depends on: BE-300
-- Done when: CI green trên PR.
-- Status: TODO
+- Repo: FitmateAI_BE
+- Scope: lint (warnings-as-errors trừ `xUnit1031` cosmetic), `dotnet test` (full unit suite), Docker build 2 image (api + migrate) qua Buildx với cache layer, smoke end-to-end (compose up postgres+migrate+api → poll `/health/ready` 90s → teardown). Ephemeral `JWT_SIGNING_KEY` (tạo runtime bằng `openssl rand`), không cần GitHub secret.
+- Depends on: BE-300 (PARTIAL_DONE → DONE sau khi api readiness verify xong với BE-380 fix).
+- Done when: PR mở → 3 jobs PASS trên runner Ubuntu 22.04.
+- Status: **DONE (phiên 31, 2026-09-21)** — `.github/workflows/ci.yml` (3 jobs: `lint-test` / `docker-build` / `smoke`, runner `ubuntu-22.04`, timeout 15/15/20 phút, Buildx cache qua `actions/cache@v4`). Docs `docs/backend-release/runbooks/ci.md` (8 sections: workflow/secrets/local-preview/tại-sao-không-push/lỗi thường gặp/branch-protection/files). Lưu ý: chưa push image thật ra registry (UA-002 Git hosting + UA-003 OIDC + UA-023 managed DB credentials vẫn pending — sẽ làm ở BE-500/340 khi UA sẵn sàng).
+- Cấu hình branch protection ghi trong runbook §7 — cần user apply sau khi repo public (UA-002).
 
 ### BE-320 OpenAPI linter + contract test
 - Scope: spectral/redocly, test snapshot vs spec.
@@ -273,7 +275,7 @@
 
 | Status | Count |
 |---|---|
-| DONE | 14 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151, **BE-380**) |
+| DONE | 15 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151, BE-380, **BE-310**) |
 | IN_PROGRESS | 0 |
 | PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
 | TODO | ~16 |
