@@ -143,10 +143,10 @@
 - Status: **DONE (phiên 26, 2026-09-19)** — `PlatformPolicyOptions` (Application/Common) bind section `PlatformPolicy` qua env `PLATFORM_POLICY__FEEBPS/POLICYVERSION/EFFECTIVEFROMUTC` (default 1000/v1/2026-09-19). `IPlatformPolicyService` + `PlatformPolicyService` + record `PlatformPolicy` (PlatformFeeRateBps/PolicyVersion/EffectiveFrom/Editable/DisplayHint). Service enforce role Admin qua `IAuthorizationGuard.EnsureRoleAsync` (BE-090) + validate bps qua `Money.ValidateBps`. Controller `AdminPlatformPolicyController` `[Authorize(Policy=AdminOnly)]` route `/api/v1/admin/platform-policy`. DI bind section `PlatformPolicy` trong Program.cs. Unit tests: 9/9 mới PASS (275/275 tổng) — default, override, boundary 0/10000, negative/out-of-range throws ArgumentOutOfRangeException, Editable=false invariant, PolicyVersion/EffectiveFrom propagate, options defaults sanity.
 
 ### BE-160 Workout + Weight
-- Scope: plans, exercises, sessions, weight log. Idempotency qua client_id.
-- Depends on: BE-080
-- Done when: duplicate client_id không tạo row mới.
-- Status: TODO
+- Scope: plans, exercises, sessions, weight log. Idempotency qua `client_id` (body) + `Idempotency-Key` (header); session giữ snapshot plan + per-set results.
+- Depends on: BE-080 (validation + ProblemDetails); BE-090 (authz guard); BE-070 (idempotency middleware).
+- Done when: ownership enforced; duplicate `client_id` idempotent; FK `WorkoutPlanId` SET NULL khi xóa plan (session intact qua snapshot); per-set results + bonus validation; pagination cursor.
+- Status: **IN_PROGRESS (Sep 21)** — plan rev 3 chốt tại `docs/backend-release/tasks/BE-160-plan.md`. 11 commit phases. Migration `20260921000000_WorkoutSnapshot` có pre-check orphan.
 
 ### BE-170 Nutrition (log, schedule) + AI stub
 - Scope: log/scan, scan trả AI_UNAVAILABLE khi provider chưa có.
