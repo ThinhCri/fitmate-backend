@@ -1,0 +1,36 @@
+# Verify override for BE-300.
+# Use together with compose.yml on a separate Compose project + host ports so it never collides with a running local stack.
+#
+# Example:
+#   docker compose -p fitmate-verify300 \
+#     -f compose.yml -f compose.verify300.yml \
+#     --profile migrate run --rm migrate
+#
+# Compose still merges top-level volumes fitmate-postgres-data / fitmate-dpkeys; this override intentionally
+# remaps container-side paths AND provides alternative named volumes so two stacks can coexist when the user
+# chooses different --project-name on each invocation.
+services:
+  postgres:
+    volumes:
+      - verify300-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:15432:5432"
+
+  mailhog:
+    ports:
+      - "127.0.0.1:11025:1025"
+      - "127.0.0.1:18025:8025"
+
+  api:
+    volumes:
+      - verify300-dpkeys:/home/fitmate/.aspnet/DataProtection-Keys
+    ports:
+      - "127.0.0.1:18080:8080"
+
+  migrate:
+    # No port mapping needed (job, no listener).
+    profiles: ["migrate"]
+
+volumes:
+  verify300-postgres-data:
+  verify300-dpkeys:

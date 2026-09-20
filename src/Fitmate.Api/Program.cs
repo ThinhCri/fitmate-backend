@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.IdentityModel.Tokens;
 using FluentValidation;
 using Fitmate.Application.Auth;
@@ -83,7 +84,11 @@ builder.Services.AddDbContext<FitmateDbContext>(opt =>
 // Dung AddIdentityCore thay vi AddIdentity de khong ep cookie auth; API chi dung JWT bearer.
 // AddDataProtection cung cap IDataProtectionProvider cho AddDefaultTokenProviders
 // (reset password + email confirm token).
-builder.Services.AddDataProtection();
+// BE-300: persist key ring to a named volume so push-token encryption survives container recreates.
+// Production should swap to secret manager / certificate-backed keys (BE-340).
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo("/home/fitmate/.aspnet/DataProtection-Keys"))
+    .SetApplicationName("Fitmate.Api");
 builder.Services.AddIdentityCore<ApplicationUser>(opt =>
 {
     opt.Password.RequiredLength = 12;

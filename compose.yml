@@ -1,39 +1,35 @@
-# Docker Compose cho Fitmate Backend local/integration.
-# Mục đích: dev + integration test. Không dùng cho production.
-# Production: dùng compose.prod.yml riêng với reverse proxy, secret manager, backup.
+# Docker Compose for Fitmate Backend local/integration.
+# Purpose: dev + integration test. NOT for production (see DEC-030 UA-023).
+# Containers get auto-prefixed by Compose project name; use --project-name to isolate stacks.
+# Required: env_file (.env) with DB_PASSWORD and JWT_SIGNING_KEY. See runbooks/local-dev.md.
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: fitmate-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-fitmate}
       POSTGRES_USER: ${DB_USER:-fitmate}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD phai duoc set trong .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - fitmate-postgres-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fitmate} -d ${DB_NAME:-fitmate}"]
       interval: 5s
       timeout: 3s
       retries: 10
-    ports:
-      - "5432:5432"
+    # Default port binding removed; verify override (compose.verify300.yml) sets 15432.
+    # Production / CI use internal network only via "postgres" hostname.
 
   mailhog:
     image: mailhog/mailhog:latest
-    container_name: fitmate-mailhog
     restart: unless-stopped
-    ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI
+    # Default ports removed; verify override (compose.verify300.yml) sets 11025/18025.
 
   api:
     build:
       context: .
       dockerfile: src/Fitmate.Api/Dockerfile
-    container_name: fitmate-api
     restart: unless-stopped
     env_file:
       - .env
@@ -44,29 +40,26 @@ services:
       DB_NAME: ${DB_NAME:-fitmate}
       DB_USER: ${DB_USER:-fitmate}
       DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSLMODE: ${DB_SSLMODE:-prefer}
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
+      # Disable push by default in local so the smoke endpoint stack is simpler; toggle in .env for full E2E.
+      FEATURE_PUSH_ENABLED: ${FEATURE_PUSH_ENABLED:-false}
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "8080:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/ready"]
-      interval: 10s
-      timeout: 3s
-      retries: 5
-      start_period: 30s
+    volumes:
+      # Persist DataProtection key ring across container recreates. See BE-300 plan rev 3 §3.6.
+      - fitmate-dpkeys:/home/fitmate/.aspnet/DataProtection-Keys
+    # Default port binding removed; verify override (compose.verify300.yml) sets 18080.
 
-  # Migration chạy riêng, không tự chạy trong container api.
-  # Chạy: docker compose --profile migrate up migrate
+  # One-shot migration job. Uses bundle image ENTRYPOINT directly (no command override).
+  # Run with: docker compose --profile migrate up migrate
   migrate:
     build:
       context: .
-      dockerfile: src/Fitmate.Api/Dockerfile
-    container_name: fitmate-migrate
+      dockerfile: Dockerfile.migrate
     profiles: ["migrate"]
-    command: ["dotnet", "Fitmate.Infrastructure.dll", "database", "update"]
     env_file:
       - .env
     environment:
@@ -75,11 +68,12 @@ services:
       DB_NAME: ${DB_NAME:-fitmate}
       DB_USER: ${DB_USER:-fitmate}
       DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSLMODE: ${DB_SSLMODE:-prefer}
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
 volumes:
-  postgres-data:
-    name: fitmate-postgres-data
+  fitmate-postgres-data:
+  fitmate-dpkeys:

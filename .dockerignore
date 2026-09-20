@@ -5,6 +5,7 @@
 **/.gitkeep
 
 # .NET
+tests/
 **/bin/
 **/obj/
 **/out/
@@ -29,10 +30,13 @@
 **/secrets.json
 **/appsettings.*.json
 
-# Docs (giữ trong repo nhưng không cần trong image)
+# Docs (kept in repo but not needed in image)
 docs/
 *.md
 README.md
+
+# Plan scratchpads
+tasks/
 
 # Docker
 Dockerfile*
