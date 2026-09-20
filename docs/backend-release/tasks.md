@@ -192,7 +192,7 @@
 - Scope: Dockerfile (multi-stage), compose.yml, compose.override.yml, .dockerignore.
 - Depends on: BE-001
 - Done when: `docker compose up` chạy, migration OK.
-- Status: TODO
+- Status: **PARTIAL_DONE (phiên 29, 2026-09-20)** — Dockerfile (slnx-free, no tests/, curl pre-USER, DataProtection dir), Dockerfile.dev, Dockerfile.migrate (sdk pin dotnet-ef 8.0.10 → efbundle self-contained linux-x64 → runtime-deps Debian + non-root fitmate UID 1001 + DOTNET_BUNDLE_EXTRACT_BASE_DIR=/tmp/bundle-extract), compose.yml (bỏ container_name, ports qua override, dpkeys named volume, migrate dùng image ENTRYPOINT), compose.verify300.yml (ports/volumes riêng), Program.cs PersistKeysToFileSystem + SetApplicationName("Fitmate.Api"), .dockerignore bổ sung tests/ + tasks/, runbook local-dev.md (7 bước). Evidence: build OK (api 526 MB, migrate 101 MB); migrate exit 0 trên empty DB apply 6 migrations + idempotent lần 2; `\dt` 44 bảng; `dotnet test` 350/350 PASS. **Bị gián đoạn ở api readiness** do pre-existing bug `JwtOptions` env alias + DI registration (không thuộc BE-300) → đề xuất task mới BE-380. Plan rev 3 tại `docs/backend-release/tasks/BE-300-plan.md`. Commit 2 message đã duyệt nhưng chưa thực hiện.
 
 ### BE-310 GitHub Actions CI
 - Scope: lint, test, docker build, smoke container.

@@ -4,6 +4,93 @@
 
 ## Phiên hiện tại
 
+### Phiên 29 — đang chạy (2026-09-20) [BE-300]
+
+**BE-300: Docker image + Compose local/integration — PARTIAL_DONE** (1 pre-existing bug phụ thuộc phát hiện).
+
+Plan rev 3 lưu ở `docs/backend-release/tasks/BE-300-plan.md`.
+
+**Phạm vi đã triển khai:**
+
+1. **Dockerfile (api runtime) — `src/Fitmate.Api/Dockerfile`:**
+   - Bỏ `COPY Fitmate.sln` / `Fitmate.slnx`; restore + publish trực tiếp qua `Fitmate.Api.csproj` (dotnet tự resolve project refs).
+   - Bỏ `COPY tests/` (loại khỏi build context).
+   - Runtime stage: `apt-get install curl --no-install-recommends` + `rm -rf /var/lib/apt/lists/*` TRƯỚC `USER fitmate`; pre-create `/home/fitmate/.aspnet/DataProtection-Keys` + chown.
+   - HEALTHCHECK + ENTRYPOINT + non-root giữ nguyên.
+
+2. **Dockerfile.dev — `src/Fitmate.Api/Dockerfile.dev`:** sửa tương tự (bỏ COPY Fitmate.sln).
+
+3. **Dockerfile.migrate (mới) — `Dockerfile.migrate`:**
+   - Stage 1 (sdk:8.0): `dotnet tool install --global dotnet-ef --version 8.0.10` (pin đúng EF Core runtime 8.0.10); restore + copy src/; build self-contained bundle linux-x64 (`--runtime linux-x64 --self-contained`).
+   - Stage 2 (runtime-deps:8.0-bookworm-slim): non-root fitmate UID 1001 + HOME=/tmp + `DOTNET_BUNDLE_EXTRACT_BASE_DIR=/tmp/bundle-extract` (self-contained bundle cần writable extract dir).
+
+4. **Compose — `compose.yml`:**
+   - Bỏ `container_name` cố định (Compose tự prefix theo `--project-name`).
+   - Bỏ default ports (chỉ bind qua override); compose.verify300.yml bind riêng 15432/11025/18025/18080.
+   - api thêm volume `fitmate-dpkeys:/home/fitmate/.aspnet/DataProtection-Keys`.
+   - migrate profile dùng `Dockerfile.migrate` (image ENTRYPOINT, KHÔNG command override).
+
+5. **Verify override — `compose.verify300.yml` (mới):** cổng host riêng + volume named riêng để chạy song song stack local.
+
+6. **DataProtection LOCAL persistence — `src/Fitmate.Api/Program.cs`:** `AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo("/home/fitmate/.aspnet/DataProtection-Keys")).SetApplicationName("Fitmate.Api")` + `using Microsoft.AspNetCore.DataProtection;`. Production key (secret manager / certificate) → BE-340.
+
+7. **Package — `src/Fitmate.Api/Fitmate.Api.csproj`:** thêm `Microsoft.AspNetCore.DataProtection.Extensions 8.0.10` (extension method namespace).
+
+8. **.dockerignore:** thêm `tests/`, `tasks/`.
+
+9. **Runbook — `docs/backend-release/runbooks/local-dev.md` (mới):** prereq + 7 bước quickstart + verify recipe tách biệt + cleanup + known limitations + security warning về `docker compose config` không mask secret.
+
+**Evidence (chạy 2026-09-20):**
+
+| Bước | Lệnh | Kết quả |
+|------|------|---------|
+| Build api image | `docker compose -p fitmate-verify300 build api` | exit 0, image `fitmate-verify300-api:latest` (~526 MB). |
+| Build migrate image | `docker compose -p fitmate-verify300 --profile migrate build migrate` | exit 0, image `fitmate-verify300-migrate:latest` (~101 MB). |
+| Compose up postgres+mailhog | `docker compose -p fitmate-verify300 ... up -d postgres mailhog` | 2 container up, postgres healthy trong ~5s. |
+| Migrate empty DB | `docker compose -p fitmate-verify300 --profile migrate run --rm migrate` | exit 0; apply 6 migrations theo thứ tự: `InitialSchema` → `IdentitySchema` → `ModerationAction` → `FriendshipAndBlock` → `NotificationsPushV2` → `ChatFriendV1`. Done. |
+| Schema verify | `docker exec fitmate-verify300-postgres-1 psql -U fitmate -d fitmate -c "\dt"` | **44 tables** (Identity 6 + domain 38 + `__EFMigrationsHistory`). |
+| Re-migrate idempotent | run migrate lần 2 cùng volume | exit 0; "No migrations were applied. The database is already up to date." |
+| dotnet test host | `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --no-restore` | **350/350 PASS**, 0 failed, 0 skipped, 4s. |
+| Cleanup | `docker compose -p fitmate-verify300 down -v` | xoá containers + 2 named volume verify300-*. |
+
+**Pre-existing bug phát hiện (KHÔNG thuộc BE-300, chặn verify API readiness):**
+
+Khi up api container, log crash liên tục:
+```
+Unhandled exception. System.InvalidOperationException: JwtOptions.SigningKey must be configured (env JWT_SIGNING_KEY)
+   at Program.<Main>$(String[] args) in /src/src/Fitmate.Api/Program.cs:line 248
+```
+Sau khi rename env `JWT_SIGNING_KEY` → `Jwt__SigningKey` (đúng convention ASP.NET Core config mapping), crash tiếp:
+```
+System.InvalidOperationException: Unable to resolve service for type 'Fitmate.Application.Common.JwtOptions'
+while attempting to activate 'Fitmate.Application.Auth.RefreshTokenService'.
+```
+Hai bug:
+1. `.env.example` dùng `JWT_SIGNING_KEY` nhưng `Program.cs` dòng 245 đọc `builder.Configuration.GetSection("Jwt").Get<JwtOptions>()` → ASP.NET Core map `JWT_SIGNING_KEY` không match `Jwt:SigningKey` (cần `Jwt__SigningKey`).
+2. `JwtOptions` không được register DI (chỉ `Configure<JwtOptions>` bind, không `AddSingleton`/`AddScoped`).
+
+**Đề xuất task mới BE-380: Config/JWT_OPTIONS wiring fix** — sửa env key alias (chấp nhận cả 2 tên) + register JwtOptions DI. CHƯA xử lý — nằm ngoài scope BE-300.
+
+**Không thuộc BE-300 — đã defer có task ID:**
+
+- BE-310 GitHub Actions CI.
+- BE-320 OpenAPI linter + contract test.
+- BE-330 Load test scripts (k6).
+- BE-340 Secrets management (gitleaks + DataProtection prod key + secret manager).
+
+**Chưa có task ID — ghi pending:**
+
+- **BE-350**: Auto-migrate on startup với pg_advisory lock (chỉ khi multi-instance api) — không bắt buộc, migration job vẫn hợp lệ.
+- **BE-360**: Backup/restore runbook (PostgreSQL volume + DataProtection keys).
+- **BE-370**: Test infrastructure để verify DataProtection key ring tự động (dev-only endpoint).
+- **BE-380**: JwtOptions config wiring fix (env alias + DI registration) — phát hiện trong BE-300 verify, chưa thuộc task nào.
+
+**Verify recipe end-to-end bị gián đoạn ở bước 6 (api readiness)** do BE-380. Các bước 1-5 (build, postgres up, migrate, re-migrate, schema verify, host test) đều PASS.
+
+**Commit chưa thực hiện:** 2 message đã duyệt, đợi xác nhận cuối từ user.
+1. `chore(docker): fix builds and migration workflow [BE-300]`
+2. `docs(docker): document local setup and verification [BE-300]`
+
 ### Phiên 28 — đã làm (2026-09-20) [BE-191]
 
 **BE-191: Chat (friend message) — friend-only scope** — DONE.
