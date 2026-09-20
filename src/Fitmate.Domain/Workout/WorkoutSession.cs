@@ -21,10 +21,22 @@ public class WorkoutSession : AuditableEntity
     public int? CompletedSets { get; private set; }
     public int? PlannedSets { get; private set; }
 
+    // BE-160: snapshot tối thiểu của plan tại thời điểm insert session, để sửa/xóa plan
+    // không phá lịch sử. Source of truth vẫn là workout_plan_exercises / exercises cho
+    // plan hiện tại; snapshot là dữ liệu "đã từng tập".
+    public string? SnapshotPlanName { get; private set; }
+    public string? SnapshotPlanDayOfWeek { get; private set; }
+    public int? SnapshotPlanPlannedDurationMinutes { get; private set; }
+    public int? SnapshotPlanTargetCaloriesBurn { get; private set; }
+
     private WorkoutSession() { }
     public static WorkoutSession Create(Guid userId, Guid? planId, string clientId,
         DateOnly date, string day, int durationMin, int caloriesBurned, int exercises,
-        WorkoutSessionStatus status, int? completedSets, int? plannedSets) => new()
+        WorkoutSessionStatus status, int? completedSets, int? plannedSets,
+        string? snapshotPlanName = null,
+        string? snapshotPlanDayOfWeek = null,
+        int? snapshotPlanPlannedDurationMinutes = null,
+        int? snapshotPlanTargetCaloriesBurn = null) => new()
     {
         Id = Guid.NewGuid(),
         UserId = userId,
@@ -38,6 +50,10 @@ public class WorkoutSession : AuditableEntity
         Status = status,
         CompletedSets = completedSets,
         PlannedSets = plannedSets,
+        SnapshotPlanName = snapshotPlanName,
+        SnapshotPlanDayOfWeek = snapshotPlanDayOfWeek,
+        SnapshotPlanPlannedDurationMinutes = snapshotPlanPlannedDurationMinutes,
+        SnapshotPlanTargetCaloriesBurn = snapshotPlanTargetCaloriesBurn,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };

@@ -46,6 +46,8 @@ public class WorkoutSessionConfiguration : IEntityTypeConfiguration<WorkoutSessi
         e.HasIndex(x => new { x.UserId, x.ClientId }).IsUnique();
         e.Property(x => x.Day).HasMaxLength(16);
         e.Property(x => x.Status).HasConversion<int>();
+        e.Property(x => x.SnapshotPlanName).HasMaxLength(200);
+        e.Property(x => x.SnapshotPlanDayOfWeek).HasMaxLength(16);
     }
 }
 
