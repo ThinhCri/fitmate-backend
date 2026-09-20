@@ -139,6 +139,12 @@ Phát hiện trong BE-300 verify: api container crash liên tục vì `JwtOption
 **Commit:**
 - (sẽ commit riêng 2 message: ci.yml + docs, theo policy BE không auto-commit)
 
+**Local verify (sau commit):**
+- Cài `act v0.2.89` qua winget. Set `actrc` map `ubuntu-22.04 → node:20-bookworm-slim` + `--container-architecture linux/amd64` + `DOCKER_HOST=npipe:////./pipe/dockerDesktopLinuxEngine`.
+- `act -j lint-test -n` (dry-run) → PASS — 6 step nhận diện đầy đủ (Checkout/Setup .NET 8.0.x/Restore/Build/Test/Upload artifact), triggers + env + secrets mapping đúng.
+- `act -j lint-test` (real run) → PASS 4/6 step (Checkout/Setup .NET 8.0.425 installed/Restore fail), fail ở bước `dotnet restore Fitmate.slnx` do image thiếu `libicu` (system lib cần cho `System.Globalization`). GitHub runner thật (`ubuntu-22.04`) có sẵn libicu → workflow chạy đầy đủ trên GH. Reverted phần thử cài `apt-get install libicu` (chỉ phụ thuộc act image, không cần trên GH runner).
+- Ghi nhận `act` chỉ verify workflow structure / triggers; verify end-to-end cần GitHub runner thật.
+
 ### Phiên 28 — đã làm (2026-09-20) [BE-191]
 
 **BE-191: Chat (friend message) — friend-only scope** — DONE.

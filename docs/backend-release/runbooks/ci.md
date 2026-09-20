@@ -41,16 +41,32 @@ Nếu muốn chạy workflow local (tùy chọn, không bắt buộc cho mọi P
 
 ```bash
 # Yêu cầu: Docker + Act (https://github.com/nektos/act)
-brew install act   # macOS
-# hoặc
 winget install nektos.act   # Windows
+brew install act             # macOS
 
-act -j lint-test          # chạy 1 job local
+# Act cần biết Docker socket trên Windows:
+$env:DOCKER_HOST = "npipe:////./pipe/dockerDesktopLinuxEngine"
+
+# Trước khi chạy: tạo actrc pre-select image + platform
+New-Item -Path "$env:USERPROFILE\AppData\Local\act\actrc" -ItemType File -Force
+Set-Content -Path "$env:USERPROFILE\AppData\Local\act\actrc" -Value @"
+--container-architecture linux/amd64
+-P ubuntu-22.04=node:20-bookworm-slim
+"@
+
+# Chạy từng job:
+act -j lint-test
 act -j docker-build
 act -j smoke
 ```
 
-Lưu ý: Act emulate Ubuntu runner bằng Docker container — cần ≥ 4 GB RAM cho `lint-test` + `docker-build`. `smoke` cần Docker daemon đang chạy.
+**Lưu ý đã verify (phiên 31):**
+- `act -j lint-test -n` (dry-run) PASS — act phát hiện đầy đủ 6 step (Checkout / Setup .NET / Restore / Build / Test / Upload artifact), công nhận triggers + secrets + env mapping đúng.
+- `act -j lint-test` (real run) PASS 4/6 step rồi FAIL vì thiếu system lib `libicu` trong `node:20-bookworm-slim` (act default image). Đây là expected limitation của Act local — GitHub runner thật dùng image Ubuntu 22.04 đầy đủ có sẵn libicu + curl.
+- Khi apply lên GitHub Actions thật, workflow chạy không cần thêm system libs vì `ubuntu-22.04` runner có sẵn.
+- Nếu muốn Act local chạy đến bước `dotnet test` cần image chứa libicu — không khuyến nghị vì tốn effort, chỉ verify trên GH Actions thật.
+
+Act emulate Ubuntu runner bằng Docker container — cần ≥ 4 GB RAM cho `lint-test` + `docker-build`. `smoke` cần Docker daemon đang chạy.
 
 ## 5. Tại sao chỉ làm CI chứ chưa push image
 
