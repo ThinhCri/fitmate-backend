@@ -60,9 +60,16 @@ builder.Configuration.AddEnvironmentVariables();
 
 // Options binding.
 builder.Services.Configure<AppOptions>(builder.Configuration);
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection("Jwt"));
 builder.Services.Configure<Fitmate.Application.Common.PlatformPolicyOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Common.PlatformPolicyOptions.SectionName));
+
+// BE-380: load + validate JwtOptions tại một nơi duy nhất, hỗ trợ alias env
+// (JWT_SIGNING_KEY canonical, Jwt__SigningKey theo ASP.NET Core convention, hoặc Jwt:SigningKey section).
+// Fail-fast khi thiếu key, key quá ngắn, hoặc hai env alias xung đột giá trị.
+// Register raw instance để RefreshTokenService (inject JwtOptions trực tiếp) resolve được;
+// JwtTokenService + Bearer middleware cùng dùng instance này để đảm bảo một nguồn sự thật.
+var jwtOptions = Fitmate.Application.Common.JwtOptionsLoader.Load(builder.Configuration);
+builder.Services.AddSingleton(jwtOptions);
 
 // DB.
 var dbHost = builder.Configuration["DB_HOST"] ?? "localhost";
@@ -109,12 +116,14 @@ builder.Services.AddSingleton<Fitmate.Application.Common.IPasswordHasher, Fitmat
 builder.Services.AddSingleton<Fitmate.Application.Common.ITokenHasher, Fitmate.Application.Common.Sha256TokenHasher>();
 
 // BE-030: Auth services.
-builder.Services.AddSingleton<IJwtTokenService>(sp =>
-{
-    var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AppOptions>>().Value.Jwt;
-    return new JwtTokenService(options);
-});
-builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
+// BE-380: JwtTokenService + RefreshTokenService cùng resolve JwtOptions instance đã load tại startup
+// (không qua IOptions<>) để đảm bảo một nguồn sự thật — JwtOptionsLoader.Load đã fail-fast ở đầu startup
+// nên không thể có instance null ở đây.
+builder.Services.AddSingleton<IJwtTokenService>(_ => new JwtTokenService(jwtOptions));
+builder.Services.AddScoped<IRefreshTokenService>(sp => new RefreshTokenService(
+    sp.GetRequiredService<Fitmate.Application.Auth.IRefreshTokenStore>(),
+    sp.GetRequiredService<Fitmate.Application.Common.ITokenHasher>(),
+    jwtOptions));
 builder.Services.AddScoped<Fitmate.Application.Auth.IRefreshTokenStore, Fitmate.Infrastructure.Auth.EfRefreshTokenStore>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<Fitmate.Api.Auth.ICurrentUserAccessor, Fitmate.Api.Auth.HttpContextCurrentUserAccessor>();
@@ -242,11 +251,7 @@ builder.Services.AddScoped<OutboxWorker>(sp => new OutboxWorker(
 builder.Services.AddHostedService<OutboxBackgroundService>();
 
 // BE-030: JWT Bearer authentication.
-var jwtOptions = builder.Configuration.GetSection("Jwt").Get<JwtOptions>() ?? new JwtOptions();
-if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey))
-{
-    throw new InvalidOperationException("JwtOptions.SigningKey must be configured (env JWT_SIGNING_KEY)");
-}
+// BE-380: dùng jwtOptions đã load + validate từ JwtOptionsLoader (cùng instance DI JwtTokenService/RefreshTokenService resolve).
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {

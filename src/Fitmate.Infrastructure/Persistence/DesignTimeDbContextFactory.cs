@@ -8,8 +8,7 @@ namespace Fitmate.Infrastructure.Persistence;
 
 /// <summary>
 /// Design-time factory để <c>dotnet ef migrations</c> không cần chạy qua Program.cs.
-/// Program.cs throw nếu JWT_SIGNING_KEY rỗng — tool không có env var đó.
-/// Factory này đọc DB config từ env (hoặc dùng localhost/default cho local dev).
+/// Program.cs dùng JwtOptionsLoader (BE-380) để load JWT key; factory này đọc DB config từ env (hoặc dùng localhost/default cho local dev).
 /// </summary>
 public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<FitmateDbContext>
 {

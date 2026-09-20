@@ -21,7 +21,7 @@ Sửa các biến **bắt buộc** trong `.env`:
   ```bash
   openssl rand -base64 64
   ```
-  Copy output (≥ 64 bytes base64) vào biến. Code (`Program.cs` → `Configure<JwtOptions>`) map `Jwt:SigningKey` ← `JWT_SIGNING_KEY`. Không đặt chuỗi yếu như `123456`.
+  Copy output (≥ 64 bytes base64) vào biến. Code dùng `JwtOptionsLoader` (BE-380) hỗ trợ cả `JWT_SIGNING_KEY` (canonical, như trong .env.example) và `Jwt__SigningKey` (ASP.NET Core alias) — dùng 1 trong 2 đều được. Không đặt chuỗi yếu như `123456`.
 
 Các biến khác trong `.env.example` đã có default hợp lý cho local — để nguyên nếu chưa cần override.
 
