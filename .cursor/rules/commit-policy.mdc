@@ -8,9 +8,12 @@ alwaysApply: true
 - Follow the repository's `AGENTS.md` commit and safety rules.
 - Write all commit subjects and bodies in English.
 - Use Conventional Commits: `<type>(<scope>): <imperative summary> [BE-NNN]`.
-- **Subject line ≤ 72 chars, body ≤ 2 short lines (only the essentials).** A long enumerated list of files / schemas / test counts belongs in `docs/<area>/handoff.md` instead of the commit message. If the subject alone fully conveys the change, omit the body.
+- **Header-only commits preferred.** When a single sentence in the subject fully conveys the change, omit the body. Multi-element lists (files, schemas, test counts) belong in `docs/<area>/handoff.md`, not the commit message.
+- **Allowed punctuation in subjects:** only ASCII letters, digits, spaces, hyphens `-`, parentheses `()`, square brackets `[]`, and the colon `:` after the type/scope. **Forbidden in subjects:** plus `+`, ampersand `&`, at `@`, hash `#`, exclamation `!`, question `?`, pipe `|`, asterisk `*`, tilde `~`, backtick `` ` ``, equals `=`, slash `/`, backslash `\`, and any non-ASCII character. To separate items in the summary, use the comma `,` (not the plus sign).
+- **Subject length:** ≤ 72 chars. Counted with terminal width, not bytes.
 - Read the staged diff and describe the actual change; avoid generic messages such as `docs: handoff`.
 - Do not add `Co-authored-by` trailers, AI attribution, or tool-generated signatures.
 - Verify the final message with `git log -1 --format=%B` after committing.
 - Stage only task-related changes. Never commit secrets.
+- **Never auto-commit.** Every `git commit` MUST be preceded by showing the proposed subject + body and waiting for explicit user approval. Do not run `git commit`, `git commit -m`, or any non-interactive commit flow unless the user reviewed the message in the same turn and said "ok" / "commit" / equivalent approval. This applies even when the rule above is satisfied.
 - Do not push or rewrite history without explicit authorization for that operation.
