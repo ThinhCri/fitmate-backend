@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Fitmate.Application.Outbox;
+using Fitmate.Application.Social;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Social;
@@ -35,7 +36,7 @@ public sealed class NotificationPushHandler : IOutboxHandler
     private readonly IPushStore _pushes;
     private readonly IPushProvider _provider;
     private readonly IPushDeliveryTokens _cipher;
-    private readonly IBlockLookup _blocks;
+    private readonly IBlockStore _blocks;
     private readonly INotificationAuditLogger _audit;
     private readonly ILogger<NotificationPushHandler> _logger;
 
@@ -45,7 +46,7 @@ public sealed class NotificationPushHandler : IOutboxHandler
         IPushStore pushes,
         IPushProvider provider,
         IPushDeliveryTokens cipher,
-        IBlockLookup blocks,
+        IBlockStore blocks,
         INotificationAuditLogger audit,
         ILogger<NotificationPushHandler> logger)
     {
@@ -386,14 +387,4 @@ public sealed class NotificationPushHandler : IOutboxHandler
         Guid RecipientId,
         string SourceType,
         Guid SourceEventId);
-}
-
-/// <summary>
-/// Minimal block lookup used by the push handler for pre-dispatch checks.
-/// Implemented in Application to stay decoupled from EF Core; Infrastructure
-/// wires it to the actual <see cref="IFriendStore"/> block table.
-/// </summary>
-public interface IBlockLookup
-{
-    Task<bool> IsBlockedEitherWayAsync(Guid userA, Guid userB, CancellationToken ct);
 }
