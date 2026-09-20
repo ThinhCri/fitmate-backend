@@ -24,6 +24,8 @@ using Fitmate.Application.Finance;
 using Fitmate.Application.Admin;
 using Fitmate.Application.Social;
 using Fitmate.Application.Moderation;
+using Fitmate.Application.Notifications;
+using Fitmate.Application.Notifications.Handlers;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -173,6 +175,40 @@ builder.Services.AddScoped<IBlockService, Fitmate.Application.Social.BlockServic
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();
 builder.Services.AddScoped<IModerationActionStore, Fitmate.Infrastructure.Moderation.EfModerationActionStore>();
 builder.Services.AddScoped<IModerationService, Fitmate.Application.Moderation.ModerationService>();
+
+// BE-200: Notifications — in-app inbox + push delivery (FCM/Expo on the wire).
+// Push dispatcher commit strategy: each device row + notification row are saved in
+// the same SaveChanges as the originating FriendService.SaveChangesAsync / ModerationService.WarnAsync.
+// On startup the worker and sweep background service check `PushProviderConfig.Enabled` —
+// when disabled they no-op cleanly so no deferred backlog accumulates.
+// DataProtection: .NET 8 sets the application discriminator from the hosting
+// content root so the same key ring can be shared across multiple instances of
+// the same app. Production deployments should override the key ring path via
+// PersistKeysToFileSystem / secret manager (see UA-DP-001).
+builder.Services.AddDataProtection();
+builder.Services.AddScoped<IPushDeliveryTokens, Fitmate.Infrastructure.Notifications.DataProtectionTokenCipher>();
+builder.Services.AddScoped<INotificationStore, Fitmate.Infrastructure.Notifications.EfNotificationStore>();
+builder.Services.AddScoped<IDeviceStore, Fitmate.Infrastructure.Notifications.EfDeviceStore>();
+builder.Services.AddScoped<IPushStore, Fitmate.Infrastructure.Notifications.EfPushStore>();
+builder.Services.AddScoped<INotificationService, Fitmate.Application.Notifications.NotificationService>();
+builder.Services.AddScoped<IDeviceService, Fitmate.Application.Notifications.DeviceService>();
+builder.Services.AddScoped<INotificationAuditLogger, Fitmate.Infrastructure.Notifications.NotificationAuditLogger>();
+builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher(
+    sp.GetRequiredService<FitmateDbContext>(),
+    sp.GetRequiredService<INotificationStore>(),
+    sp.GetRequiredService<IDeviceStore>(),
+    sp.GetRequiredService<IPushStore>(),
+    sp.GetRequiredService<IOutboxDispatcher>(),
+    sp.GetRequiredService<INotificationAuditLogger>(),
+    sp.GetRequiredService<ILogger<Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher>>()));
+// Push provider: production wires MissingPushProvider until a real adapter is registered.
+// (FCM / Expo adapters belong to BE-200c.)
+builder.Services.AddSingleton<IPushProvider, Fitmate.Infrastructure.Notifications.MissingPushProvider>();
+builder.Services.AddScoped<PushDeliverySweepService>();
+builder.Services.AddHostedService<Fitmate.Infrastructure.Notifications.SweepBackgroundService>();
+// Outbox handler for `notification.push_requested`.
+builder.Services.AddScoped<IOutboxHandler, Fitmate.Application.Notifications.Handlers.NotificationPushHandler>();
+
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
 // - IIdempotencyStore: EF Core backed.
