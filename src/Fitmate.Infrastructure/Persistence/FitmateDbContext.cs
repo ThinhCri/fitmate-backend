@@ -82,6 +82,8 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     // Notifications
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<Device> Devices => Set<Device>();
+    public DbSet<PushDelivery> PushDeliveries => Set<PushDelivery>();
+    public DbSet<PushProviderConfig> PushProviderConfigs => Set<PushProviderConfig>();
 
     // Review
     public DbSet<Review> Reviews => Set<Review>();

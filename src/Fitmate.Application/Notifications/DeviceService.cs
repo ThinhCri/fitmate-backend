@@ -48,23 +48,29 @@ public class DeviceService : IDeviceService
         if (existing is not null)
         {
             // Idempotent refresh: update encrypted token (in case of rotation), key id, last_used_at.
-            var (encryptedToken, keyId) = _cipher.ProtectWithKey(token, existing.KeyId);
-            existing.RefreshToken(encryptedToken, keyId);
+            var encryptedToken = _cipher.Protect(token);
+            existing.RefreshToken(encryptedToken, existing.KeyId);
             await _store.SaveChangesAsync(ct);
             return new RegisterDeviceResult(existing.Id, DateTime.UtcNow);
         }
 
-        var (newEncryptedToken, newKeyId) = _cipher.Protect(token);
+        var newEncryptedToken = _cipher.Protect(token);
+        // KeyId is stored purely as a diagnostic stamp. DataProtection embeds the key
+        // selector in the ciphertext format, so unprotect works without the stored keyId.
+        // Use a sentinel value.
+        var sentinelKeyId = "dataprotection";
         var device = Device.Create(
             userId,
             tokenHash,
             newEncryptedToken,
-            newKeyId,
+            sentinelKeyId,
             platform,
             provider);
 
         await _store.AddAsync(device, ct);
         await _store.SaveChangesAsync(ct);
+        // KeyId is stored purely as a diagnostic stamp; ciphertext carries the key
+        // selector automatically in DataProtection format. Use a sentinel value.
         return new RegisterDeviceResult(device.Id, DateTime.UtcNow);
     }
 
