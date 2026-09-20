@@ -62,3 +62,35 @@ public class WeightLogConfiguration : IEntityTypeConfiguration<WeightLog>
         e.HasIndex(x => new { x.UserId, x.RecordedAt });
     }
 }
+
+public class WorkoutSessionExerciseConfiguration : IEntityTypeConfiguration<WorkoutSessionExercise>
+{
+    public void Configure(EntityTypeBuilder<WorkoutSessionExercise> e)
+    {
+        e.ToTable("workout_session_exercises");
+        e.HasKey(x => x.Id);
+        e.Property(x => x.Id).HasColumnName("id");
+        e.Property(x => x.WorkoutSessionId).IsRequired();
+        e.Property(x => x.ExerciseName).HasMaxLength(200).IsRequired();
+        e.Property(x => x.Type).HasConversion<int>();
+        e.Property(x => x.Tags).HasColumnType("text[]");
+        e.HasIndex(x => x.WorkoutSessionId);
+        e.HasMany(x => x.SetResults)
+            .WithOne()
+            .HasForeignKey(s => s.WorkoutSessionExerciseId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class WorkoutSessionExerciseSetConfiguration : IEntityTypeConfiguration<WorkoutSessionExerciseSet>
+{
+    public void Configure(EntityTypeBuilder<WorkoutSessionExerciseSet> e)
+    {
+        e.ToTable("workout_session_exercise_sets");
+        e.HasKey(x => x.Id);
+        e.Property(x => x.Id).HasColumnName("id");
+        e.Property(x => x.WorkoutSessionExerciseId).IsRequired();
+        e.Property(x => x.Status).HasConversion<int>();
+        e.HasIndex(x => new { x.WorkoutSessionExerciseId, x.SetIndex }).IsUnique();
+    }
+}

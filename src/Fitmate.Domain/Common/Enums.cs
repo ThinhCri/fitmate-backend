@@ -140,6 +140,13 @@ public enum ExerciseType
     Time = 1
 }
 
+public enum WorkoutSetStatus
+{
+    Completed = 1,
+    Partial = 2,
+    Skipped = 3
+}
+
 public enum Gender
 {
     Male = 0,
