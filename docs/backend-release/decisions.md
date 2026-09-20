@@ -510,4 +510,37 @@
   - Outbox delivery ≠ user-visible notification (2 khái niệm tách biệt).
 - **Hệ quả**:
   - Application service tự quyết định `Enqueue` dựa trên policy ở trên; không consumer-side filter.
-- **Trạng thái**: ✅ Accepted (BE-181 → IN_PROGRESS).
+- **Trạng thái**: ✅ Accepted (BE-200 PARTIAL DONE).
+
+## DEC-040 — Push token encryption key ring
+
+- **Ngày**: 2026-09-20
+- **Người chốt**: AI (BE-200 Phase 1)
+- **Bối cảnh**: Device push tokens are stored encrypted with ASP.NET Core DataProtection. Where does the key ring live?
+- **Quyết định**:
+  - Dev / Docker Compose: default DataProtection (file-based key ring under app data directory, acceptable for local only).
+  - Staging / Production: key ring path overridden via `DataProtectionOptions.KeysPath` + env `DATAPROTECTION_KEYS_PATH` → persistent volume (not ephemeral). See UA-DP-001.
+  - Secrets manager (`PersistKeysToAzureKeyVault` / `PersistKeysTo AwsKms`) is deferred to UA-DP-001 (post-MVP).
+  - Key rotation: DataProtection auto-rotates keys when `DataProtectionOptions.KeyExpirationPolicy` triggers; existing ciphertexts remain decryptable.
+  - The ciphertext carries the key selector, so unprotect works without callers knowing the key id.
+- **Trạng thái**: ✅ Accepted (BE-200 PARTIAL DONE — `DataProtectionTokenCipher` + tests committed phiên 27).
+
+## DEC-041 — Push delivery TTL and sweep interval
+
+- **Ngày**: 2026-09-20
+- **Người chốt**: AI (BE-200 Phase 1)
+- **Bối cảnh**: When should a push delivery attempt stop retrying and be marked Expired?
+- **Quyết định**:
+  - TTL per notification type (computed from **originating event timestamp**, NOT from retry/defer "now"):
+    | Type | TTL |
+    |------|-----|
+    | FriendRequest | 24 h |
+    | System (warn) | 24 h |
+    | Booking | 8 h |
+    | Payment | 24 h |
+    | Reminder | 24 h |
+    | (fallback) | 24 h |
+  - Sweep interval: every **30 minutes** (`SweepBackgroundService`, `Interval = 30 min`). Claim uses `FOR UPDATE SKIP LOCKED` so multiple instances can run safely.
+  - Delivery statuses: `Pending` → (provider sends) `Sent` | (expired TTL) `Expired` | (perm fail) `FailedPermanent` | (token invalid) `TokenInvalid` | (retryable fail) `FailedRetryable` | (deferred) `Deferred` | (sweep) `Sweeping → Expired`.
+  - Sweep only processes `Pending` (0), `FailedRetryable` (2), `Deferred` (3) rows.
+- **Trạng thái**: ✅ Accepted (BE-200 PARTIAL DONE — `PushDeliverySweepService` + `SweepBackgroundService(30 min)` + 4 tests committed phiên 27).

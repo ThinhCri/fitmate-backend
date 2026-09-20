@@ -144,11 +144,19 @@
 
 ## 10. Notifications
 
+> Device registration: token stored encrypted (DataProtection, DEC-040). Idempotent per (userId, tokenHash). Soft-revoke stops push delivery; in-app notifications still work when push is disabled.
+> Producer wiring (FriendService.Accept + ModerationService.Warn → `IPushDeliveryDispatcher`) gắn `source_event_id` (UUID of FriendRequest / Report) + `source_type` ('friend_request_accepted' | 'moderation_warning') để dedup qua partial unique index `(user_id, source_event_id, source_type)`. Worker re-fetch notification theo (recipientId, source_event_id, source_type) trước khi fan-out push.
+
 | Action | public | member | pt | admin |
 |---|---|---|---|---|
-| List own notifications | — | 🔒 | 🔒 | ❌ |
-| Mark read | — | 🔒 | 🔒 | ❌ |
-| Push register device | — | 🔒 | 🔒 | ❌ |
+| List own notifications (`GET /me/notifications`) | — | 🔒 | 🔒 | ❌ |
+| Mark read (`POST /me/notifications/{id}/read`) | — | 🔒 | 🔒 | ❌ |
+| Register device (`POST /users/me/devices`) | — | 🔒 | 🔒 | ❌ |
+| Revoke device (`DELETE /users/me/devices/{id}`) | — | 🔒 (owner only — wrong owner → 404) | 🔒 (owner only) | ❌ |
+
+**Device owner check**: `DELETE /users/me/devices/{id}` trả 404 nếu device không thuộc về user (không leak existence). Admin không có quyền revoke device của người khác.
+
+**Producer dedup**: FriendService.Accept và ModerationService.Warn gọi `IPushDeliveryDispatcher.DispatchAsync` với `(source_event_id, source_type)`. DbContext unique partial index `(user_id, source_event_id, source_type) WHERE source_event_id IS NOT NULL` đảm bảo 1 notification per (recipient, source_event). Idempotent: chạy lại path không tạo duplicate row.
 
 ## 11. Moderation
 

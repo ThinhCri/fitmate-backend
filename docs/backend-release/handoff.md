@@ -17,14 +17,23 @@
 - **EF Configuration (commit 6):** `NotificationsConfiguration` cho 4 table. Indexes: `ix_notifications_user_created`, `ix_notifications_user_read_created`, partial unique `ux_notifications_dedup (user_id, source_event_id, source_type) WHERE source_event_id IS NOT NULL`. Devices: unique `ux_devices_user_token (user_id, token_hash)`, partial `ix_devices_active WHERE is_active=true`. Push deliveries: partial `ix_push_deliveries_sweep WHERE status IN (0,2,3)`, ix notification_id, ix device_id. NotificationPushHandler refactor: bỏ `IBlockLookup` riêng, dùng `IBlockStore` từ BE-181.
 - **API + DI (commit 7):** `NotificationsController` (`GET /api/v1/me/notifications?read=&page=&pageSize=`, `POST /api/v1/me/notifications/{id}/read`). `DevicesController` (`POST /api/v1/users/me/devices` body `{device_token, platform, provider}`, `DELETE /api/v1/users/me/devices/{id}`). Program.cs DI: `IPushDeliveryTokens` (scoped), 3 EF stores, 2 services, `INotificationAuditLogger`, `IPushDeliveryDispatcher` (factory inject DbContext), `IPushProvider` (singleton `MissingPushProvider`), `PushDeliverySweepService` (scoped) + `SweepBackgroundService` (hosted), `NotificationPushHandler` outbox handler. DataProtection comment chỉ đến UA-DP-001 (secret manager cho key ring).
 
-**Pending trong BE-200:**
-- Producer wiring: FriendService accept path → enqueue notification (gắn với source_type=`friend`); ModerationService.Warn → enqueue notification (gắn với source_type=`moderation`).
-- Unit tests: NotificationService (list filter + MarkRead idempotent + 404), DeviceService (register idempotent + revoke 404 + validation), PushDeliveryDispatcher (skip khi disabled / khi không có device / fan-out), NotificationPushHandler (block check, device inactive, expired, result mapping), PushDeliverySweepService.
-- Migration generate + apply local: `dotnet ef migrations add NotificationsPushV2 --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api`.
-- OpenAPI doc update: thêm `/me/notifications` + `/users/me/devices` + schemas.
-- DEC-040 (key ring location) + DEC-041 (sweep interval): document trong `decisions.md`.
-- `Authorization matrix` cập nhật §8 (device owner check).
-- Producer tests: đảm bảo mỗi domain event trigger đúng source_event_id (không trùng).
+**Pending trong BE-200:** — DONE 2026-09-20 (phiên 27 cập nhật, xem "Phiên 27 update" bên dưới).
+- Producer wiring: FriendService accept path → enqueue notification (gắn với source_type=`friend`); ModerationService.Warn → enqueue notification (gắn với source_type=`moderation`). ✅
+- Unit tests: NotificationService (list filter + MarkRead idempotent + 404), DeviceService (register idempotent + revoke 404 + validation), PushDeliveryDispatcher (skip khi disabled / khi không có device / fan-out), NotificationPushHandler (block check, device inactive, expired, result mapping), PushDeliverySweepService. ✅
+- Migration generate + apply local: `dotnet ef migrations add NotificationsPushV2 --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api`. ✅ (migration `20260920064150_NotificationsPushV2`)
+- OpenAPI doc update: thêm `/me/notifications` + `/users/me/devices` + schemas. ✅ (đã có sẵn từ phase trước — endpoints + `Notification` schema)
+- DEC-040 (key ring location) + DEC-041 (sweep interval): document trong `decisions.md`. ✅ (status Proposed → Accepted)
+- `Authorization matrix` cập nhật §10 (device owner check + Producer dedup). ✅
+- Producer tests: đảm bảo mỗi domain event trigger đúng source_event_id (không trùng). ✅ (FriendServiceTests + ModerationServiceTests cập nhật)
+
+**Phiên 27 update (2026-09-20)** — BE-200 PARTIAL_DONE hoàn tất:
+- **Migration `20260920064150_NotificationsPushV2`**: apply OK trên local Postgres. Schema verified: 4 bảng (`notifications`, `devices`, `push_deliveries`, `push_provider_configs`) với 5 indexes.
+- **Producer wiring**: `FriendService.SendRequestAsync` + `AcceptRequestAsync` gọi `IPushDeliveryDispatcher.DispatchAsync` với `source_event_id = request.Id`, `source_type = friend_request_sent | friend_request_accepted`. `ModerationService.ResolveReportAsync` (action=Warn) với `source_event_id = report.Id`, `source_type = moderation_warning`. Partial unique index `(user_id, source_event_id, source_type) WHERE source_event_id IS NOT NULL` đảm bảo idempotent.
+- **Unit tests**: `dotnet test` **321/321 PASS** (76 mới: NotificationService 11 + DeviceService 9 + PushDeliveryDispatcher 12 + NotificationPushHandler 14 + PushDeliverySweepService 5 + 25 cập nhật trong FriendServiceTests/ModerationServiceTests).
+  - Domain fix: `PushDelivery.CreateExpired` `internal` → `public` để test project truy cập.
+  - Test mock: `NotificationPushHandlerTests.InMemoryDeviceStore.GetActiveDevicesAsync` trả tất cả devices (handler tự enforce per-device checks).
+- **Docs**: DEC-040 + DEC-041 → **Accepted**. Authorization matrix §10 bổ sung "Producer dedup" note.
+- **Commit**: `e864408 test(notifications): add unit tests for ... [BE-200]`.
 
 **Pending beyond BE-200:**
 - UA-FCM-001: chọn push provider thật (FCM trực tiếp vs Expo). Hiện dùng `MissingPushProvider` (luôn `ProviderNotConfigured`, không backlog tích lũy).
