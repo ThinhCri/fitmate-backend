@@ -4,6 +4,34 @@
 
 ## Phiên hiện tại
 
+### Phiên 27 — đã làm (2026-09-20) [BE-200]
+
+**BE-200: Notifications — Phase 1 (in-app + push delivery abstraction)** — PARTIAL_DONE.
+
+Đã implement:
+- **Domain (commit 1):** `Notification` (Summary, SourceEventId, SourceType), `Device` (EncryptedToken, KeyId, Provider, IsActive, RevokedAt, LastUsedAt), `PushDelivery`, `PushProviderConfig` + enums `PushProvider{Fcm, Expo}` và `PushDeliveryStatus` (8 states: Pending/Sent/Deferred/FailedRetryable/FailedPermanent/TokenInvalid/Sweeping/Expired).
+- **Application (commit 2):** `INotificationService`, `IDeviceService`, `IPushDeliveryDispatcher`, `IPushProvider`, `IPushDeliveryTokens`, `INotificationStore`, `IDeviceStore`, `IPushStore`, `INotificationAuditLogger`, `NotificationsDtos`, `PushPayload`, `PushTtlOptions`.
+- **Application services (commit 3):** `NotificationService` (List + MarkRead idempotent, 404 cho not-owned), `DeviceService` (Register idempotent SHA-256 dedup + Revoke soft), `PushDeliveryDispatcher` (DispatchAsync idempotent qua `ExistsBySourceAsync`; skip push + audit `notification.skipped reason=push_disabled|no_active_device`; nếu enabled → tạo `PushDelivery` per active device + enqueue outbox `notification.push_requested`). `IPushDeliveryTokens` simplify chỉ 2 method `Protect`/`Unprotect` (DataProtection tự nhúng key id trong ciphertext → không cần expose key id ở Application).
+- **Application outbox (commit 4):** `NotificationPushHandler` (Type=`notification.push_requested`): per-device sender-side checks (active, owner match, TTL expired, domain validity + block check cho friend source), per-device failure isolation, decrypt qua `IPushDeliveryTokens.Unprotect`, gọi `IPushProvider.SendAsync`, map `PushSendResult` → status transitions. `PushDeliverySweepService` claim expired qua `FOR UPDATE SKIP LOCKED` rồi mark `Sweeping` → `Expired`.
+- **Infrastructure (commit 5):** `EfNotificationStore` / `EfDeviceStore` / `EfPushStore` (raw SQL claim), `EfPushDeliveryDispatcher` (DbContext save), `DataProtectionTokenCipher` (`IDataProtectionProvider.CreateProtector("fitmate.push-token.v1")`, log cảnh báo khi decrypt fail → caller treat `TokenInvalid`), `MissingPushProvider` (luôn trả `ProviderNotConfigured`), `NotificationAuditLogger` (Serilog structured), `SweepBackgroundService` (Interval=30 phút). csproj thêm `Microsoft.AspNetCore.DataProtection` + `Microsoft.Extensions.Hosting.Abstractions`. DbContext thêm `DbSet<PushDelivery>` + `DbSet<PushProviderConfig>`.
+- **EF Configuration (commit 6):** `NotificationsConfiguration` cho 4 table. Indexes: `ix_notifications_user_created`, `ix_notifications_user_read_created`, partial unique `ux_notifications_dedup (user_id, source_event_id, source_type) WHERE source_event_id IS NOT NULL`. Devices: unique `ux_devices_user_token (user_id, token_hash)`, partial `ix_devices_active WHERE is_active=true`. Push deliveries: partial `ix_push_deliveries_sweep WHERE status IN (0,2,3)`, ix notification_id, ix device_id. NotificationPushHandler refactor: bỏ `IBlockLookup` riêng, dùng `IBlockStore` từ BE-181.
+- **API + DI (commit 7):** `NotificationsController` (`GET /api/v1/me/notifications?read=&page=&pageSize=`, `POST /api/v1/me/notifications/{id}/read`). `DevicesController` (`POST /api/v1/users/me/devices` body `{device_token, platform, provider}`, `DELETE /api/v1/users/me/devices/{id}`). Program.cs DI: `IPushDeliveryTokens` (scoped), 3 EF stores, 2 services, `INotificationAuditLogger`, `IPushDeliveryDispatcher` (factory inject DbContext), `IPushProvider` (singleton `MissingPushProvider`), `PushDeliverySweepService` (scoped) + `SweepBackgroundService` (hosted), `NotificationPushHandler` outbox handler. DataProtection comment chỉ đến UA-DP-001 (secret manager cho key ring).
+
+**Pending trong BE-200:**
+- Producer wiring: FriendService accept path → enqueue notification (gắn với source_type=`friend`); ModerationService.Warn → enqueue notification (gắn với source_type=`moderation`).
+- Unit tests: NotificationService (list filter + MarkRead idempotent + 404), DeviceService (register idempotent + revoke 404 + validation), PushDeliveryDispatcher (skip khi disabled / khi không có device / fan-out), NotificationPushHandler (block check, device inactive, expired, result mapping), PushDeliverySweepService.
+- Migration generate + apply local: `dotnet ef migrations add NotificationsPushV2 --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api`.
+- OpenAPI doc update: thêm `/me/notifications` + `/users/me/devices` + schemas.
+- DEC-040 (key ring location) + DEC-041 (sweep interval): document trong `decisions.md`.
+- `Authorization matrix` cập nhật §8 (device owner check).
+- Producer tests: đảm bảo mỗi domain event trigger đúng source_event_id (không trùng).
+
+**Pending beyond BE-200:**
+- UA-FCM-001: chọn push provider thật (FCM trực tiếp vs Expo). Hiện dùng `MissingPushProvider` (luôn `ProviderNotConfigured`, không backlog tích lũy).
+- UA-DP-001: secret manager cho DataProtection key ring (path trên production).
+- BE-191 Chat (friend message) đang phụ thuộc BE-181 (đã xong) — bắt đầu triển khai tiếp.
+- BE-160 Status migration, BE-130 booking flows, BE-140 payment skeleton.
+
 ### Phiên 26 — đã làm (2026-09-19) [BE-151]
 
 **BE-151: GET /admin/platform-policy (read-only theo DEC-029)** — DONE.
@@ -359,3 +387,4 @@ Triển khai xong các quyết định user đã chốt:
 - Scope: read-only endpoint trả về 10% platform fee + terms version cho admin web.
 - Depends on: BE-110.
 - Status: TODO
+<!-- Local maintenance 2026-09-20: Reworded only the latest three commit messages into concise English; preserved all commit trees and author/committer metadata. New HEAD: fef093c1ffbf6378b1a1b804264f0fbd74409422. Recovery branch: backup/commit-messages-1789878044998. No push. Existing uncommitted commit-policy.mdc changes preserved. -->
