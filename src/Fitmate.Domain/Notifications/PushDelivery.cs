@@ -82,6 +82,28 @@ public class PushDelivery : AuditableEntity
         };
     }
 
+    /// <summary>
+    /// Create a delivery that is already expired (for testing the sweep service).
+    /// Unlike Create(), this bypasses the expiresAt future validation.
+    /// </summary>
+    public static PushDelivery CreateExpired(Guid notificationId, Guid deviceId, DateTime expiresAt)
+    {
+        if (notificationId == Guid.Empty) throw new ArgumentException("NotificationId must not be empty", nameof(notificationId));
+        if (deviceId == Guid.Empty) throw new ArgumentException("DeviceId must not be empty", nameof(deviceId));
+
+        return new PushDelivery
+        {
+            Id = Guid.NewGuid(),
+            NotificationId = notificationId,
+            DeviceId = deviceId,
+            Status = PushDeliveryStatus.Pending,
+            Attempts = 0,
+            ExpiresAt = expiresAt,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
+        };
+    }
+
     /// <summary>Provider returned success.</summary>
     public void MarkSent()
     {
