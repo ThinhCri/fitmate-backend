@@ -6,11 +6,11 @@ services:
     build:
       dockerfile: src/Fitmate.Api/Dockerfile.dev
     volumes:
-      - ./src:/src/src:ro
+      - ./src:/src/src
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
       DOTNET_USE_POLLING_FILE_WATCHER: "true"
-    command: ["dotnet", "watch", "run", "--project", "src/Fitmate.Api/Fitmate.Api.csproj"]
+    command: ["dotnet", "watch", "run", "--project", "src/Fitmate.Api/Fitmate.Api.csproj", "--urls", "http://+:5116"]
     ports:
-      - "8080:8080"
+      - "127.0.0.1:5116:5116"

@@ -1,4 +1,5 @@
 using Fitmate.Application.Outbox;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -6,20 +7,21 @@ namespace Fitmate.Api.Outbox;
 
 /// <summary>
 /// Hosted service chạy <see cref="OutboxWorker"/> mỗi <see cref="Interval"/> ms.
+/// Uses <see cref="IServiceScopeFactory"/> to resolve scoped <see cref="OutboxWorker"/> safely.
 /// Stop gracefully khi host shutdown (qua <see cref="IHostApplicationLifetime"/>).
 /// </summary>
 public class OutboxBackgroundService : BackgroundService
 {
-    private readonly OutboxWorker _worker;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<OutboxBackgroundService> _logger;
     private readonly TimeSpan _interval;
 
     public OutboxBackgroundService(
-        OutboxWorker worker,
+        IServiceScopeFactory scopeFactory,
         ILogger<OutboxBackgroundService> logger,
         TimeSpan? interval = null)
     {
-        _worker = worker;
+        _scopeFactory = scopeFactory;
         _logger = logger;
         _interval = interval ?? TimeSpan.FromSeconds(5);
     }
@@ -31,7 +33,10 @@ public class OutboxBackgroundService : BackgroundService
         {
             try
             {
-                var processed = await _worker.ProcessOnceAsync(stoppingToken);
+                // Create a new scope per tick so scoped services (OutboxWorker, DbContext) are released.
+                using var scope = _scopeFactory.CreateScope();
+                var worker = scope.ServiceProvider.GetRequiredService<OutboxWorker>();
+                var processed = await worker.ProcessOnceAsync(stoppingToken);
                 if (processed == 0)
                 {
                     await Task.Delay(_interval, stoppingToken);

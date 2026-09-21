@@ -1,0 +1,22 @@
+# Docker Compose override for k6 load testing.
+# Usage:
+#   docker compose -f compose.yml -f compose.loadtest.yml up k6
+#
+# The k6 container waits for the `api` service to be healthy before running.
+# Override BASE_URL with the `api` container hostname when running inside Docker.
+
+services:
+  k6:
+    image: grafana/k6:latest
+    profiles: ["k6"]
+    volumes:
+      - ./tests/load/scripts:/scripts:ro
+    environment:
+      BASE_URL: http://api:8080
+      K6_CLOUD_TOKEN: ${K6_CLOUD_TOKEN:-}
+    depends_on:
+      api:
+        condition: service_healthy
+    command: >
+      run /scripts/smoke.js
+      --out cloud=${K6_CLOUD_TOKEN:+true}

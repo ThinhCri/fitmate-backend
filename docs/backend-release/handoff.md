@@ -671,8 +671,14 @@ Triển khai xong các quyết định user đã chốt:
 - Depends on: BE-030 (Auth), BE-110.
 - Status: TODO
 
+### BE-330 Load test scripts (k6)
+- Scope: smoke/normal/peak/spike/soak/stress.
+- Depends on: BE-300.
+- Done when: smoke + normal pass trên local.
+- Status: **DONE (phiên 25, 2026-09-21)** — `tests/load/` directory với 6 scripts (smoke/normal/peak/spike/soak/stress), shared helpers (common.js, constants.js), compose.loadtest.yml Docker profile, README. Fix pre-existing bugs: `OutboxBackgroundService` scoped DI violation (inject `IServiceScopeFactory` thay vì `OutboxWorker`), `AuthController` SignInManager missing (add `.AddSignInManager()`), `compose.override.yml` volume write permissions + port 5116 binding, `RegisterRequest.role` lowercase enum validation. **Evidence**: smoke test 100% checks pass, 0% errors, p(95)=225ms on local Docker stack.
+
 ### BE-151 GET /admin/platform-policy
 - Scope: read-only endpoint trả về 10% platform fee + terms version cho admin web.
 - Depends on: BE-110.
 - Status: TODO
-<!-- Local maintenance 2026-09-20: Reworded only the latest three commit messages into concise English; preserved all commit trees and author/committer metadata. New HEAD: fef093c1ffbf6378b1a1b804264f0fbd74409422. Recovery branch: backup/commit-messages-1789878044998. No push. Existing uncommitted commit-policy.mdc changes preserved. -->
+<!-- Local maintenance 2026-09-21: BE-330 k6 load scripts + 2 pre-existing DI fixes (OutboxBackgroundService, SignInManager) + compose override fixes. Smoke test 100% pass. -->

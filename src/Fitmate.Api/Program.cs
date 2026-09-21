@@ -110,9 +110,10 @@ builder.Services.AddIdentityCore<ApplicationUser>(opt =>
     opt.Lockout.MaxFailedAccessAttempts = 5;
     opt.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
 })
-.AddRoles<IdentityRole<Guid>>()
-.AddEntityFrameworkStores<FitmateDbContext>()
-.AddDefaultTokenProviders(); // reset password + email confirm token
+    .AddRoles<IdentityRole<Guid>>()
+    .AddEntityFrameworkStores<FitmateDbContext>()
+    .AddSignInManager() // SignInManager required by AuthController (login flow)
+    .AddDefaultTokenProviders(); // reset password + email confirm token
 
 // Services.
 builder.Services.AddSingleton<Fitmate.Application.Common.IPasswordHasher, Fitmate.Application.Common.BcryptPasswordHasher>();
