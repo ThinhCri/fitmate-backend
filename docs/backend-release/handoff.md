@@ -4,7 +4,7 @@
 
 ## Phiên hiện tại
 
-### Phiên 34 — đang chạy (2026-09-21) [BE-340]
+### Phiên 34 — đang chạy (2026-09-21) [BE-340 + BE-200]
 
 **BE-140: Payment skeleton (mock URL, no VNPay) — DONE**
 
@@ -70,6 +70,32 @@ Plan rev 1 lưu ở `docs/backend-release/tasks/BE-340-plan.md`.
 - UA-DP-001: chốt provider secret manager production (Azure Key Vault / AWS KMS / Vault) — không chặn dev local.
 - UA-FCM-001: chốt push provider (Expo vs FCM) — không chặn BE-200 in-app notification.
 - Pre-commit hook cài local (chỉ CI gate hiện tại; user tự cài `pre-commit` nếu muốn).
+
+### Phiên 34 update (2026-09-21) [BE-200 finalize]
+
+**BE-200: Notifications — DONE (finalize).**
+
+State verify trên local Postgres (`fitmateai_be-postgres-1` healthy):
+- 4 bảng tồn tại: `notifications`, `devices`, `push_deliveries`, `push_provider_configs`.
+- `notifications` schema verified: 12 columns (`id`/`user_id`/`type`/`title`/`message`/`payload_json`/`read`/`created_at`/`updated_at`/`deleted_at`/`source_event_id`/`source_type`/`summary`) + 4 indexes (PK, `ix_notifications_user_created`, `ix_notifications_user_read_created`, partial unique `ux_notifications_dedup`).
+- Migration `20260920064150_NotificationsPushV2` đã apply (commit `47d628c` phiên 27 cập nhật).
+- Producer wiring: FriendService.SendRequestAsync + AcceptRequestAsync → `IPushDeliveryDispatcher.DispatchAsync` (commit `e864408` test cover + commit `021d8e1` finalize). ModerationService.ResolveReportAsync Warn → enqueue + push dispatch.
+- OpenAPI endpoints: `/me/notifications` GET + POST `/{id}/read`, `/users/me/devices` POST + DELETE `/{id}` (đã có sẵn từ phiên 27 commit `e7fe2d7`).
+- DEC-040 (DataProtection key ring path) + DEC-041 (TTL + sweep interval) → **Accepted** (`decisions.md`).
+
+**Verify recipe:**
+- `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --no-restore` → **392/392 PASS** (76 mới từ BE-200 + 316 cũ).
+- `docker exec fitmateai_be-postgres-1 psql -U fitmate -d fitmate -c "\dt"` → 4 bảng notification hiện.
+- `docker exec fitmateai_be-postgres-1 psql -U fitmate -d fitmate -c "\d notifications"` → schema verified + 4 indexes.
+- SweepBackgroundService `Interval = TimeSpan.FromMinutes(30)` (DEC-041).
+- DI wiring `PushDeliverySweepService` scoped + `SweepBackgroundService` hosted + `NotificationPushHandler` outbox handler.
+
+**Tổng kết:**
+- `tasks.md` BE-200 → DONE; DONE count 18.
+- 1 commit (BE-200 finalize): `docs(be): mark BE-200 DONE in tasks and handoff [BE-200]`.
+
+**Next:**
+- Tasks còn TODO không phụ thuộc UA: **BE-130 (Booking flows admin)**, **BE-420 (Storage adapter)**.
 
 ### Phiên 33 — đã làm (2026-09-21) [BE-170 + BE-320]
 
