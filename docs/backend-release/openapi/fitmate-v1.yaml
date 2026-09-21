@@ -1004,6 +1004,28 @@ paths:
               schema:
                 $ref: '#/components/schemas/WorkoutSession'
 
+  /me/workout/sessions/{id}:
+    get:
+      tags: [Workout]
+      summary: Chi tiết phiên tập kèm exercise breakdown + set results
+      operationId: getMyWorkoutSession
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutSessionDetail'
+        '404':
+          description: Session not found or not owned by user
+
   /me/weight:
     get:
       tags: [Workout]
@@ -3144,6 +3166,10 @@ components:
         plan_id:
           type: string
           nullable: true
+        plan_name:
+          type: string
+          nullable: true
+          description: Snapshot plan name at the time of the session.
         date:
           type: string
           format: date
@@ -3164,6 +3190,18 @@ components:
         planned_sets:
           type: integer
           nullable: true
+        snapshot_plan_day_of_week:
+          type: string
+          nullable: true
+        snapshot_plan_planned_duration_minutes:
+          type: integer
+          nullable: true
+        snapshot_plan_target_calories_burn:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
 
     WorkoutSessionInput:
       type: object
@@ -3190,6 +3228,139 @@ components:
           type: integer
         planned_sets:
           type: integer
+        exercise_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSessionExerciseInput'
+
+    WorkoutSessionDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        plan_id:
+          type: string
+          nullable: true
+        plan_name:
+          type: string
+          nullable: true
+        date:
+          type: string
+          format: date
+        day:
+          type: string
+        duration_min:
+          type: integer
+        calories_burned:
+          type: integer
+        exercises:
+          type: integer
+        status:
+          type: string
+          enum: [completed, ended_early, skipped]
+        completed_sets:
+          type: integer
+          nullable: true
+        planned_sets:
+          type: integer
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSessionExerciseView'
+
+    WorkoutSessionExerciseInput:
+      type: object
+      required: [exercise_id, order_index]
+      properties:
+        exercise_id:
+          type: string
+        order_index:
+          type: integer
+        planned_reps:
+          type: integer
+        planned_duration_sec:
+          type: integer
+        planned_rest_sec:
+          type: integer
+        sets:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSetInput'
+
+    WorkoutSessionExerciseView:
+      type: object
+      properties:
+        id:
+          type: string
+        exercise_name:
+          type: string
+        type:
+          type: string
+          enum: [reps, time]
+        order_index:
+          type: integer
+        planned_sets:
+          type: integer
+        planned_reps:
+          type: integer
+          nullable: true
+        planned_duration_sec:
+          type: integer
+          nullable: true
+        planned_rest_sec:
+          type: integer
+          nullable: true
+        planned_calories:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        completed_sets:
+          type: integer
+        set_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkoutSetView'
+
+    WorkoutSetInput:
+      type: object
+      required: [set_index, status]
+      properties:
+        set_index:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [completed, partial, skipped]
+        actual_reps:
+          type: integer
+        actual_duration_sec:
+          type: integer
+
+    WorkoutSetView:
+      type: object
+      properties:
+        id:
+          type: string
+        set_index:
+          type: integer
+        status:
+          type: string
+          enum: [completed, partial, skipped]
+        actual_reps:
+          type: integer
+          nullable: true
+        actual_duration_sec:
+          type: integer
+          nullable: true
+        is_bonus:
+          type: boolean
+          description: True when set_index exceeds the parent exercise's planned sets.
 
     WeightLog:
       type: object
