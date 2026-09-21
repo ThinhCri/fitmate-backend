@@ -214,7 +214,7 @@
 - Scope: spectral/redocly, test snapshot vs spec.
 - Depends on: BE-300
 - Done when: breaking change fail CI.
-- Status: TODO
+- Status: **DONE (phiên 33, 2026-09-21)** — `.spectral.yml` (extends `spectral:oas`, tắt rules false-positive cho oas3.1/operations không bắt buộc). CI step `Lint OpenAPI spec (Spectral)` trong `lint-test` job — `npx @stoplight/spectral lint --fail-severity=error` (warning không chặn). Fix 4 lỗi spec khi run initial: duplicate `/social/blocks/{user_id}`, duplicate `/social/blocks` GET entry, `peer_email` còn sót trong `required` (line 1645), Vietnamese descriptions có `:` parse sai (line 1650/3718/3733), invalid ref `Friend` → `FriendRequest`, device DELETE path sai (move sang `/users/me/devices/{id}`). Final: **0 errors, 87 warnings** (warnings non-blocking).
 
 ### BE-330 Load test scripts (k6)
 - Scope: smoke/normal/peak/spike/soak/stress.

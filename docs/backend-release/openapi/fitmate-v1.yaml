@@ -318,13 +318,20 @@ paths:
                 $ref: '#/components/schemas/DeviceRegistrationResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
+
+  /users/me/devices/{id}:
     delete:
       tags: [Users]
       summary: Revoke a device
       operationId: revokeDevice
       description: Soft-revokes a device so it stops receiving push notifications.
       parameters:
-        - $ref: '#/components/parameters/IdPath'
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         '204':
           description: Device revoked
@@ -1386,7 +1393,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Friend'
+                $ref: '#/components/schemas/FriendRequest'
 
   /social/friends:
     get:
@@ -1469,24 +1476,6 @@ paths:
       responses:
         '204':
           description: No Content
-
-  /social/blocks/{user_id}:
-    delete:
-      tags: [Social]
-      summary: Unblock user (KHÔNG tự khôi phục friendship)
-      operationId: unblockUser
-      parameters:
-        - in: path
-          name: user_id
-          required: true
-          schema:
-            type: string
-            format: uuid
-      responses:
-        '204':
-          description: No Content
-
-  /social/blocks:
     get:
       tags: [Social]
       summary: Danh sách user mà chính mình đã block
@@ -1511,6 +1500,22 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/BlockedSummary'
+
+  /social/blocks/{user_id}:
+    delete:
+      tags: [Social]
+      summary: Unblock user (KHÔNG tự khôi phục friendship)
+      operationId: unblockUser
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: No Content
 
   /chat/ai/threads:
     get:
@@ -1628,12 +1633,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [peer_email, text]
+              required: [peer_user_id, text]
               properties:
                 peer_user_id:
                   type: string
                   format: uuid
-                  description: BE-191: thay peer_email (DEC-036). UUID của người nhận.
+                  description: "BE-191: thay peer_email (DEC-036). UUID của người nhận."
                 text:
                   type: string
                   minLength: 1
@@ -1650,7 +1655,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ChatMessage'
         '403':
-          description: Không phải bạn hoặc đã bị block 1 trong 2 chiều
+          description: "Không phải bạn hoặc đã bị block 1 trong 2 chiều"
           content:
             application/json:
               schema:
@@ -3701,7 +3706,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: BE-191: null khi message thuộc AI thread; non-null cho friend chat.
+          description: "BE-191: null khi message thuộc AI thread; non-null cho friend chat."
         sender_user_id:
           type: string
           format: uuid
@@ -3716,7 +3721,7 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: BE-191: idempotency key do client sinh. Unique per conversation.
+          description: "BE-191: idempotency key do client sinh. Unique per conversation."
         created_at:
           type: string
           format: date-time

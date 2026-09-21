@@ -25,8 +25,10 @@ Plan rev 1 lưu ở `docs/backend-release/tasks/BE-170-plan.md`.
 - AI stub là default DI; real adapter (BE-430) sẽ override.
 
 **Next:**
-- Kiểm tra tasks.md: DONE count 16 (thêm BE-170).
+- Kiểm tra tasks.md: DONE count 16 (thêm BE-170) → 17 (thêm BE-320).
 - Chọn task tiếp theo: BE-200 producer wiring (FriendService/ModerationService → push), BE-320 (OpenAPI linter), hoặc BE-330 (k6 load test).
+
+**Cập nhật phiên 33 (BE-320):** OpenAPI linter xong — `.spectral.yml` + CI step. Fix 6 lỗi spec (duplicate paths, peer_email typo, Vietnamese descriptions parse error, invalid ref, device DELETE path). Final 0 errors, 87 warnings.
 
 
 - `tasks.md` BE-130 marked DONE.

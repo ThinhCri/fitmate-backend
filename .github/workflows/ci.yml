@@ -53,6 +53,14 @@ jobs:
           # offline). Provided for parity with host config.
           JWT_SIGNING_KEY: ci-dummy-signing-key-not-used-by-unit-tests-32bytes
 
+      # BE-320: OpenAPI spec lint via Stoplight Spectral.
+      # Fails the build on any spec error (warnings are non-blocking).
+      - name: Lint OpenAPI spec (Spectral)
+        run: npx --yes @stoplight/spectral lint docs/backend-release/openapi/fitmate-v1.yaml --fail-severity=error
+        env:
+          # Spectral 6.x emits a deprecation warning unless this is set.
+          OPENAPI_SPEC_URL: docs/backend-release/openapi/fitmate-v1.yaml
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
