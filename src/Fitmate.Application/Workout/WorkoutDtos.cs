@@ -19,6 +19,21 @@ public sealed record WorkoutSessionView(
     int? PlannedSets,
     DateTime CreatedAt);
 
+public sealed record WorkoutSessionDetailView(
+    Guid Id,
+    Guid? PlanId,
+    string? PlanName,
+    DateOnly Date,
+    string Day,
+    int DurationMin,
+    int CaloriesBurned,
+    int Exercises,
+    WorkoutSessionStatus Status,
+    int? CompletedSets,
+    int? PlannedSets,
+    DateTime CreatedAt,
+    IReadOnlyList<WorkoutSessionExerciseView> Items);
+
 public sealed record WorkoutSessionExerciseView(
     Guid Id,
     string ExerciseName,

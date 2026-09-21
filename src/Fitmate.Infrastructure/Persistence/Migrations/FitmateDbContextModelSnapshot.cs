@@ -1824,6 +1824,20 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int?>("PlannedSets")
                         .HasColumnType("integer");
 
+                    b.Property<string>("SnapshotPlanDayOfWeek")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("SnapshotPlanName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int?>("SnapshotPlanPlannedDurationMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("SnapshotPlanTargetCaloriesBurn")
+                        .HasColumnType("integer");
+
                     b.Property<int>("Status")
                         .HasColumnType("integer");
 
@@ -1842,6 +1856,107 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("workout_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Workout.WorkoutSessionExercise", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("CompletedSets")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ExerciseName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<int>("OrderIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PlannedCalories")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PlannedDurationSec")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PlannedReps")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PlannedRestSec")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PlannedSets")
+                        .HasColumnType("integer");
+
+                    b.Property<List<string>>("Tags")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkoutSessionId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkoutSessionId");
+
+                    b.ToTable("workout_session_exercises", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Workout.WorkoutSessionExerciseSet", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int?>("ActualDurationSec")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("ActualReps")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsBonus")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("SetIndex")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("WorkoutSessionExerciseId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkoutSessionExerciseId", "SetIndex")
+                        .IsUnique();
+
+                    b.ToTable("workout_session_exercise_sets", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", b =>
@@ -1974,6 +2089,15 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Workout.WorkoutSessionExerciseSet", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Workout.WorkoutSessionExercise", null)
+                        .WithMany("SetResults")
+                        .HasForeignKey("WorkoutSessionExerciseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<System.Guid>", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityRole<System.Guid>", null)
@@ -2023,6 +2147,11 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Workout.WorkoutSessionExercise", b =>
+                {
+                    b.Navigation("SetResults");
                 });
 #pragma warning restore 612, 618
         }

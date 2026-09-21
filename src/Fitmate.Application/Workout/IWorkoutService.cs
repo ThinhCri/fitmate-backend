@@ -22,7 +22,7 @@ public interface IWorkoutService
     /// Get a single session with its exercise breakdown and set results.
     /// Returns null if not found or not owned by the user.
     /// </summary>
-    Task<WorkoutSessionExerciseView?> GetSessionDetailAsync(
+    Task<WorkoutSessionDetailView?> GetSessionDetailAsync(
         Guid userId,
         Guid sessionId,
         CancellationToken ct = default);
