@@ -4,7 +4,32 @@
 
 ## Phiên hiện tại
 
-### Phiên 33 — đang chạy (2026-09-21) [BE-170]
+### Phiên 34 — đang chạy (2026-09-21) [BE-140]
+
+**BE-140: Payment skeleton (mock URL, no VNPay) — DONE**
+
+Plan rev 1 lưu ở `docs/backend-release/tasks/BE-140-plan.md`.
+
+**Phát hiện:** `Payment` entity đã có sẵn trong `Fitmate.Domain.Payment` (InitialSchema + `PaymentConfiguration`). Existing constructor `Payment.CreatePending(appointmentId, method, amountVnd, redirectUrl)` nhận `redirectUrl` ngay từ đầu → stub provider tạo URL trước, pass vào constructor, sau đó `MarkPaid(providerTxnRef)`.
+
+**Commits:**
+- **`5fee40d` `feat(be): add Payment entity, abstractions, DTOs and error codes [BE-140]`** — IPaymentService, IPaymentStore, IPaymentProvider, PaymentDtos, PaymentErrorCodes.
+- **`2af93eb` `feat(be): add PaymentService, EF store, stub provider and controller [BE-140]`** — PaymentService, EfPaymentStore, StubPaymentProvider, PaymentsController (4 endpoints), DI registration.
+- **`7979864` `test(be): add PaymentServiceTests with 8 cases [BE-140]`** — 8 tests mới.
+
+**Tổng kết:**
+- `dotnet build` 0 errors.
+- `dotnet test` PaymentServiceTests: 8/8 PASS (392/392 total, +8 so với phiên trước).
+- `PaymentsController` 4 endpoints: `POST /payments` (Idempotency-Key required), `GET /me/payments/{id}`, `GET /payments/vnpay/return` (stub, no mutation), `POST /payments/vnpay/ipn` (stub, no mutation).
+- `StubPaymentProvider` trả `https://mock.fitmate.local/payments/{id}/redirect` + `mock-{id}` để FE dùng test trong dev.
+- Ownership enforced: `hold.MemberId == userId`. Hold expiry/ownership violations → 403/409 với code `FITMATE.PAYMENT.NOT_OWNER` / `FITMATE.PAYMENT.HOLD_EXPIRED`.
+- Idempotency: nếu cùng hold đã có payment → trả row cũ (không tạo duplicate).
+
+**Next:**
+- Tasks còn lại không phụ thuộc UA: **BE-330 (k6 load test)**, **BE-420 (Storage adapter)**.
+- BE-140 unblocks BE-150 finance read-side, BE-130 booking payment flow integration, và chuẩn bị cho BE-400 (real VNPay, blocked UA-008).
+
+### Phiên 33 — đã làm (2026-09-21) [BE-170 + BE-320]
 
 **BE-170: Nutrition (log, schedule) + AI stub — DONE**
 

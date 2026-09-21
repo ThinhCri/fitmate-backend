@@ -129,7 +129,7 @@
 - Scope: payment entity + idempotent create + admin list. Trả mock URL.
 - Depends on: BE-070
 - Done when: payment create trả 201 với redirect_url=stub.
-- Status: TODO
+- Status: **DONE (phiên 34, 2026-09-21)** — 4 phases (plan + abstractions + service/store/controller + tests). Domain entity `Payment` đã có sẵn (InitialSchema + PaymentConfiguration). Application: `IPaymentService` (CreateAsync/GetByIdAsync/HandleVnpayReturn/Ipn), `IPaymentStore` (FindById/FindByAppointmentId/FindHold/FindAppointmentByHold/Add/Save), `IPaymentProvider` interface + `StubPaymentProvider` (mock URL `https://mock.fitmate.local/payments/{id}/redirect`, ref `mock-{id}`). `PaymentService` enforce hold ownership + active hold check + idempotent per-hold; VNPay return/IPN là stub 200 (no mutation). API: `PaymentsController` `/payments` (POST, Idempotency-Key required), `/me/payments/{id}` (GET), `/payments/vnpay/return` (GET AllowAnonymous), `/payments/vnpay/ipn` (POST AllowAnonymous). DI registered trong Program.cs. Unit tests: 8/8 PASS (PaymentServiceTests — happy path mock URL, idempotent same hold, hold not found 404, not owner 403, hold expired 409, get-by-id null, return stub pending, IPN stub 00). Real VNPay wiring → BE-400 (blocked UA-008). Commit: 4 message (entities phase `5fee40d` / service+controller phase `2af93eb` / tests phase `7979864`).
 
 ### BE-150 Finance read-side
 - Scope: ledger + overview + PT earnings + revenue for PT + **`GET /admin/platform-policy` (FP-FN-06, DEC-029 read-only)**.
