@@ -4,7 +4,45 @@
 
 ## Phiên hiện tại
 
-### Phiên 29 — đang chạy (2026-09-20) [BE-300]
+### Phiên 31 — đang chạy (2026-09-21) [BE-160]
+
+**BE-160: Workout + Weight — DONE**
+
+Plan rev 3 lưu ở `docs/backend-release/tasks/BE-160-plan.md`. 8 commit phases đã merged vào `backend-release/contract-and-foundation`:
+
+1. **`fbc474c` `chore(rule): forbid +/&/@ in commit subjects, prefer commas [BE-160]`** — rule commit mới: header-only preferred, ASCII only, comma thay `+` cho separator.
+
+2. **`0353c91` `docs(be): add BE-160 plan rev 3, mark IN_PROGRESS [BE-160]`** — plan rev 3 + tasks.md status IN_PROGRESS.
+
+3. **`3e6a8eb` `feat(be): add WorkoutSessionExercise, Set entities and config [BE-160]`** — 2 entity mới + enum `WorkoutSetStatus` + EF Configuration mapping.
+
+4. **`3091a9b` `feat(be): add WorkoutSession snapshot fields from plan [BE-160]`** — `WorkoutSession` mở rộng 4 snapshot fields (plan_name/day_of_week/planned_duration_min/target_calories_burn).
+
+5. **`27ebfc5` `feat(be): add WorkoutSnapshot migration with pre-check, FK [BE-160]`** — migration `20260920205100_WorkoutSnapshot` tạo 2 table + index UNIQUE (session_exercise_id, set_index), pre-check orphan exercises/sessions trước DDL, bổ sung FK `WorkoutPlanId` SET NULL (sessions) + CASCADE (exercises).
+
+6. **`2544943` `feat(be): add Workout abstractions, DTOs and error codes [BE-160]`** — `IWorkoutService` + `IWeightService` + `WorkoutErrorCodes` + DTOs (`WorkoutSessionView`, `WorkoutSessionDetailView`, `WorkoutSessionExerciseView`, `WorkoutSetView`, `LogWorkoutSessionRequest`, `LogExerciseRequest`, `LogSetRequest`, `LogWeightRequest`).
+
+7. **`c580a50` `feat(be): add WorkoutService, WeightService and EF stores [BE-160]`** — `WorkoutService.LogSessionAsync` idempotent qua (user_id, client_id) + recompute `completed_sets` + outbox `workout.session_logged`. `WeightService` validate 20..400 kg. EF stores `EfWorkoutStore`/`EfWeightStore`. DbContext thêm 2 DbSet.
+
+8. **`575d98b` `feat(be): add WorkoutsController and DI for Workout services [BE-160]`** — `WorkoutsController` `/api/v1/me/workout/sessions` (GET list with from/to filter, GET {id} detail, POST log yêu cầu `Idempotency-Key` header) + `/api/v1/me/weight` (GET/POST). DI bind.
+
+9. **`b63e4dd` `docs(be): extend WorkoutSession OpenAPI schema, add detail endpoint [BE-160]`** — schema mới `WorkoutSessionDetail`, `WorkoutSessionExerciseView`, `WorkoutSessionExerciseInput`, `WorkoutSetView`, `WorkoutSetInput` + endpoint mới `/me/workout/sessions/{id}`.
+
+10. **`444effe` `test(be): add WorkoutServiceTests with 9 cases [BE-160]`** — 9 unit tests PASS: list empty, list filter date range, get detail null for other user, get detail null when not found, log create with snapshot, idempotent by client_id, throws not found plan, throws validation duration, logs outbox event.
+
+**Tổng kết:**
+- 0 build errors, 7 pre-existing warnings (NU1603 package downgrade + 1 xUnit1031).
+- 9/9 unit tests PASS.
+- OpenAPI extensions: 5 schemas mới + 1 endpoint mới.
+- Migration: 1 migration mới (`20260920205100_WorkoutSnapshot`).
+
+**DEFERRED:**
+- Integration tests (Testcontainers) — project `Fitmate.IntegrationTests` chưa tồn tại; contract test attempt bị Defender Application Control policy block khi load Domain.dll qua reflection (0x800711C7, env-specific). Sẽ triển khai ở phiên sau nếu cần.
+- 0353c91 message có `+` vi phạm rule mới — không amend theo rule "never rewrite history without explicit authorization".
+
+**Next:** BE-170 (Nutrition + AI stub) hoặc BE-200 (Notifications v2) — tùy user.
+
+### Phiên 30 — đã làm (2026-09-21) [BE-380]
 
 **BE-300: Docker image + Compose local/integration — PARTIAL_DONE** (1 pre-existing bug phụ thuộc phát hiện).
 
