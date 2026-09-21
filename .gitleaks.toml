@@ -1,0 +1,114 @@
+# Fitmate backend — gitleaks config
+# Extends default rules + adds Fitmate-specific patterns.
+# Version: 8.x compatible (gitleaks/gitleaks-action@v2).
+
+title = "Fitmate Backend"
+
+# Use default gitleaks rules as baseline (catches AWS, GCP, Stripe, GitHub, etc).
+extend = { useDefault = true }
+
+# ---------------------------------------------------------------------------
+# Custom rules — Fitmate-specific env var keys + secret shapes.
+# Only match the VALUE side (after `=` or `:`), not the variable reference.
+# ---------------------------------------------------------------------------
+[[rules]]
+id = "fitmate-jwt-signing-key"
+description = "JWT signing key (HS256/HS512). Real keys >= 32 bytes; placeholders match __SET_*__."
+# Lookbehind: var assignment with quoted or unquoted value containing >=32 base64-ish chars.
+regex = '''(?i)(?:jwt[_-]?signing[_-]?key|jwt[_-]?secret|jwt__signingkey)\s*[:=]\s*["']([A-Za-z0-9+/=_\-]{32,})["']'''
+keywords = ["jwt_signing_key", "jwt__signingkey", "jwt-signing-key"]
+[rules.allowlist]
+regexes = [
+  '''__SET_[A-Z0-9_]+__''',
+  '''ci-dummy-signing-key-not-used-by-unit-tests-32bytes''',
+]
+
+[[rules]]
+id = "fitmate-db-password"
+description = "Postgres / DB password env var (quoted value, real secret)."
+# Require a quoted or non-empty non-whitespace value after `=` / `:` (not array index).
+regex = '''(?i)(?:^|\s)(?:db[_-]?password|postgres[_-]?password|database[_-]?password)\s*[:=]\s*["']([^\s"'#]{8,})["']'''
+keywords = ["db_password", "postgres_password", "database_password"]
+[rules.allowlist]
+regexes = [
+  '''__SET_[A-Z0-9_]+__''',
+  '''ci-ephemeral-db-password''',
+]
+
+[[rules]]
+id = "fitmate-vnpay-secret"
+description = "VNPay hash secret + TMN code."
+regex = '''(?i)(?:vnpay[_-]?hash[_-]?secret|vnpay[_-]?tmn[_-]?code|vnpay[_-]?secret)\s*[:=]\s*["']([A-Za-z0-9]{16,})["']'''
+keywords = ["vnpay_hash_secret", "vnpay_tmn_code"]
+[rules.allowlist]
+regexes = [
+  '''__SET_VNPAY[A-Z0-9_]+__''',
+]
+
+[[rules]]
+id = "fitmate-smtp-password"
+description = "SMTP password / app password."
+regex = '''(?i)(?:^|\s)(?:smtp[_-]?password|smtp[_-]?pass|mail[_-]?password)\s*[:=]\s*["']([^\s"'#]{6,})["']'''
+keywords = ["smtp_password", "smtp_pass", "mail_password"]
+[rules.allowlist]
+regexes = [
+  '''__SET_[A-Z0-9_]+__''',
+]
+
+[[rules]]
+id = "fitmate-storage-credentials"
+description = "Storage adapter credentials / signed URL secret."
+regex = '''(?i)(?:storage[_-]?(?:access[_-]?key|secret[_-]?key|client[_-]?secret)|signed[_-]?url[_-]?secret)\s*[:=]\s*["']([A-Za-z0-9+/=_\-]{16,})["']'''
+keywords = ["storage_access_key", "storage_secret_key", "signed_url_secret"]
+
+[[rules]]
+id = "fitmate-bootstrap-admin-secret"
+description = "Bootstrap admin password or token (high entropy only)."
+regex = '''(?i)(?:bootstrap[_-]?admin[_-]?(?:password|token|secret)|admin[_-]?bootstrap[_-]?(?:password|token))\s*[:=]\s*["']([A-Za-z0-9@#$%^&+=_\-]{12,})["']'''
+keywords = ["bootstrap_admin_password", "admin_bootstrap_password"]
+
+# ---------------------------------------------------------------------------
+# Allowlist — paths that contain placeholders / demos / mocks / docs / tests.
+# ---------------------------------------------------------------------------
+[allowlist]
+description = "Allowlist docs, env example, generated code, and tests."
+paths = [
+  '''\.env\.example$''',
+  '''docs/''',
+  '''README\.md$''',
+  '''AGENTS\.md$''',
+  '''\.mdc$''',
+  '''\.gitleaks\.toml$''',
+  '''node_modules/''',
+  '''bin/''',
+  '''obj/''',
+  '''out/''',
+  '''\.git/''',
+  '''tests/load/.*\.json$''',
+  '''tests/load/README\.md$''',
+  '''\.gitignore$''',
+]
+
+# Allow placeholder syntax `__SET_*__` and known demo values anywhere.
+regexes = [
+  '''__SET_[A-Z0-9_]+__''',
+  '''supersecret12345''',
+  '''doanxemtoilaai''',
+  '''ci-dummy-signing-key-not-used-by-unit-tests-32bytes''',
+  '''ci-ephemeral-db-password''',
+  '''user@fitmate\.vn''',
+  '''pt@fitmate\.vn''',
+  '''member@fitmate\.vn''',
+  '''admin@fitmate\.vn''',
+  '''admin@fitmate\.local''',
+  '''test@example\.com''',
+  '''noreply@fitmate\.vn''',
+]
+
+stopwords = [
+  "placeholder",
+  "example",
+  "TODO",
+  "FIXME",
+  "DEMO",
+]
