@@ -4,20 +4,31 @@
 
 ## Phiên hiện tại
 
-### Phiên 32 — đang chạy (2026-09-21) [BE-130]
+### Phiên 33 — đang chạy (2026-09-21) [BE-170]
 
-**BE-130: My bookings (member + PT) — DONE**
+**BE-170: Nutrition (log, schedule) + AI stub — DONE**
 
-Plan rev 1 lưu ở `docs/backend-release/tasks/BE-130-plan.md`.
+Plan rev 1 lưu ở `docs/backend-release/tasks/BE-170-plan.md`.
 
-**Phát hiện:** BE-130 đã implemented sẵn trong BE-060 (controller + service + OpenAPI + 1 test). Chỉ cần verify + thêm 3 test gap + update tasks.md.
+**Phát hiện:** Domain entities + EF config + OpenAPI schemas đã có sẵn. Chỉ cần implement Application layer (service + store + controller + AI stub).
 
-**Commit:**
-- **`73b47f9` `test(be): add BookingService list tests for PT and pagination [BE-130]`** — 3 tests mới: `ListByPt_ReturnsOnlyPtAppointments`, `ListByMember_StatusFilter_NarrowsResults`, `ListByMember_Pagination_TotalReflectsAllItems`. 18/18 total PASS.
+**Commits:**
+- **`a278dbc` `feat(be): add Nutrition abstractions, DTOs and error codes [BE-170]`** — INutritionService, NutritionDtos, NutritionErrorCodes.
+- **`62678b5` `feat(be): add NutritionService, EF store and AI stub [BE-170]`** — NutritionService, INutritionStore, EfNutritionStore, IAiNutritionAdapter, AiNutritionStubAdapter, NutritionController, DI registration.
+- **`b3a8bdd` `test(be): add NutritionServiceTests with 8 cases [BE-170]`** — 8 tests mới.
 
 **Tổng kết:**
 - `dotnet build` 0 errors.
-- `dotnet test` BookingServiceTests: 18/18 PASS.
+- `dotnet test` NutritionServiceTests: 8/8 PASS (375/375 total).
+- `NutritionController` 4 endpoints: GET/POST/PATCH /meals + GET/PUT /schedule + POST /scan (10MB limit).
+- `AiNutritionStubAdapter` throw `DomainException(AI_UNAVAILABLE)` — trả 503 khi gọi.
+- AI stub là default DI; real adapter (BE-430) sẽ override.
+
+**Next:**
+- Kiểm tra tasks.md: DONE count 16 (thêm BE-170).
+- Chọn task tiếp theo: BE-200 producer wiring (FriendService/ModerationService → push), BE-320 (OpenAPI linter), hoặc BE-330 (k6 load test).
+
+
 - `tasks.md` BE-130 marked DONE.
 - OpenAPI + Controller: đã có đủ, không cần thay đổi.
 - Confirm/Accept deferred to BE-060 completion.

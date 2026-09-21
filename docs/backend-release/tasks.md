@@ -150,10 +150,10 @@
 - Status: **DONE (Sep 21, BE-160 plan rev 3)** — 8 phases merged on `backend-release/contract-and-foundation`. Domain: `WorkoutSessionExercise`, `WorkoutSessionExerciseSet` entities + `WorkoutSetStatus` enum; `WorkoutSession` mở rộng 4 snapshot fields (plan_name/day_of_week/planned_duration_min/target_calories_burn). Migration `20260920205100_WorkoutSnapshot` có pre-check orphan + bổ sung FK constraints (WorkoutPlanId SET NULL cho sessions, CASCADE cho exercises). Application: `IWorkoutService`/`IWeightService` abstractions + DTOs + `WorkoutErrorCodes`. Services: `WorkoutService` (LogSession idempotent qua client_id, recompute completed_sets, outbox event `workout.session_logged`), `WeightService` (validate 20..400). API: `WorkoutsController` `/api/v1/me/workout/sessions` (GET list with from/to filter, GET {id} detail, POST log với Idempotency-Key header) + `/api/v1/me/weight` (GET/POST). OpenAPI: thêm `WorkoutSessionDetail`, `WorkoutSessionExerciseView`, `WorkoutSessionExerciseInput`, `WorkoutSetView`, `WorkoutSetInput` schemas + mới `/me/workout/sessions/{id}` endpoint. Unit tests: 9/9 PASS (WorkoutServiceTests). Testcontainers integration tests deferred — project `Fitmate.IntegrationTests` chưa tồn tại; contract test đã thử nhưng block bởi Defender Application Control policy khi load Domain.dll (env-specific). Build: 0 errors, 7 pre-existing warnings.
 
 ### BE-170 Nutrition (log, schedule) + AI stub
-- Scope: log/scan, scan trả AI_UNAVAILABLE khi provider chưa có.
+- Scope: member ghi meal log (manual), xem/cập nhật meal schedule, scan image via AI stub (trả 503 khi chưa có provider).
 - Depends on: BE-080
-- Done when: scan không gọi provider thật, trả 503.
-- Status: TODO
+- Done when: 4 endpoints hoạt động; AI scan luôn 503; ownership enforced; unit tests pass.
+- Status: **DONE (phiên 33, 2026-09-21)** — 4 phases (plan + abstractions + service + tests). Domain entities + EF config đã có sẵn. Application: `INutritionService` (list/create/update meals, get/upsert schedule, scan), `INutritionStore`, `IAiNutritionAdapter` + `AiNutritionStubAdapter` (throw DomainException AI_UNAVAILABLE). `NutritionController` `/me/nutrition/meals` (GET list, POST create, PATCH update/confirm) + `/me/nutrition/schedule` (GET, PUT) + `/me/nutrition/scan` (POST, 10MB limit). DI: stub adapter registered as default; real adapter (khi BE-430 wired) sẽ override. Unit tests: 8/8 PASS (NutritionServiceTests — list empty, list ordered, date filter, create, update, not-owner 404, schedule blank/create/upsert, AI stub throws). OpenAPI unchanged (đã complete). Commit: 4 message (`a278dbc`/`62678b5`/`b3a8bdd`/`???`).
 
 ### BE-180 Social (post, comment, react, report)
 - Scope: visibility filter, idempotent react.
