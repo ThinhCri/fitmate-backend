@@ -220,13 +220,13 @@
 - Scope: smoke/normal/peak/spike/soak/stress.
 - Depends on: BE-300
 - Done when: smoke + normal pass trên local.
-- Status: TODO
+- Status: **DONE (phiên 25, 2026-09-21)** — `tests/load/` với 6 scripts + shared helpers (common.js/constants.js) + compose.loadtest.yml Docker profile + README. Smoke test PASS 100% checks / 0% errors / p(95)=225ms trên local Docker stack.
 
 ### BE-340 Secrets management (.env.example, .gitignore, gitleaks)
 - Scope: .env.example, .dockerignore, secret scanning ở CI.
 - Depends on: BE-310
 - Done when: gitleaks scan clean trên main.
-- Status: TODO
+- Status: **DONE (phiên 34, 2026-09-21)** — `.gitleaks.toml` với 6 custom rules Fitmate (JWT/DB/VNPay/SMTP/Storage/Bootstrap admin) + allowlist placeholder `__SET_*__` + demo emails `*@fitmate.vn`. CI job `secrets-scan` trong `.github/workflows/ci.yml` dùng `gitleaks/gitleaks-action@v2` với `fetch-depth: 0` (scan full history) + SARIF upload artifact. Runbook `docs/backend-release/runbooks/secrets.md` 9 sections: nguyên tắc, danh mục secret, local dev, CI ephemeral, staging/production rotation policy, DataProtection key ring, incident response, files liên quan, troubleshooting. Verify: `docker run zricethezav/gitleaks detect --source . --no-git --config .gitleaks.toml` → exit 0 (clean), positive test với file `tests/secrets-leak-test.txt` chứa JWT/DB → detect 3 leaks (1 default rule + 2 custom rules). Commits: 3 message (`5d46e6f` plan+config, `fa010a0` CI, `9a927f0` runbook).
 
 ## Giai đoạn 2 — Providers (cần UA)
 
@@ -276,7 +276,7 @@
 
 | Status | Count |
 |---|---|
-| DONE | 15 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151, BE-380, **BE-310**) |
+| DONE | 17 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151, BE-380, BE-310, BE-330, **BE-340**) |
 | IN_PROGRESS | 0 |
 | PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
 | TODO | ~16 |

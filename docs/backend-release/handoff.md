@@ -4,7 +4,7 @@
 
 ## Phiên hiện tại
 
-### Phiên 34 — đang chạy (2026-09-21) [BE-140]
+### Phiên 34 — đang chạy (2026-09-21) [BE-340]
 
 **BE-140: Payment skeleton (mock URL, no VNPay) — DONE**
 
@@ -26,8 +26,50 @@ Plan rev 1 lưu ở `docs/backend-release/tasks/BE-140-plan.md`.
 - Idempotency: nếu cùng hold đã có payment → trả row cũ (không tạo duplicate).
 
 **Next:**
-- Tasks còn lại không phụ thuộc UA: **BE-330 (k6 load test)**, **BE-420 (Storage adapter)**.
-- BE-140 unblocks BE-150 finance read-side, BE-130 booking payment flow integration, và chuẩn bị cho BE-400 (real VNPay, blocked UA-008).
+- Tasks còn lại không phụ thuộc UA: **BE-130 (Booking flows admin)**, **BE-420 (Storage adapter)**, **BE-200 (Notifications producer wiring + migration apply)**.
+
+### Phiên 34 update (2026-09-21) [BE-340]
+
+**BE-340: Secrets management (gitleaks + runbook) — DONE**
+
+Plan rev 1 lưu ở `docs/backend-release/tasks/BE-340-plan.md`.
+
+**Triển khai:**
+- **`.gitleaks.toml` (mới, 6 custom rules):** extend default rules + Fitmate-specific patterns.
+  - `fitmate-jwt-signing-key` — `JWT_SIGNING_KEY` / `Jwt__SigningKey` value ≥32 chars.
+  - `fitmate-db-password` — `DB_PASSWORD` / `POSTGRES_PASSWORD` quoted value.
+  - `fitmate-vnpay-secret` — `VNPAY_HASH_SECRET` / `VNPAY_TMN_CODE`.
+  - `fitmate-smtp-password` — `SMTP_PASSWORD` / `SMTP_PASS`.
+  - `fitmate-storage-credentials` — `STORAGE_*_KEY` / `SIGNED_URL_SECRET`.
+  - `fitmate-bootstrap-admin-secret` — `BOOTSTRAP_ADMIN_PASSWORD/TOKEN/SECRET`.
+  - Allowlist paths: `.env.example`, `docs/`, `AGENTS.md`, `.mdc`, `.gitleaks.toml`, `node_modules/`, `bin/`, `obj/`, `out/`, `.git/`, `tests/load/*.json`, `.gitignore`.
+  - Allowlist regexes: `__SET_*__`, demo emails `*@fitmate.vn`, historical leak `doanxemtoilaai` (BE-099 reference), CI ephemeral strings.
+  - Stopwords: placeholder/example/TODO/FIXME/DEMO.
+- **`.github/workflows/ci.yml` — job `secrets-scan` (mới):** chạy song song `lint-test`, `runs-on: ubuntu-22.04`, `timeout-minutes: 10`. `actions/checkout@v4` với `fetch-depth: 0` (full history). Action `gitleaks/gitleaks-action@v2` đọc `GITLEAKS_CONFIG=.gitleaks.toml`. Upload SARIF artifact qua `actions/upload-artifact@v4`. Fail trên exit code != 0 (= có leak).
+- **`docs/backend-release/runbooks/secrets.md` (mới, 9 sections):**
+  1. Nguyên tắc — DEC-014, không commit; secret qua secret manager.
+  2. Danh mục secrets — 10 biến theo nhóm (DB/JWT/SMTP/VNPay/Storage/AI/Push/Bootstrap).
+  3. Local dev — copy `.env.example` → `.env`, checklist trước commit.
+  4. CI — 4 jobs (secrets-scan, lint-test, docker-build, smoke); ephemeral `JWT_SIGNING_KEY` qua `openssl rand`.
+  5. Staging/Production — secret manager per môi trường + rotation policy (90/180/365 ngày theo loại secret).
+  6. DataProtection key ring — local file-based → volume → managed (Azure Key Vault / AWS KMS, post-MVP).
+  7. Incident response — rotate + filter-repo + audit log.
+  8. Files liên quan — cross-ref tới `.env.example` / `.gitignore` / `.gitleaks.toml` / CI / decisions.md.
+  9. Troubleshooting — JwtOptions/SMTP/VNPay/DataProtection lỗi thường gặp.
+
+**Verify recipe:**
+- `docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:latest detect --source . --config .gitleaks.toml` → **exit 0, "no leaks found"** trên 172 commits / 4.86 MB.
+- Positive test: file `tests/secrets-leak-test.txt` với 3 fake secrets → detect 3 leaks (`generic-api-key` default rule + `fitmate-jwt-signing-key` + `fitmate-db-password`).
+- Regex tightening rev 1 đã fix 9 false positive ban đầu (`compose.yml` env var reference, `SeedAdminCommand.cs`/`Program.cs` config index access, `.gitignore` path).
+
+**Kết quả:**
+- 3 commits: `5d46e6f` plan+config, `fa010a0` CI, `9a927f0` runbook.
+- `tasks.md` BE-340 → DONE; DONE count 17.
+
+**Pending beyond BE-340:**
+- UA-DP-001: chốt provider secret manager production (Azure Key Vault / AWS KMS / Vault) — không chặn dev local.
+- UA-FCM-001: chốt push provider (Expo vs FCM) — không chặn BE-200 in-app notification.
+- Pre-commit hook cài local (chỉ CI gate hiện tại; user tự cài `pre-commit` nếu muốn).
 
 ### Phiên 33 — đã làm (2026-09-21) [BE-170 + BE-320]
 
