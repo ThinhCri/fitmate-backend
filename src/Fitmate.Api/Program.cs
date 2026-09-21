@@ -28,6 +28,7 @@ using Fitmate.Application.Chat;
 using Fitmate.Application.Moderation;
 using Fitmate.Application.Notifications;
 using Fitmate.Application.Notifications.Handlers;
+using Fitmate.Application.Workout;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -212,6 +213,11 @@ builder.Services.AddScoped<IPushStore, Fitmate.Infrastructure.Notifications.EfPu
 builder.Services.AddScoped<INotificationService, Fitmate.Application.Notifications.NotificationService>();
 builder.Services.AddScoped<IDeviceService, Fitmate.Application.Notifications.DeviceService>();
 builder.Services.AddScoped<INotificationAuditLogger, Fitmate.Infrastructure.Notifications.NotificationAuditLogger>();
+// BE-160: workout session + weight log.
+builder.Services.AddScoped<IWorkoutStore, Fitmate.Infrastructure.Workout.EfWorkoutStore>();
+builder.Services.AddScoped<IWeightStore, Fitmate.Infrastructure.Workout.EfWeightStore>();
+builder.Services.AddScoped<IWorkoutService, Fitmate.Application.Workout.WorkoutService>();
+builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightService>();
 builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher(
     sp.GetRequiredService<FitmateDbContext>(),
     sp.GetRequiredService<INotificationStore>(),
