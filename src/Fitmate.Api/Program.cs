@@ -29,6 +29,7 @@ using Fitmate.Application.Moderation;
 using Fitmate.Application.Notifications;
 using Fitmate.Application.Notifications.Handlers;
 using Fitmate.Application.Workout;
+using Fitmate.Application.Nutrition;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -218,6 +219,10 @@ builder.Services.AddScoped<IWorkoutStore, Fitmate.Infrastructure.Workout.EfWorko
 builder.Services.AddScoped<IWeightStore, Fitmate.Infrastructure.Workout.EfWeightStore>();
 builder.Services.AddScoped<IWorkoutService, Fitmate.Application.Workout.WorkoutService>();
 builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightService>();
+// BE-170: nutrition meal log, schedule and AI scan stub.
+builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
+builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
+builder.Services.AddScoped<INutritionService, NutritionService>();
 builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher(
     sp.GetRequiredService<FitmateDbContext>(),
     sp.GetRequiredService<INotificationStore>(),
