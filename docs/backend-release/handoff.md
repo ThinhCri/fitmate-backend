@@ -4,7 +4,27 @@
 
 ## Phiên hiện tại
 
-### Phiên 31 — đang chạy (2026-09-21) [BE-160]
+### Phiên 32 — đang chạy (2026-09-21) [BE-130]
+
+**BE-130: My bookings (member + PT) — DONE**
+
+Plan rev 1 lưu ở `docs/backend-release/tasks/BE-130-plan.md`.
+
+**Phát hiện:** BE-130 đã implemented sẵn trong BE-060 (controller + service + OpenAPI + 1 test). Chỉ cần verify + thêm 3 test gap + update tasks.md.
+
+**Commit:**
+- **`73b47f9` `test(be): add BookingService list tests for PT and pagination [BE-130]`** — 3 tests mới: `ListByPt_ReturnsOnlyPtAppointments`, `ListByMember_StatusFilter_NarrowsResults`, `ListByMember_Pagination_TotalReflectsAllItems`. 18/18 total PASS.
+
+**Tổng kết:**
+- `dotnet build` 0 errors.
+- `dotnet test` BookingServiceTests: 18/18 PASS.
+- `tasks.md` BE-130 marked DONE.
+- OpenAPI + Controller: đã có đủ, không cần thay đổi.
+- Confirm/Accept deferred to BE-060 completion.
+
+**Next:** BE-170 (Nutrition + AI stub) hoặc BE-200 (Notifications) — tùy user.
+
+### Phiên 31 — đã làm (2026-09-21) [BE-160]
 
 **BE-160: Workout + Weight — DONE**
 

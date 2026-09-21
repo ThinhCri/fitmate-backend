@@ -122,6 +122,7 @@
 - Scope: my bookings (member + PT), admin list.
 - Depends on: BE-060
 - Done when: ownership enforced.
+- Status: **DONE (phiên 32, 2026-09-21)** — Already implemented in BE-060: `IBookingService.ListByMemberAsync` + `ListByPtAsync`; `BookingsController` routes `GET /api/v1/me/bookings` (member) + `GET /api/v1/me/trainer-bookings` (PT, `[Authorize(Roles = "PT")]`) with status filter + offset pagination max=100; OpenAPI schema with `Appointment` response. Unit tests: 18/18 PASS including 3 new tests (ListByPt filter, status filter narrows, pagination total reflects all items). Confirm/Accept deferred to BE-060 completion (AppointmentStatus.Confirmed migration pending DEC-026).
 - Status: TODO
 
 ### BE-140 Payment skeleton (chưa tích hợp VNPay)
