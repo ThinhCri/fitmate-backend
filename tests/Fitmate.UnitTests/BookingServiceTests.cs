@@ -327,4 +327,74 @@ public class BookingServiceTests
         total.Should().Be(2);
         items.Should().HaveCount(2);
     }
+
+    [Fact]
+    public async Task ListByPt_ReturnsOnlyPtAppointments()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var pt = Guid.NewGuid();
+        var memberA = Guid.NewGuid();
+        var memberB = Guid.NewGuid();
+        var otherPt = Guid.NewGuid();
+        apptStore.Items[Guid.NewGuid()] = Appointment.CreateHold(memberA, pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        apptStore.Items[Guid.NewGuid()] = Appointment.CreateHold(memberB, pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        apptStore.Items[Guid.NewGuid()] = Appointment.CreateHold(memberA, otherPt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+        var (items, total) = await svc.ListByPtAsync(pt, null, 1, 10, CancellationToken.None);
+
+        total.Should().Be(2);
+        items.Should().HaveCount(2);
+        items.Should().OnlyContain(a => a.PtUserId == pt);
+    }
+
+    [Fact]
+    public async Task ListByMember_StatusFilter_NarrowsResults()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var member = Guid.NewGuid();
+        var pt = Guid.NewGuid();
+        var a1 = Appointment.CreateHold(member, pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        var a2 = Appointment.CreateHold(member, pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        apptStore.Items[a1.Id] = a1;
+        apptStore.Items[a2.Id] = a2;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+
+        // All held.
+        var (allItems, allTotal) = await svc.ListByMemberAsync(member, null, 1, 10, CancellationToken.None);
+        allTotal.Should().Be(2);
+
+        // Only completed — none yet.
+        var (completedItems, completedTotal) = await svc.ListByMemberAsync(member, BookingStatus.Completed, 1, 10, CancellationToken.None);
+        completedTotal.Should().Be(0);
+        completedItems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListByMember_Pagination_TotalReflectsAllItems()
+    {
+        // Pagination semantics (skip/take) live in EfAppointmentStore and are
+        // verified by integration tests against a real Postgres. Here we verify
+        // the service contract: total reflects the full filtered set regardless
+        // of page/pageSize (caller is responsible for skip/take at store layer).
+        var apptStore = new InMemoryAppointmentStore();
+        var member = Guid.NewGuid();
+        var pt = Guid.NewGuid();
+        for (int i = 0; i < 5; i++)
+        {
+            apptStore.Items[Guid.NewGuid()] = Appointment.CreateHold(member, pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        }
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+
+        var (page1Items, page1Total) = await svc.ListByMemberAsync(member, null, 1, 2, CancellationToken.None);
+        page1Total.Should().Be(5);
+
+        var (page3Items, page3Total) = await svc.ListByMemberAsync(member, null, 3, 2, CancellationToken.None);
+        page3Total.Should().Be(5);
+        // Service returns whatever the store returns. InMemory stub doesn't paginate,
+        // so all pages see all 5. Real Ef store will skip/take per page.
+        page3Items.Count.Should().BeLessThanOrEqualTo(5);
+    }
 }
