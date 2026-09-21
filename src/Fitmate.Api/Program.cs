@@ -30,6 +30,7 @@ using Fitmate.Application.Notifications;
 using Fitmate.Application.Notifications.Handlers;
 using Fitmate.Application.Workout;
 using Fitmate.Application.Nutrition;
+using Fitmate.Application.Payments;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -223,6 +224,10 @@ builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightSer
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
 builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
 builder.Services.AddScoped<INutritionService, NutritionService>();
+// BE-140: payment skeleton (stub provider, real VNPay ở BE-400).
+builder.Services.AddScoped<IPaymentStore, Fitmate.Infrastructure.Payments.EfPaymentStore>();
+builder.Services.AddScoped<IPaymentProvider, StubPaymentProvider>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher(
     sp.GetRequiredService<FitmateDbContext>(),
     sp.GetRequiredService<INotificationStore>(),
