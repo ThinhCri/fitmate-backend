@@ -15,6 +15,36 @@ env:
 
 jobs:
   # ---------------------------------------------------------------
+  # 0. Secrets scan — runs in parallel with lint-test.
+  # Detects committed secrets via gitleaks (uses default rules + Fitmate custom rules).
+  # Scans the current working tree (untracked files included) + uploads SARIF report.
+  # ---------------------------------------------------------------
+  secrets-scan:
+    name: Secrets scan (gitleaks)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so gitleaks can scan commits (not just working tree).
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+      - name: Upload SARIF report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-sarif-${{ github.run_id }}
+          path: results.sarif
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------
   # 1. Lint + unit tests on every PR.
   # ---------------------------------------------------------------
   lint-test:
