@@ -135,16 +135,33 @@
 - Bổ sung các unit tests toàn diện trong `SocialServiceTests.cs`, `FriendServiceTests.cs`, `ChatServiceTests.cs`.
 - Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-814.md`.
 
-**BE-815: Thông báo và push thật — IMPLEMENTED (PENDING USER VERIFICATION)**
+**BE-815: Thông báo và push thật — VERIFIED**
 - Triển khai bảo vệ chống rò rỉ push đa tài khoản (Cross-account push leak protection): khi tài khoản mới đăng ký trên cùng thiết bị/token, tự động thu hồi (`Revoke()`) thiết bị của tài khoản cũ theo BR-12.
 - Triển khai cơ chế kích hoạt lại thiết bị (`Reactivate`) khi cùng tài khoản đăng ký lại thiết bị đã bị vô hiệu hóa trước đó.
 - Cập nhật `IDeviceStore` và `EfDeviceStore` với `FindActiveDevicesByTokenHashAsync`.
 - Kiểm chứng cách ly khi tắt push provider (tạo inbox notification, ghi audit `push_disabled`, không tạo delivery/outbox dồn tích).
 - Kiểm chứng sender-side checks, block check 2 chiều cho thông báo bạn bè, phân loại kết quả gửi từ provider và redact log nhạy cảm.
 - Bổ sung và cập nhật unit tests trong `DeviceServiceTests.cs`, `NotificationPushHandlerTests.cs`, `PushDeliveryDispatcherTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-815.md`.
+- Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-815.md`.
 
-**Next:** Chờ user chạy `dotnet build` và `dotnet test` xác nhận BE-815; sau đó chuyển sang **BE-816** (Storage access và durability).
+**BE-815: Thông báo và push thật — VERIFIED**
+- Triển khai bảo vệ chống rò rỉ push đa tài khoản (Cross-account push leak protection): khi tài khoản mới đăng ký trên cùng thiết bị/token, tự động thu hồi (`Revoke()`) thiết bị của tài khoản cũ theo BR-12.
+- Triển khai cơ chế kích hoạt lại thiết bị (`Reactivate`) khi cùng tài khoản đăng ký lại thiết bị đã bị vô hiệu hóa trước đó.
+- Cập nhật `IDeviceStore` và `EfDeviceStore` với `FindActiveDevicesByTokenHashAsync`.
+- Kiểm chứng cách ly khi tắt push provider (tạo inbox notification, ghi audit `push_disabled`, không tạo delivery/outbox dồn tích).
+- Kiểm chứng sender-side checks, block check 2 chiều cho thông báo bạn bè, phân loại kết quả gửi từ provider và redact log nhạy cảm.
+- Bổ sung và cập nhật unit tests trong `DeviceServiceTests.cs`, `NotificationPushHandlerTests.cs`, `PushDeliveryDispatcherTests.cs`.
+- Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-815.md`.
+
+**BE-816: Storage access và durability — IMPLEMENTED (PENDING USER VERIFICATION)**
+- Bổ sung kiểm tra chữ ký Magic bytes cho các file ảnh (JPEG, PNG, WEBP) trong `UploadsController` chống tấn công giả danh định dạng file.
+- Định danh file lưu trữ không đoán được (`unguessable key`), làm sạch tên file và chống Path Traversal trong `LocalStorageService`.
+- Tăng cường kiểm chứng HMAC-SHA256 Signed URL: so sánh chữ ký bằng thời gian hằng số `FixedTimeEquals`, kẹp trần thời gian sống TTL và chống giả mạo chữ ký chéo giữa các tài nguyên.
+- Chặn toàn bộ truy cập trực tiếp file tĩnh không có chữ ký hợp lệ thông qua `SignedUrlMiddleware`.
+- Bổ sung các unit tests mới trong `HmacSignedUrlServiceTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-816.md`.
+
+**Next:** Chờ user chạy `dotnet build` và `dotnet test` xác nhận BE-816; sau đó chuyển sang **BE-817** (Tích hợp artifact AI thật - P1-CAPABILITY) hoặc **BE-818** (Hoàn thiện 7 module admin).
 
 ### Lịch sử các phiên trước
 

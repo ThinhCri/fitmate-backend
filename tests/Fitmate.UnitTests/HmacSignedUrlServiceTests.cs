@@ -98,4 +98,29 @@ public class HmacSignedUrlServiceTests
         delta.Should().BeLessThan(11 * 60); // < 11 min
         delta.Should().BeGreaterThan(9 * 60); // > 9 min
     }
+
+    [Fact]
+    public void TryValidate_RejectsCrossResourceSignatureTampering()
+    {
+        var svc = NewService();
+        var urlAvatar = svc.CreatePresignedReadUrl("avatars/u1.jpg", TimeSpan.FromMinutes(10));
+
+        // Try to access private certificates with avatar signature
+        var certPathWithAvatarQuery = $"/uploads/certificates/cert_123.jpg{urlAvatar.Query}";
+        var extracted = svc.TryValidateAndExtractPath(certPathWithAvatarQuery);
+
+        extracted.Should().BeNull("signature for avatar cannot grant access to certificate");
+    }
+
+    [Fact]
+    public void TryValidate_RejectsSignatureSignedWithDifferentSecret()
+    {
+        var svc1 = NewService(secret: "secret-key-1111111111111111111111");
+        var svc2 = NewService(secret: "secret-key-2222222222222222222222");
+
+        var url = svc1.CreatePresignedReadUrl("posts/photo.jpg", TimeSpan.FromMinutes(10));
+        var extracted = svc2.TryValidateAndExtractPath(url.PathAndQuery);
+
+        extracted.Should().BeNull("service with different secret must reject signed URL");
+    }
 }

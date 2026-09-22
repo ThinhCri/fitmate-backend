@@ -173,7 +173,7 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-815 — Thông báo và push thật
 - Plan: [Plan triển khai](production-plans/BE-815.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-802, BE-814; requirement: BR-12.
 - Hiện trạng: Đã triển khai bảo vệ chống rò rỉ push đa tài khoản (tự động thu hồi thiết bị của tài khoản cũ trên cùng token), cơ chế kích hoạt lại thiết bị (`Reactivate`), xử lý luồng push và in-app cách ly khi tắt push, kiểm tra hợp lệ trước khi gửi và mở rộng unit tests cho `DeviceService`.
 - Scope: Kiểm tra device ownership transfer và unique active token; source validity mapping; outbox atomic; FCM hoặc Expo adapter sau OPS-06; key persistence/rotation.
@@ -182,12 +182,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-816 — Storage access và durability
 - Plan: [Plan triển khai](production-plans/BE-816.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-02, BR-08, BR-16.
-- Hiện trạng: Upload/HMAC local implementation mới có.
+- Hiện trạng: Đã triển khai kiểm tra chữ ký Magic bytes cho các file ảnh tải lên chống tấn công giả mạo định dạng, cơ chế đặt tên không đoán được (`unguessable key`), bảo vệ chống Path Traversal, ký và xác thực HMAC-SHA256 với thời gian hằng số và kẹp trần TTL, và mở rộng unit tests trong `LocalStorageServiceTests` và `HmacSignedUrlServiceTests`.
 - Scope: Kiểm owner/category/entity trước signed URL; MIME magic bytes/quota; unguessable key; private cert/post media; revoke/orphan cleanup; persistent media và backup.
-- Acceptance/evidence: Wrong-owner attach/read bị chặn; URL hết hạn/traversal; recreate vẫn có media; backup restore. Cloud migration chỉ khi topology/budget yêu cầu.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-816](production-plans/evidence/BE-816.md) (Wrong-owner attach/read bị chặn; URL hết hạn/traversal; recreate vẫn có media; backup restore).
+- Handoff: hoàn thành nâng cấp an ninh storage và signed URL; chờ user chạy build và unit test xác nhận.
 
 ### BE-817 — Tích hợp artifact AI thật
 - Plan: [Plan triển khai](production-plans/BE-817.md).
