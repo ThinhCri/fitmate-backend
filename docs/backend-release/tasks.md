@@ -164,21 +164,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-814 — Kiểm chứng social và chat production
 - Plan: [Plan triển khai](production-plans/BE-814.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-11.
-- Hiện trạng: Đã triển khai endpoint lấy danh sách bình luận (`GET /api/v1/social/posts/{id}/comments`), danh sách yêu cầu kết bạn (`GET /api/v1/social/friends/requests`), cách ly block isolation ở 2 chiều trên toàn bộ luồng post/comment/reaction, kiểm chứng trật tự chat & monotonic read marker, và mở rộng bộ unit tests toàn diện trong `SocialServiceTests.cs`, `FriendServiceTests.cs`, `ChatServiceTests.cs`.
+- Hiện trạng: Đã triển khai endpoint lấy danh sách bình luận (`GET /api/v1/social/posts/{id}/comments`), danh sách yêu cầu kết bạn (`GET /api/v1/social/friends/requests`), cách ly block isolation ở 2 chiều trên toàn bộ luồng post/comment/reaction, kiểm chứng trật tự chat & monotonic read marker, và mở rộng bộ unit tests toàn diện trong `SocialServiceTests.cs`, `FriendServiceTests.cs`, `ChatServiceTests.cs`; user đã verify build 0 error.
 - Scope: Search/pending invites/comments retrieval gap; stable per-conversation sequence; visibility/block media; race locks; moderation evidence; rate/size limits.
-- Acceptance/evidence: [Evidence BE-814](production-plans/evidence/BE-814.md).
+- Acceptance/evidence: [Evidence BE-814](production-plans/evidence/BE-814.md) (Build 0 error).
 - Handoff: hoàn thiện social & chat production; mở khóa BE-815.
 
 ### BE-815 — Thông báo và push thật
 - Plan: [Plan triển khai](production-plans/BE-815.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-802, BE-814; requirement: BR-12.
-- Hiện trạng: In-app implemented, provider MissingPushProvider.
+- Hiện trạng: Đã triển khai bảo vệ chống rò rỉ push đa tài khoản (tự động thu hồi thiết bị của tài khoản cũ trên cùng token), cơ chế kích hoạt lại thiết bị (`Reactivate`), xử lý luồng push và in-app cách ly khi tắt push, kiểm tra hợp lệ trước khi gửi và mở rộng unit tests cho `DeviceService`.
 - Scope: Kiểm tra device ownership transfer và unique active token; source validity mapping; outbox atomic; FCM hoặc Expo adapter sau OPS-06; key persistence/rotation.
-- Acceptance/evidence: 2 account cùng thiết bị không lộ push; invalid token revoke đúng; disabled không backlog; TTL retry; thiết bị Android staging nhận được.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-815](production-plans/evidence/BE-815.md) (2 account cùng thiết bị không lộ push; invalid token revoke đúng; disabled không backlog; TTL retry).
+- Handoff: hoàn thành nâng cấp bảo mật thông báo và quản lý thiết bị; chờ user chạy build và unit test xác nhận.
 
 ### BE-816 — Storage access và durability
 - Plan: [Plan triển khai](production-plans/BE-816.md).

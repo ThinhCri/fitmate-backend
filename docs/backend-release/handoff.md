@@ -126,16 +126,25 @@
 - Bổ sung bộ unit tests trong `DashboardServiceTests.cs`.
 - Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-813.md`.
 
-**BE-814: Kiểm chứng social và chat production — IMPLEMENTED — PENDING USER VERIFICATION**
+**BE-814: Kiểm chứng social và chat production — VERIFIED**
 - Triển khai `GET /api/v1/social/posts/{id}/comments` (kèm phân trang cursor, kiểm tra quyền xem bài viết và block isolation).
 - Triển khai `GET /api/v1/social/friends/requests?type=incoming|outgoing|all` (lấy danh sách yêu cầu kết bạn chờ xử lý kèm thông tin người gửi/nhận).
 - Thực thi cách ly quan hệ chặn (`Block Isolation`) 2 chiều: lọc feed, chặn xem post, chặn bình luận và thả cảm xúc đối với tài khoản bị block hoặc đã block mình.
 - Kiểm chứng Chat Friend: bảo đảm trật tự tin nhắn, cơ chế đánh dấu đã đọc tiến dần (`Monotonic Read Marker`), bảo toàn lịch sử chat sau khi unfriend/block, xử lý idempotency 409 khi khác payload.
 - Chuẩn hóa mã lỗi xác thực trong `ChatController.cs` về 403 `FITMATE.IDENTITY.NOT_AUTHENTICATED`.
 - Bổ sung các unit tests toàn diện trong `SocialServiceTests.cs`, `FriendServiceTests.cs`, `ChatServiceTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-814.md`.
+- Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-814.md`.
 
-**Next:** Chờ User chạy build và test nghiệm thu BE-814; sau đó chuyển sang **BE-815** (Thông báo và push thật).
+**BE-815: Thông báo và push thật — IMPLEMENTED (PENDING USER VERIFICATION)**
+- Triển khai bảo vệ chống rò rỉ push đa tài khoản (Cross-account push leak protection): khi tài khoản mới đăng ký trên cùng thiết bị/token, tự động thu hồi (`Revoke()`) thiết bị của tài khoản cũ theo BR-12.
+- Triển khai cơ chế kích hoạt lại thiết bị (`Reactivate`) khi cùng tài khoản đăng ký lại thiết bị đã bị vô hiệu hóa trước đó.
+- Cập nhật `IDeviceStore` và `EfDeviceStore` với `FindActiveDevicesByTokenHashAsync`.
+- Kiểm chứng cách ly khi tắt push provider (tạo inbox notification, ghi audit `push_disabled`, không tạo delivery/outbox dồn tích).
+- Kiểm chứng sender-side checks, block check 2 chiều cho thông báo bạn bè, phân loại kết quả gửi từ provider và redact log nhạy cảm.
+- Bổ sung và cập nhật unit tests trong `DeviceServiceTests.cs`, `NotificationPushHandlerTests.cs`, `PushDeliveryDispatcherTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-815.md`.
+
+**Next:** Chờ user chạy `dotnet build` và `dotnet test` xác nhận BE-815; sau đó chuyển sang **BE-816** (Storage access và durability).
 
 ### Lịch sử các phiên trước
 

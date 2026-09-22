@@ -76,3 +76,4 @@ public class TrainerRevenueController : ControllerBase
             new Dictionary<string, string[]> { ["range"] = new[] { "7d|30d|90d|all" } })
     };
 }
+

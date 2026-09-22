@@ -145,3 +145,4 @@ public class TrainerRevenueService : ITrainerRevenueService
         _ => "all"
     };
 }
+

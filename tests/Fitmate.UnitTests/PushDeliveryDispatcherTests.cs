@@ -40,6 +40,8 @@ public class PushDeliveryDispatcherTests
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<Device>> GetActiveDevicesAsync(Guid userId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Device>>(Devices.Where(d => d.UserId == userId && d.IsActive).ToList());
+        public Task<IReadOnlyList<Device>> FindActiveDevicesByTokenHashAsync(string tokenHash, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<Device>>(Devices.Where(d => d.TokenHash == tokenHash && d.IsActive).ToList());
     }
 
     private sealed class InMemoryPushStore : IPushStore

@@ -19,3 +19,4 @@ public interface ITrainerRevenueStore
     Task<(IReadOnlyList<TrainerBookingRevenueRow> Items, int Total)> ListHistoryPagedAsync(Guid ptUserId, int skip, int take, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }
+

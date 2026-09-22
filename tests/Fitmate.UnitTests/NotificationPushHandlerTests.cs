@@ -44,6 +44,8 @@ public class NotificationPushHandlerTests
             // owner match, expiry) to run. The handler enforces ownership, so a
             // device with mismatched UserId can reach the mismatch check.
             => Task.FromResult<IReadOnlyList<Device>>(Devices.ToList());
+        public Task<IReadOnlyList<Device>> FindActiveDevicesByTokenHashAsync(string tokenHash, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<Device>>(Devices.Where(d => d.TokenHash == tokenHash && d.IsActive).ToList());
     }
 
     private sealed class InMemoryPushStore : IPushStore

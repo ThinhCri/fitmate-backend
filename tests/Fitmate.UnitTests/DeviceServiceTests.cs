@@ -33,6 +33,9 @@ public class DeviceServiceTests
 
         public Task<IReadOnlyList<Device>> GetActiveDevicesAsync(Guid userId, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<Device>>(ById.Values.Where(d => d.UserId == userId && d.IsActive).ToList());
+
+        public Task<IReadOnlyList<Device>> FindActiveDevicesByTokenHashAsync(string tokenHash, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<Device>>(ById.Values.Where(d => d.TokenHash == tokenHash && d.IsActive).ToList());
     }
 
     private sealed class StubCipher : IPushDeliveryTokens
@@ -79,18 +82,42 @@ public class DeviceServiceTests
     }
 
     [Fact]
-    public async Task Register_SameTokenDifferentUsers_CreatesTwoRows()
+    public async Task Register_SameTokenDifferentUsers_RevokesPreviousUserActiveDevice()
     {
         var store = new InMemoryDeviceStore();
         var svc = NewService(store);
-        var a = Guid.NewGuid();
-        var b = Guid.NewGuid();
+        var userA = Guid.NewGuid();
+        var userB = Guid.NewGuid();
         var token = ValidToken();
 
-        await svc.RegisterAsync(a, token, DevicePlatform.Android, PushProvider.Fcm);
-        await svc.RegisterAsync(b, token, DevicePlatform.Android, PushProvider.Fcm);
+        var resA = await svc.RegisterAsync(userA, token, DevicePlatform.Android, PushProvider.Fcm);
+        store.ById[resA.DeviceId].IsActive.Should().BeTrue();
+
+        var resB = await svc.RegisterAsync(userB, token, DevicePlatform.Android, PushProvider.Fcm);
 
         store.ById.Should().HaveCount(2);
+        store.ById[resA.DeviceId].IsActive.Should().BeFalse("previous owner's device must be revoked to prevent push leak");
+        store.ById[resA.DeviceId].RevokedAt.Should().NotBeNull();
+        store.ById[resB.DeviceId].IsActive.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Register_PreviouslyRevokedDeviceForSameUser_ReactivatesDevice()
+    {
+        var store = new InMemoryDeviceStore();
+        var svc = NewService(store);
+        var userId = Guid.NewGuid();
+        var token = ValidToken();
+
+        var first = await svc.RegisterAsync(userId, token, DevicePlatform.Android, PushProvider.Fcm);
+        await svc.RevokeAsync(userId, first.DeviceId);
+        store.ById[first.DeviceId].IsActive.Should().BeFalse();
+
+        var second = await svc.RegisterAsync(userId, token, DevicePlatform.Android, PushProvider.Fcm);
+
+        second.DeviceId.Should().Be(first.DeviceId);
+        store.ById[first.DeviceId].IsActive.Should().BeTrue("device must be reactivated");
+        store.ById[first.DeviceId].RevokedAt.Should().BeNull("revoked timestamp must be cleared on reactivation");
     }
 
     [Fact]

@@ -45,4 +45,12 @@ public class EfDeviceStore : IDeviceStore
             .Where(d => d.UserId == userId && d.IsActive)
             .ToListAsync(ct);
     }
+
+    public async Task<IReadOnlyList<Device>> FindActiveDevicesByTokenHashAsync(
+        string tokenHash, CancellationToken ct)
+    {
+        return await _db.Devices
+            .Where(d => d.TokenHash == tokenHash && d.IsActive)
+            .ToListAsync(ct);
+    }
 }

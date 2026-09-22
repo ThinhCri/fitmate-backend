@@ -47,3 +47,4 @@ public interface ITrainerRevenueService
     Task<TrainerRevenueHistoryPage> GetHistoryAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct);
     Task<TrainerSettlementResult> SettleTrainerAsync(Guid adminUserId, TrainerSettlementRequest request, CancellationToken ct);
 }
+

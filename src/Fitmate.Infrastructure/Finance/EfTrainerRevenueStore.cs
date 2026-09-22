@@ -95,3 +95,4 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
 
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
 }
+

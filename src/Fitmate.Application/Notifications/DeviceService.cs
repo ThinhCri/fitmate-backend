@@ -43,13 +43,31 @@ public class DeviceService : IDeviceService
         // before reaching this service.
 
         var tokenHash = ComputeTokenHash(token);
-        var existing = await _store.FindByTokenHashAsync(userId, tokenHash, ct);
 
+        // 1) Cross-account push leak protection: revoke any other user's active device with this tokenHash.
+        var activeDevicesForToken = await _store.FindActiveDevicesByTokenHashAsync(tokenHash, ct);
+        foreach (var otherDevice in activeDevicesForToken)
+        {
+            if (otherDevice.UserId != userId)
+            {
+                otherDevice.Revoke();
+            }
+        }
+
+        // 2) Check if current user already has a device record for this token.
+        var existing = await _store.FindByTokenHashAsync(userId, tokenHash, ct);
         if (existing is not null)
         {
-            // Idempotent refresh: update encrypted token (in case of rotation), key id, last_used_at.
             var encryptedToken = _cipher.Protect(token);
-            existing.RefreshToken(encryptedToken, existing.KeyId);
+            if (!existing.IsActive)
+            {
+                existing.Reactivate(encryptedToken, existing.KeyId, platform, provider);
+            }
+            else
+            {
+                existing.RefreshToken(encryptedToken, existing.KeyId);
+            }
+
             await _store.SaveChangesAsync(ct);
             return new RegisterDeviceResult(existing.Id, DateTime.UtcNow);
         }
@@ -69,8 +87,6 @@ public class DeviceService : IDeviceService
 
         await _store.AddAsync(device, ct);
         await _store.SaveChangesAsync(ct);
-        // KeyId is stored purely as a diagnostic stamp; ciphertext carries the key
-        // selector automatically in DataProtection format. Use a sentinel value.
         return new RegisterDeviceResult(device.Id, DateTime.UtcNow);
     }
 

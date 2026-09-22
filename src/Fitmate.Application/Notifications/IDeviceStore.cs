@@ -32,4 +32,11 @@ public interface IDeviceStore
     /// push delivery.
     /// </summary>
     Task<IReadOnlyList<Device>> GetActiveDevicesAsync(Guid userId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Find all active devices across all users that match the given tokenHash.
+    /// Used during device registration to revoke previously active registrations
+    /// of the same physical device/token on other accounts (cross-account push leak prevention).
+    /// </summary>
+    Task<IReadOnlyList<Device>> FindActiveDevicesByTokenHashAsync(string tokenHash, CancellationToken ct = default);
 }

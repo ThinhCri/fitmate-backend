@@ -243,6 +243,9 @@ builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightSer
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
 builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
 builder.Services.AddScoped<INutritionService, NutritionService>();
+// BE-813: dashboard daily progress summary.
+builder.Services.AddScoped<Fitmate.Application.Dashboard.IDashboardStore, Fitmate.Infrastructure.Dashboard.EfDashboardStore>();
+builder.Services.AddScoped<Fitmate.Application.Dashboard.IDashboardService, Fitmate.Application.Dashboard.DashboardService>();
 // BE-140 & BE-808: payment provider gating (StubPaymentProvider in dev/test explicit, MissingPaymentProvider in production).
 var paymentOptions = builder.Configuration.GetSection(PaymentOptions.SectionName).Get<PaymentOptions>() ?? new PaymentOptions();
 builder.Services.Configure<PaymentOptions>(builder.Configuration.GetSection(PaymentOptions.SectionName));

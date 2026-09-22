@@ -100,6 +100,28 @@ public class Device : AuditableEntity
         Touch();
     }
 
+    /// <summary>
+    /// Reactivate a previously revoked device row for the same user.
+    /// Restores active state, clears revocation timestamp, and refreshes token/platform/provider.
+    /// </summary>
+    public void Reactivate(
+        byte[] encryptedToken,
+        string keyId,
+        DevicePlatform? platform = null,
+        PushProvider? provider = null)
+    {
+        if (encryptedToken is null || encryptedToken.Length == 0) throw new ArgumentException("EncryptedToken must not be empty", nameof(encryptedToken));
+        if (string.IsNullOrWhiteSpace(keyId)) throw new ArgumentException("KeyId must not be empty", nameof(keyId));
+        EncryptedToken = encryptedToken;
+        KeyId = keyId;
+        if (platform.HasValue) Platform = platform.Value;
+        if (provider.HasValue) Provider = provider.Value;
+        IsActive = true;
+        RevokedAt = null;
+        LastUsedAt = DateTime.UtcNow;
+        Touch();
+    }
+
     /// <summary>Mark the row as last-used. Idempotent.</summary>
     public void MarkLastUsed()
     {
