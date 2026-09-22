@@ -1,4 +1,5 @@
 using Fitmate.Application.Nutrition;
+using Fitmate.Application.Outbox;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Nutrition;
 using FluentAssertions;
@@ -21,6 +22,12 @@ public class NutritionServiceTests
             return Task.CompletedTask;
         }
 
+        public Task DeleteMealAsync(MealLog meal, CancellationToken ct)
+        {
+            meal.SoftDelete();
+            return Task.CompletedTask;
+        }
+
         public Task AddScheduleAsync(MealSchedule schedule, CancellationToken ct)
         {
             Schedule = schedule;
@@ -28,12 +35,12 @@ public class NutritionServiceTests
         }
 
         public Task<MealLog?> FindMealByIdAsync(Guid mealId, CancellationToken ct)
-            => Task.FromResult(Meals.FirstOrDefault(m => m.Id == mealId));
+            => Task.FromResult(Meals.FirstOrDefault(m => m.Id == mealId && !m.IsDeleted));
 
         public Task<IReadOnlyList<MealLog>> ListMealsAsync(
             Guid userId, DateTime? from, DateTime? to, CancellationToken ct)
         {
-            var q = Meals.Where(m => m.UserId == userId);
+            var q = Meals.Where(m => m.UserId == userId && !m.IsDeleted);
             if (from.HasValue) q = q.Where(m => m.LoggedAt >= from.Value);
             if (to.HasValue) q = q.Where(m => m.LoggedAt <= to.Value);
             return Task.FromResult<IReadOnlyList<MealLog>>(
@@ -41,7 +48,7 @@ public class NutritionServiceTests
         }
 
         public Task<MealSchedule?> FindScheduleByUserAsync(Guid userId, CancellationToken ct)
-            => Task.FromResult(Schedule);
+            => Task.FromResult(Schedule != null && !Schedule.IsDeleted && Schedule.UserId == userId ? Schedule : null);
 
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
@@ -58,8 +65,17 @@ public class NutritionServiceTests
                 200, 0.9m, "ai_estimate", null));
     }
 
-    private NutritionService Sut(InMemoryNutritionStore store, IAiNutritionAdapter? ai = null)
-        => new(store, ai ?? new StubAiAdapter());
+    private sealed class TestOutbox : IOutboxDispatcher
+    {
+        public List<(string Type, object Payload)> Messages { get; } = new();
+        public void Enqueue(string type, object payload) => Messages.Add((type, payload));
+    }
+
+    private static NutritionService Sut(
+        InMemoryNutritionStore store,
+        IAiNutritionAdapter? ai = null,
+        IOutboxDispatcher? outbox = null)
+        => new(store, ai ?? new StubAiAdapter(), outbox ?? new TestOutbox());
 
     [Fact]
     public async Task ListMeals_returns_empty_when_no_meals()
@@ -102,9 +118,10 @@ public class NutritionServiceTests
     }
 
     [Fact]
-    public async Task LogMeal_creates_and_returns_meal_view()
+    public async Task LogMeal_creates_and_returns_meal_view_and_emits_outbox()
     {
         var store = new InMemoryNutritionStore();
+        var outbox = new TestOutbox();
         var request = new LogMealRequest
         {
             FoodName = "Oatmeal",
@@ -115,23 +132,40 @@ public class NutritionServiceTests
             Source = MealSource.Manual
         };
 
-        var result = await Sut(store).LogMealAsync(UserId, request);
+        var result = await Sut(store, outbox: outbox).LogMealAsync(UserId, request);
 
         result.FoodName.Should().Be("Oatmeal");
         result.Calories.Should().Be(250);
         result.ProteinG.Should().Be(8);
         result.Confirmed.Should().BeFalse();
         store.Meals.Should().HaveCount(1);
+        outbox.Messages.Should().ContainSingle(m => m.Type == "nutrition.meal_logged");
     }
 
     [Fact]
-    public async Task UpdateMeal_updates_and_returns_updated_view()
+    public async Task LogMeal_throws_validation_on_negative_or_invalid_values()
     {
         var store = new InMemoryNutritionStore();
+        var request = new LogMealRequest
+        {
+            FoodName = "",
+            Calories = -10,
+            Source = MealSource.Manual
+        };
+
+        var act = () => Sut(store).LogMealAsync(UserId, request);
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task UpdateMeal_updates_and_returns_updated_view_and_emits_outbox()
+    {
+        var store = new InMemoryNutritionStore();
+        var outbox = new TestOutbox();
         var meal = MealLog.Create(UserId, "Original", null, 100, 5, 20, 2, null, MealSource.Manual, null, false, DateTime.UtcNow);
         store.Meals.Add(meal);
 
-        var result = await Sut(store).UpdateMealAsync(
+        var result = await Sut(store, outbox: outbox).UpdateMealAsync(
             UserId, meal.Id,
             new UpdateMealRequest { FoodName = "Updated", Calories = 200, Confirmed = true });
 
@@ -139,6 +173,7 @@ public class NutritionServiceTests
         result!.FoodName.Should().Be("Updated");
         result.Calories.Should().Be(200);
         result.Confirmed.Should().BeTrue();
+        outbox.Messages.Should().ContainSingle(m => m.Type == "nutrition.meal_updated");
     }
 
     [Fact]
@@ -154,6 +189,31 @@ public class NutritionServiceTests
 
         result.Should().BeNull();
         meal.FoodName.Should().Be("Other meal");
+    }
+
+    [Fact]
+    public async Task DeleteMeal_soft_deletes_meal_and_emits_outbox()
+    {
+        var store = new InMemoryNutritionStore();
+        var outbox = new TestOutbox();
+        var meal = MealLog.Create(UserId, "To Delete", null, 150, 5, 20, 2, null, MealSource.Manual, null, false, DateTime.UtcNow);
+        store.Meals.Add(meal);
+
+        await Sut(store, outbox: outbox).DeleteMealAsync(UserId, meal.Id);
+
+        meal.IsDeleted.Should().BeTrue();
+        outbox.Messages.Should().ContainSingle(m => m.Type == "nutrition.meal_deleted");
+    }
+
+    [Fact]
+    public async Task DeleteMeal_throws_not_found_when_not_owner()
+    {
+        var store = new InMemoryNutritionStore();
+        var meal = MealLog.Create(OtherId, "Other meal", null, 100, 5, 20, 2, null, MealSource.Manual, null, false, DateTime.UtcNow);
+        store.Meals.Add(meal);
+
+        var act = () => Sut(store).DeleteMealAsync(UserId, meal.Id);
+        await act.Should().ThrowAsync<NotFoundException>();
     }
 
     [Fact]
@@ -186,7 +246,7 @@ public class NutritionServiceTests
     {
         var store = new InMemoryNutritionStore();
         var stub = new AiNutritionStubAdapter();
-        var sut = new NutritionService(store, stub);
+        var sut = new NutritionService(store, stub, new TestOutbox());
         using var stream = new MemoryStream(new byte[1]);
 
         var act = () => sut.ScanMealAsync(UserId, stream, "image/jpeg");

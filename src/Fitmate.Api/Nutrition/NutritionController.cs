@@ -63,6 +63,16 @@ public class NutritionController : ControllerBase
         return Ok(updated);
     }
 
+    [HttpDelete("meals/{id:guid}")]
+    public async Task<IActionResult> DeleteMeal(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        CancellationToken ct)
+    {
+        await _nutrition.DeleteMealAsync(current.GetUserIdOrThrow(), id, ct);
+        return NoContent();
+    }
+
     [HttpGet("schedule")]
     public async Task<IActionResult> GetSchedule(
         [FromServices] ICurrentUserAccessor current,

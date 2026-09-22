@@ -137,21 +137,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-811 — Workout plan, session và weight hoàn chỉnh
 - Plan: [Plan triển khai](production-plans/BE-811.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-08.
-- Hiện trạng: Đã triển khai đầy đủ CRUD cho Workout Plan (`GET/POST /api/v1/me/workout/plans`, `GET/PATCH/DELETE /api/v1/me/workout/plans/{id}`), bảo toàn lịch sử buổi tập khi xóa kế hoạch, phát hiện xung đột payload 409 khi retry cùng `client_id`, lưu trữ snapshot kế hoạch, bổ sung kiểm tra biên độ ngày cân nặng, và mở rộng bộ unit tests toàn diện trong `WorkoutServiceTests.cs` và `WeightServiceTests.cs`.
+- Hiện trạng: Đã triển khai đầy đủ CRUD cho Workout Plan (`GET/POST /api/v1/me/workout/plans`, `GET/PATCH/DELETE /api/v1/me/workout/plans/{id}`), bảo toàn lịch sử buổi tập khi xóa kế hoạch, phát hiện xung đột payload 409 khi retry cùng `client_id`, lưu trữ snapshot kế hoạch, bổ sung kiểm tra biên độ ngày cân nặng, và mở rộng bộ unit tests toàn diện trong `WorkoutServiceTests.cs` và `WeightServiceTests.cs`; user đã verify build 0 error và 470/470 tests PASS.
 - Scope: Plan list/create/patch/delete; snapshot lúc bắt đầu/client offline; per-set result; idempotency bền; weight pagination/timezone/backfill; licensed media catalog minimal.
-- Acceptance/evidence: [Evidence BE-811](production-plans/evidence/BE-811.md).
+- Acceptance/evidence: [Evidence BE-811](production-plans/evidence/BE-811.md) (Build 0 error, 470/470 tests PASS).
 - Handoff: hoàn thiện workout plan, session snapshot và weight log; mở khóa BE-812 và BE-813.
 
 ### BE-812 — Dinh dưỡng và nhật ký đầy đủ
 - Plan: [Plan triển khai](production-plans/BE-812.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-09.
-- Hiện trạng: Meal list/create/patch/schedule có; scan unavailable.
+- Hiện trạng: Đã triển khai đầy đủ CRUD cho Meal Log bao gồm `DELETE /api/v1/me/nutrition/meals/{id}` (soft-delete), kiểm tra phân quyền sở hữu, validate số liệu dinh dưỡng và ngày ghi nhận, phát sinh outbox events (`nutrition.meal_logged`, `nutrition.meal_updated`, `nutrition.meal_deleted`), tách biệt hoàn toàn scan candidate khỏi dữ liệu lưu trữ, và mở rộng bộ unit tests trong `NutritionServiceTests.cs`.
 - Scope: Meal delete/corrections, portions/macros units, timezone/day filters/cursor, duplicate submission protection; schedule tách log; manual flow độc lập AI.
-- Acceptance/evidence: Scale khẩu phần cùng nutrient; delete sửa aggregate; owner isolation; unavailable scan vẫn log manual được; không tự confirm AI.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-812](production-plans/evidence/BE-812.md).
+- Handoff: hoàn thiện dinh dưỡng và nhật ký bữa ăn; mở khóa BE-813.
 
 ### BE-813 — Dashboard và tiến độ thật
 - Plan: [Plan triển khai](production-plans/BE-813.md).

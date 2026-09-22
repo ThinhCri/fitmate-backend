@@ -1,3 +1,4 @@
+using Fitmate.Application.Outbox;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Nutrition;
 
@@ -7,11 +8,13 @@ public class NutritionService : INutritionService
 {
     private readonly INutritionStore _store;
     private readonly IAiNutritionAdapter _ai;
+    private readonly IOutboxDispatcher _outbox;
 
-    public NutritionService(INutritionStore store, IAiNutritionAdapter ai)
+    public NutritionService(INutritionStore store, IAiNutritionAdapter ai, IOutboxDispatcher outbox)
     {
         _store = store;
         _ai = ai;
+        _outbox = outbox;
     }
 
     public async Task<IReadOnlyList<MealLogView>> ListMealsAsync(
@@ -24,10 +27,12 @@ public class NutritionService : INutritionService
     public async Task<MealLogView> LogMealAsync(
         Guid userId, LogMealRequest request, CancellationToken ct = default)
     {
+        ValidateLogMealRequest(request);
+
         var meal = MealLog.Create(
             userId: userId,
-            foodName: request.FoodName,
-            imageStorageKey: null,
+            foodName: request.FoodName.Trim(),
+            imageStorageKey: request.ImageUrl,
             calories: request.Calories,
             protein: request.ProteinG,
             carbs: request.CarbsG,
@@ -40,18 +45,29 @@ public class NutritionService : INutritionService
 
         await _store.AddMealAsync(meal, ct);
         await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("nutrition.meal_logged", new
+        {
+            mealId = meal.Id,
+            userId,
+            calories = meal.Calories,
+            loggedAt = meal.LoggedAt.ToString("O")
+        });
+
         return MapMeal(meal);
     }
 
     public async Task<MealLogView?> UpdateMealAsync(
         Guid userId, Guid mealId, UpdateMealRequest request, CancellationToken ct = default)
     {
+        ValidateUpdateMealRequest(request);
+
         var meal = await _store.FindMealByIdAsync(mealId, ct);
         if (meal is null || meal.UserId != userId)
             return null;
 
         meal.Update(
-            foodName: request.FoodName,
+            foodName: request.FoodName?.Trim(),
             calories: request.Calories,
             protein: request.ProteinG,
             carbs: request.CarbsG,
@@ -60,7 +76,31 @@ public class NutritionService : INutritionService
             confirmed: request.Confirmed);
 
         await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("nutrition.meal_updated", new
+        {
+            mealId = meal.Id,
+            userId,
+            calories = meal.Calories
+        });
+
         return MapMeal(meal);
+    }
+
+    public async Task DeleteMealAsync(Guid userId, Guid mealId, CancellationToken ct = default)
+    {
+        var meal = await _store.FindMealByIdAsync(mealId, ct);
+        if (meal is null || meal.UserId != userId)
+            throw new NotFoundException(NutritionErrorCodes.MealNotFound, $"Meal {mealId} not found.");
+
+        await _store.DeleteMealAsync(meal, ct);
+        await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("nutrition.meal_deleted", new
+        {
+            mealId = meal.Id,
+            userId
+        });
     }
 
     public async Task<MealScheduleView> GetScheduleAsync(
@@ -106,6 +146,66 @@ public class NutritionService : INutritionService
         Guid userId, Stream imageStream, string contentType, CancellationToken ct = default)
     {
         return await _ai.EstimateFromImageAsync(imageStream, contentType, ct);
+    }
+
+    private static void ValidateLogMealRequest(LogMealRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(request.FoodName))
+            errors["food_name"] = new[] { "required" };
+        else if (request.FoodName.Trim().Length > 200)
+            errors["food_name"] = new[] { "max length 200 characters" };
+
+        if (request.Calories < 0 || request.Calories > 10000)
+            errors["calories"] = new[] { "must be 0..10000" };
+        if (request.ProteinG < 0 || request.ProteinG > 1000)
+            errors["protein_g"] = new[] { "must be 0..1000" };
+        if (request.CarbsG < 0 || request.CarbsG > 1000)
+            errors["carbs_g"] = new[] { "must be 0..1000" };
+        if (request.FatG < 0 || request.FatG > 1000)
+            errors["fat_g"] = new[] { "must be 0..1000" };
+
+        if (request.PortionSize.HasValue && (request.PortionSize.Value <= 0 || request.PortionSize.Value > 10000))
+            errors["portion_size"] = new[] { "must be > 0 and <= 10000" };
+
+        if (request.LoggedAt.HasValue && request.LoggedAt.Value > DateTime.UtcNow.AddDays(1))
+            errors["logged_at"] = new[] { "cannot be more than 1 day in the future" };
+
+        if (errors.Count > 0)
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Invalid meal request.",
+                errors);
+    }
+
+    private static void ValidateUpdateMealRequest(UpdateMealRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (request.FoodName is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.FoodName))
+                errors["food_name"] = new[] { "cannot be empty" };
+            else if (request.FoodName.Trim().Length > 200)
+                errors["food_name"] = new[] { "max length 200 characters" };
+        }
+
+        if (request.Calories.HasValue && (request.Calories.Value < 0 || request.Calories.Value > 10000))
+            errors["calories"] = new[] { "must be 0..10000" };
+        if (request.ProteinG.HasValue && (request.ProteinG.Value < 0 || request.ProteinG.Value > 1000))
+            errors["protein_g"] = new[] { "must be 0..1000" };
+        if (request.CarbsG.HasValue && (request.CarbsG.Value < 0 || request.CarbsG.Value > 1000))
+            errors["carbs_g"] = new[] { "must be 0..1000" };
+        if (request.FatG.HasValue && (request.FatG.Value < 0 || request.FatG.Value > 1000))
+            errors["fat_g"] = new[] { "must be 0..1000" };
+
+        if (request.PortionSize.HasValue && (request.PortionSize.Value <= 0 || request.PortionSize.Value > 10000))
+            errors["portion_size"] = new[] { "must be > 0 and <= 10000" };
+
+        if (errors.Count > 0)
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Invalid update meal request.",
+                errors);
     }
 
     private static MealLogView MapMeal(MealLog m) => new(

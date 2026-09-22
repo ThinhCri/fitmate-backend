@@ -40,6 +40,14 @@ public interface INutritionService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Delete a meal log entry. Soft-deletes the record and preserves audit history.
+    /// </summary>
+    Task DeleteMealAsync(
+        Guid userId,
+        Guid mealId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// Get the user's current meal schedule. Returns a blank schedule if none exists yet.
     /// </summary>
     Task<MealScheduleView> GetScheduleAsync(

@@ -104,15 +104,23 @@
 - Bổ sung 8 unit tests mới trong `TrainerRevenueServiceTests.cs`.
 - Kết quả test thực tế từ User: `dotnet test` 458/458 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-810.md`.
 
-**BE-811: Workout plan, session và weight hoàn chỉnh — IMPLEMENTED — PENDING USER VERIFICATION**
+**BE-811: Workout plan, session và weight hoàn chỉnh — VERIFIED**
 - Triển khai trọn bộ CRUD cho Workout Plans: `GET/POST /api/v1/me/workout/plans`, `GET/PATCH/DELETE /api/v1/me/workout/plans/{id}`.
 - Xử lý xóa kế hoạch vẫn bảo toàn lịch sử buổi tập `workout_sessions` và snapshot fields.
 - Phát hiện xung đột 409 Conflict khi client_id đã tồn tại với payload khác.
 - Thêm kiểm tra biên độ ngày cân nặng không vượt quá 1 ngày trong tương lai.
 - Bổ sung các test cases toàn diện trong `WorkoutServiceTests.cs` và `WeightServiceTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-811.md`.
+- Kết quả test thực tế từ User: `dotnet test` 470/470 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-811.md`.
 
-**Next:** Chờ User chạy build và test nghiệm thu BE-811; sau đó chuyển sang **BE-812** (Dinh dưỡng và nhật ký đầy đủ).
+**BE-812: Dinh dưỡng và nhật ký đầy đủ — IMPLEMENTED — PENDING USER VERIFICATION**
+- Triển khai trọn bộ CRUD cho Meal Log bao gồm `DELETE /api/v1/me/nutrition/meals/{id}` (soft-delete).
+- Kiểm tra phân quyền sở hữu, validate toàn diện thông số calo/macros và ngày ghi nhận.
+- Phát sinh Outbox events (`nutrition.meal_logged`, `nutrition.meal_updated`, `nutrition.meal_deleted`).
+- Tách biệt scan candidate khỏi luồng lưu trữ thực tế.
+- Bổ sung bộ test cases trong `NutritionServiceTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-812.md`.
+
+**Next:** Chờ User chạy build và test nghiệm thu BE-812; sau đó chuyển sang **BE-813** (Dashboard và tiến độ thật).
 
 ### Lịch sử các phiên trước
 
