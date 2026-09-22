@@ -245,6 +245,12 @@ builder.Services.AddHostedService<Fitmate.Infrastructure.Notifications.SweepBack
 // Outbox handler for `notification.push_requested`.
 builder.Services.AddScoped<IOutboxHandler, Fitmate.Application.Notifications.Handlers.NotificationPushHandler>();
 
+// BE-420: Storage adapter (local volume + HMAC presigned URL).
+builder.Services.Configure<Fitmate.Application.Storage.StorageOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Storage.StorageOptions.SectionName));
+builder.Services.AddSingleton<Fitmate.Application.Storage.IStorageService, Fitmate.Infrastructure.Storage.LocalStorageService>();
+builder.Services.AddSingleton<Fitmate.Application.Storage.ISignedUrlService, Fitmate.Infrastructure.Storage.HmacSignedUrlService>();
+
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
 // - IIdempotencyStore: EF Core backed.
@@ -341,6 +347,27 @@ using (var scope = app.Services.CreateScope())
 // Đặt SAU authentication để chỉ nhận key đã qua auth filter, nhưng TRƯỚC MapControllers
 // để có thể short-circuit khi replay/conflict.
 app.UseMiddleware<IdempotencyMiddleware>();
+
+// BE-420: HMAC-signed-URL middleware (gates /uploads/*). Must be BEFORE UseStaticFiles so
+// invalid/expired URLs short-circuit before the file system is touched.
+app.UseMiddleware<Fitmate.Api.Storage.SignedUrlMiddleware>();
+// Static files served from StorageOptions.BasePath. The request path segment is derived
+// from StorageOptions.BaseUrl (the part after the last '/').
+var storageBasePath = Path.GetFullPath(builder.Configuration["Storage:BasePath"] ?? "./uploads");
+Directory.CreateDirectory(storageBasePath);
+var storageBaseUrl = (builder.Configuration["Storage:BaseUrl"] ?? "http://localhost:5116/uploads").TrimEnd('/');
+var storageRequestPath = storageBaseUrl[(storageBaseUrl.LastIndexOf('/') + 1)..];
+var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+contentTypeProvider.Mappings[".jpg"] = "image/jpeg";
+contentTypeProvider.Mappings[".png"] = "image/png";
+contentTypeProvider.Mappings[".webp"] = "image/webp";
+app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(storageBasePath),
+    RequestPath = "/" + storageRequestPath,
+    ServeUnknownFileTypes = false,
+    ContentTypeProvider = contentTypeProvider
+});
 
 app.UseExceptionHandler(handler =>
 {
