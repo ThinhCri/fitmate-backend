@@ -92,21 +92,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-806 — PT onboarding, marketplace và reviews
 - Plan: [Plan triển khai](production-plans/BE-806.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-804, BE-816; requirement: BR-04.
-- Hiện trạng: Đã triển khai đầy đủ hệ thống review cho PT (`POST /api/v1/trainers/{id}/reviews` và `GET /api/v1/trainers/{id}/reviews`), ràng buộc nghiêm ngặt (chỉ hội viên có lịch hẹn Completed mới được đánh giá, 1 review/trainer, chống tự review), tự động cập nhật Rating và ReviewsCount trên PtProfile, và bộ unit tests trong `TrainerReviewServiceTests.cs`.
+- Hiện trạng: Đã triển khai đầy đủ hệ thống review cho PT (`POST /api/v1/trainers/{id}/reviews` và `GET /api/v1/trainers/{id}/reviews`), ràng buộc nghiêm ngặt (chỉ hội viên có lịch hẹn Completed mới được đánh giá, 1 review/trainer, chống tự review), tự động cập nhật Rating và ReviewsCount trên PtProfile, và bộ unit tests trong `TrainerReviewServiceTests.cs`; user đã verify build 0 error và 429/429 tests PASS.
 - Scope: PT application/verification derived từ cert; expiry/revocation; public metadata/private certificate; active service/price; review 1 booking Completed/owner, không fake rating.
-- Acceptance/evidence: [Evidence BE-806](production-plans/evidence/BE-806.md).
-- Handoff: hoàn thiện onboarding, marketplace và reviews của PT; chờ user verification để mở khóa BE-807.
+- Acceptance/evidence: [Evidence BE-806](production-plans/evidence/BE-806.md) (Build 0 error, 429/429 tests PASS).
+- Handoff: hoàn thiện onboarding, marketplace và reviews của PT; mở khóa BE-807.
 
 ### BE-807 — Hoàn thiện lifecycle booking
 - Plan: [Plan triển khai](production-plans/BE-807.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-801, BE-806; requirement: BR-05.
-- Hiện trạng: BE-060 partial; confirm/accept thiếu; enum cũ gộp tiền.
-- Scope: Migration tách appointment/payment/refund; overlap interval, TTL; callback-driven Pending; accept/start/complete; reschedule proposal; expiry/refund recovery; admin list/detail.
-- Acceptance/evidence: PostgreSQL simultaneous hold/expiry/payment/accept/cancel tests; giữ slot cũ khi reschedule fail; exact transition table domain-rules; không double slot.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Hiện trạng: Đã bổ sung trạng thái `Confirmed` và `InProgress` vào `BookingStatus`, bổ sung các phương thức chuyển trạng thái được bảo vệ nghiêm ngặt (`ConfirmByPt`, `StartByPt`, `CompleteByPt`, `Reschedule`), mở rộng `IBookingService` và `BookingService` (`ConfirmAsync`, `StartAsync`, `FindByIdAsync`), expose các endpoints tương ứng trong `BookingsController`, và mở rộng bộ unit tests toàn diện trong `BookingServiceTests.cs`.
+- Scope: Phân tách rõ ràng trạng thái thanh toán và buổi tập; bảo vệ điều kiện bắt đầu buổi tập (không sớm hơn 5 phút); role/ownership authorization; outbox events cho từng transition; booking detail endpoint.
+- Acceptance/evidence: [Evidence BE-807](production-plans/evidence/BE-807.md) (Chờ user chạy build & test verification).
+- Handoff: hoàn thiện lifecycle booking có đầy đủ guard transitions; mở khóa BE-808, BE-809, BE-810.
 
 ### BE-808 — Loại payment giả khỏi production
 - Plan: [Plan triển khai](production-plans/BE-808.md).

@@ -22,7 +22,13 @@ public interface IBookingService
     /// <summary>Member/PT cancel. Reason bắt buộc ≥ 5 chars.</summary>
     Task<Appointment> CancelAsync(Guid actorUserId, Guid appointmentId, string reason, CancellationToken ct);
 
-    /// <summary>PT complete booking (chỉ khi Paid → Completed). Domain-rules.md §3.2.</summary>
+    /// <summary>PT confirm/accept booking (Paid/AwaitingPayment → Confirmed). Domain-rules.md §3.2.</summary>
+    Task<Appointment> ConfirmAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
+
+    /// <summary>PT start session (Confirmed/Paid → InProgress). Domain-rules.md §3.2.</summary>
+    Task<Appointment> StartAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
+
+    /// <summary>PT complete booking (chỉ khi InProgress/Confirmed/Paid → Completed). Domain-rules.md §3.2.</summary>
     Task<Appointment> CompleteAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
 
     /// <summary>Member reschedule: kiểm slot mới còn Open, tạo Appointment mới (previous_booking_id = old).</summary>

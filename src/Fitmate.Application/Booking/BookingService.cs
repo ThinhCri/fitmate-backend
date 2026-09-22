@@ -90,6 +90,34 @@ public class BookingService : IBookingService
         return appt;
     }
 
+    public async Task<Appointment> ConfirmAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct);
+        var appt = await _appointments.FindByIdAsync(appointmentId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
+        if (appt.PtUserId != ptUserId)
+            throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner PT.");
+
+        appt.ConfirmByPt();
+        await _appointments.SaveChangesAsync(ct);
+        _outbox.Enqueue("booking.confirmed", new { appointmentId, ptUserId, memberId = appt.MemberId });
+        return appt;
+    }
+
+    public async Task<Appointment> StartAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(ptUserId, "PT", ct);
+        var appt = await _appointments.FindByIdAsync(appointmentId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
+        if (appt.PtUserId != ptUserId)
+            throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner PT.");
+
+        appt.StartByPt();
+        await _appointments.SaveChangesAsync(ct);
+        _outbox.Enqueue("booking.started", new { appointmentId, ptUserId, memberId = appt.MemberId });
+        return appt;
+    }
+
     public async Task<Appointment> CompleteAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
     {
         // BE-090: enforce role PT ở Application.
@@ -98,9 +126,9 @@ public class BookingService : IBookingService
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
         if (appt.PtUserId != ptUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner PT.");
-        appt.CompleteByPt(); // domain throws ConflictException nếu không Paid
+        appt.CompleteByPt();
         await _appointments.SaveChangesAsync(ct);
-        _outbox.Enqueue("booking.completed", new { appointmentId, ptUserId });
+        _outbox.Enqueue("booking.completed", new { appointmentId, ptUserId, memberId = appt.MemberId });
         return appt;
     }
 

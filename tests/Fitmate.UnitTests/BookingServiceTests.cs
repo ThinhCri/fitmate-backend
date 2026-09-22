@@ -26,7 +26,8 @@ public class BookingServiceTests
             return Task.FromResult(Items.Values.Any(a =>
                 a.PtUserId == ptUserId && a.SlotStartUtc == slotStartUtc &&
                 (a.Status == BookingStatus.Held || a.Status == BookingStatus.AwaitingPayment ||
-                 a.Status == BookingStatus.Paid || a.Status == BookingStatus.Completed)));
+                 a.Status == BookingStatus.Paid || a.Status == BookingStatus.Confirmed ||
+                 a.Status == BookingStatus.InProgress || a.Status == BookingStatus.Completed)));
         }
 
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
@@ -396,5 +397,124 @@ public class BookingServiceTests
         // Service returns whatever the store returns. InMemory stub doesn't paginate,
         // so all pages see all 5. Real Ef store will skip/take per page.
         page3Items.Count.Should().BeLessThanOrEqualTo(5);
+    }
+
+    [Fact]
+    public async Task Confirm_HappyPath_MarksConfirmed_AndOutbox()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var outbox = new CapturingOutbox();
+        var pt = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var appt = Appointment.CreateHold(member, pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
+        var confirmed = await svc.ConfirmAsync(pt, appt.Id, CancellationToken.None);
+
+        confirmed.Status.Should().Be(BookingStatus.Confirmed);
+        outbox.Messages.Should().Contain(m => m.Type == "booking.confirmed");
+    }
+
+    [Fact]
+    public async Task Confirm_NotPaid_ThrowsConflict()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var pt = Guid.NewGuid();
+        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+        var act = () => svc.ConfirmAsync(pt, appt.Id, CancellationToken.None);
+        await act.Should().ThrowAsync<ConflictException>();
+    }
+
+    [Fact]
+    public async Task Confirm_OtherPt_ThrowsForbidden()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var pt = Guid.NewGuid();
+        var otherPt = Guid.NewGuid();
+        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+        var act = () => svc.ConfirmAsync(otherPt, appt.Id, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task Start_HappyPath_MarksInProgress_AndOutbox()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var outbox = new CapturingOutbox();
+        var pt = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddMinutes(2); // Within 5 minutes
+        var appt = Appointment.CreateHold(member, pt, Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ConfirmByPt();
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
+        var started = await svc.StartAsync(pt, appt.Id, CancellationToken.None);
+
+        started.Status.Should().Be(BookingStatus.InProgress);
+        outbox.Messages.Should().Contain(m => m.Type == "booking.started");
+    }
+
+    [Fact]
+    public async Task Start_TooEarly_ThrowsConflict()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var pt = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddMinutes(30); // 30 minutes in future (> 5 min before start)
+        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ConfirmByPt();
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+        var act = () => svc.StartAsync(pt, appt.Id, CancellationToken.None);
+        await act.Should().ThrowAsync<ConflictException>();
+    }
+
+    [Fact]
+    public async Task Start_OtherPt_ThrowsForbidden()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var pt = Guid.NewGuid();
+        var otherPt = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddMinutes(2);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ConfirmByPt();
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+        var act = () => svc.StartAsync(otherPt, appt.Id, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task Complete_FromInProgress_HappyPath_MarksCompleted()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var outbox = new CapturingOutbox();
+        var pt = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddMinutes(-10);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ConfirmByPt();
+        appt.StartByPt();
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
+        var done = await svc.CompleteAsync(pt, appt.Id, CancellationToken.None);
+
+        done.Status.Should().Be(BookingStatus.Completed);
+        outbox.Messages.Should().Contain(m => m.Type == "booking.completed");
     }
 }

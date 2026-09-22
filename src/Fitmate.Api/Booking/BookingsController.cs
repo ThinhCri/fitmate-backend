@@ -67,6 +67,31 @@ public class BookingsController : ControllerBase
         return Ok(appt);
     }
 
+    /// <summary>PT confirm/accept booking.</summary>
+    [HttpPost("me/bookings/{id:guid}/confirm")]
+    [HttpPost("bookings/{id:guid}/confirm")]
+    [Authorize(Roles = "PT")]
+    public async Task<ActionResult<Appointment>> ConfirmBooking(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        CancellationToken ct)
+    {
+        var appt = await _booking.ConfirmAsync(current.GetUserIdOrThrow(), id, ct);
+        return Ok(appt);
+    }
+
+    /// <summary>PT start booking.</summary>
+    [HttpPost("me/bookings/{id:guid}/start")]
+    [Authorize(Roles = "PT")]
+    public async Task<ActionResult<Appointment>> StartBooking(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        CancellationToken ct)
+    {
+        var appt = await _booking.StartAsync(current.GetUserIdOrThrow(), id, ct);
+        return Ok(appt);
+    }
+
     /// <summary>PT complete.</summary>
     [HttpPost("me/bookings/{id:guid}/complete")]
     [Authorize(Roles = "PT")]
@@ -76,6 +101,20 @@ public class BookingsController : ControllerBase
         CancellationToken ct)
     {
         var appt = await _booking.CompleteAsync(current.GetUserIdOrThrow(), id, ct);
+        return Ok(appt);
+    }
+
+    /// <summary>Get booking detail by ID.</summary>
+    [HttpGet("me/bookings/{id:guid}")]
+    public async Task<IActionResult> GetBookingDetail(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        CancellationToken ct)
+    {
+        var appt = await _booking.FindByIdAsync(id, ct);
+        if (appt is null) return NotFound();
+        var userId = current.GetUserIdOrThrow();
+        if (appt.MemberId != userId && appt.PtUserId != userId) return Forbid();
         return Ok(appt);
     }
 

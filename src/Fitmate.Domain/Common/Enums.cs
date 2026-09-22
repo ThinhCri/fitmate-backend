@@ -29,7 +29,9 @@ public enum BookingStatus
     Completed = 3,
     Cancelled = 4,
     Refunded = 5,
-    Expired = 6
+    Expired = 6,
+    Confirmed = 7,
+    InProgress = 8
 }
 
 public enum PaymentStatus

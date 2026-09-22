@@ -66,12 +66,21 @@
 - Bổ sung bộ unit tests trong `AccountDeletionServiceTests.cs` và đăng ký DI trong `Program.cs`.
 - Kết quả test thực tế từ User: `dotnet test` 423/423 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-805.md`.
 
-**BE-806: PT onboarding, marketplace và reviews — IMPLEMENTED (PENDING USER VERIFICATION)**
+**BE-806: PT onboarding, marketplace và reviews — VERIFIED**
 - Triển khai `POST /api/v1/trainers/{id}/reviews`: gửi đánh giá kèm ràng buộc chặt chẽ (chống tự review, chỉ cho phép hội viên có lịch hẹn Completed đánh giá, 1 review/PT), tự động cập nhật Rating và ReviewsCount trên PtProfile, enqueue outbox `trainer.review_submitted`.
 - Triển khai `GET /api/v1/trainers/{id}/reviews`: lấy danh sách đánh giá của PT kèm tên tác giả, phân trang và thống kê tổng quan.
-- Bổ sung bộ unit tests trong `TrainerReviewServiceTests.cs` và đăng ký DI trong `Program.cs`. File evidence: `docs/backend-release/production-plans/evidence/BE-806.md`.
+- Bổ sung bộ unit tests trong `TrainerReviewServiceTests.cs` và đăng ký DI trong `Program.cs`.
+- Kết quả test thực tế từ User: `dotnet test` 429/429 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-806.md`.
 
-**Next:** Chờ User verify BE-806 (`dotnet build` và `dotnet test`), sau đó tiếp tục **BE-807** (Hoàn thiện lifecycle booking).
+**BE-807: Hoàn thiện lifecycle booking — IMPLEMENTED (PENDING USER VERIFICATION)**
+- Mở rộng enum `BookingStatus` với `Confirmed` và `InProgress`.
+- Cập nhật entity `Appointment` với các transition method `ConfirmByPt`, `StartByPt` (time guard >= slot - 5 phút), `CompleteByPt`, `Reschedule`.
+- Mở rộng `IBookingService` & `BookingService`: `ConfirmAsync`, `StartAsync`, `FindByIdAsync`.
+- Expose các endpoint trong `BookingsController`: `POST /api/v1/me/bookings/{id}/confirm` (và `/bookings/{id}/confirm`), `POST /api/v1/me/bookings/{id}/start`, `GET /api/v1/me/bookings/{id}`.
+- Bổ sung 7 unit tests trong `BookingServiceTests.cs` (kiểm tra đầy đủ happy path và exception guards).
+- File evidence: `docs/backend-release/production-plans/evidence/BE-807.md`.
+
+**Next:** Sau khi User verify BE-807 (436/436 tests PASS), chuyển sang **BE-808** (Loại payment giả khỏi production).
 
 ### Lịch sử các phiên trước
 

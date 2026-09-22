@@ -59,11 +59,39 @@ public class Appointment : AuditableEntity
         Touch();
     }
 
+    public void ConfirmByPt()
+    {
+        if (Status is not (BookingStatus.Paid or BookingStatus.AwaitingPayment))
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot confirm booking in status {Status}.");
+        Status = BookingStatus.Confirmed;
+        Touch();
+    }
+
+    public void StartByPt()
+    {
+        if (Status is not (BookingStatus.Confirmed or BookingStatus.Paid))
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot start booking in status {Status}.");
+        if (DateTime.UtcNow < SlotStartUtc.AddMinutes(-5))
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, "Cannot start appointment before 5 minutes prior to slot time.");
+        Status = BookingStatus.InProgress;
+        Touch();
+    }
+
     public void CompleteByPt()
     {
-        if (Status != BookingStatus.Paid)
+        if (Status is not (BookingStatus.InProgress or BookingStatus.Confirmed or BookingStatus.Paid))
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot complete booking in status {Status}.");
         Status = BookingStatus.Completed;
+        Touch();
+    }
+
+    public void Reschedule(DateTime newSlotStartUtc, DateTime newSlotStartLocal, int newDurationMinutes)
+    {
+        if (Status is not (BookingStatus.Held or BookingStatus.Paid or BookingStatus.Confirmed))
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot reschedule booking in status {Status}.");
+        SlotStartUtc = newSlotStartUtc;
+        SlotStartLocal = newSlotStartLocal;
+        DurationMinutes = newDurationMinutes;
         Touch();
     }
 
