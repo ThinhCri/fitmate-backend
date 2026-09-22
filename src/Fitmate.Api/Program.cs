@@ -31,6 +31,9 @@ using Fitmate.Application.Notifications.Handlers;
 using Fitmate.Application.Workout;
 using Fitmate.Application.Nutrition;
 using Fitmate.Application.Payments;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Threading.RateLimiting;
 
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
@@ -58,6 +61,12 @@ static int UnknownCommand(string cmd)
 
 var builder = WebApplication.CreateBuilder(args);
 
+// BE-822: Kestrel body size limit (10MB)
+builder.WebHost.ConfigureKestrel(serverOptions =>
+{
+    serverOptions.Limits.MaxRequestBodySize = 10 * 1024 * 1024;
+});
+
 // Configuration: env var > appsettings.
 builder.Configuration.AddEnvironmentVariables();
 
@@ -73,6 +82,17 @@ builder.Services.Configure<Fitmate.Application.Common.PlatformPolicyOptions>(
 // JwtTokenService + Bearer middleware cùng dùng instance này để đảm bảo một nguồn sự thật.
 var jwtOptions = Fitmate.Application.Common.JwtOptionsLoader.Load(builder.Configuration);
 builder.Services.AddSingleton(jwtOptions);
+
+// BE-822: Fail-closed configuration check
+// In production, when payment feature is enabled, real gateway credentials must be configured.
+if (builder.Environment.IsProduction() && string.Equals(builder.Configuration["FEATURE_PAYMENT_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))
+{
+    var vnpaySecret = builder.Configuration["VNPAY_HASH_SECRET"];
+    if (string.IsNullOrWhiteSpace(vnpaySecret) || vnpaySecret.StartsWith("__SET_"))
+    {
+        throw new InvalidOperationException("Fail-closed: In production, FEATURE_PAYMENT_ENABLED is true but VNPAY_HASH_SECRET is not configured.");
+    }
+}
 
 // DB.
 var dbHost = builder.Configuration["DB_HOST"] ?? "localhost";
@@ -332,6 +352,155 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// BE-822: Forwarded Headers for reverse proxy support.
+// Do NOT clear KnownNetworks/KnownProxies: loopback is trusted by default,
+// additional trusted proxies/networks can be configured via environment variables.
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    var knownProxiesEnv = builder.Configuration["FORWARDED_KNOWN_PROXIES"] ?? builder.Configuration["TRUSTED_PROXIES"];
+    if (!string.IsNullOrWhiteSpace(knownProxiesEnv))
+    {
+        foreach (var proxy in knownProxiesEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (System.Net.IPAddress.TryParse(proxy, out var ip))
+            {
+                options.KnownProxies.Add(ip);
+            }
+        }
+    }
+    var knownNetworksEnv = builder.Configuration["FORWARDED_KNOWN_NETWORKS"];
+    if (!string.IsNullOrWhiteSpace(knownNetworksEnv))
+    {
+        foreach (var network in knownNetworksEnv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = network.Split('/');
+            if (parts.Length == 2 && System.Net.IPAddress.TryParse(parts[0], out var ip) && int.TryParse(parts[1], out var prefix))
+            {
+                options.KnownNetworks.Add(new IPNetwork(ip, prefix));
+            }
+        }
+    }
+});
+
+// BE-822: CORS policy with production fail-closed enforcement
+var rawCorsOrigins = builder.Configuration["CORS_ALLOWED_ORIGINS"];
+string[] corsOrigins;
+
+if (builder.Environment.IsProduction())
+{
+    if (string.IsNullOrWhiteSpace(rawCorsOrigins))
+    {
+        throw new InvalidOperationException("Fail-closed: In production, CORS_ALLOWED_ORIGINS must be explicitly configured.");
+    }
+    corsOrigins = rawCorsOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (corsOrigins.Length == 0 || corsOrigins.Any(o => o == "*" || o.Contains("localhost", StringComparison.OrdinalIgnoreCase) || o.Contains("127.0.0.1")))
+    {
+        throw new InvalidOperationException("Fail-closed: In production, CORS_ALLOWED_ORIGINS cannot contain wildcards ('*') or localhost.");
+    }
+}
+else
+{
+    corsOrigins = (rawCorsOrigins ?? "http://localhost:5173,http://localhost:8080")
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+}
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FitmateCorsPolicy", policy =>
+    {
+        if (corsOrigins.Any(o => o == "*"))
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }
+        else
+        {
+            policy.WithOrigins(corsOrigins)
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .AllowCredentials();
+        }
+    });
+});
+
+// BE-822: Built-in Rate Limiting (.NET 8)
+var rateLimitOpts = builder.Configuration.GetSection("RateLimit").Get<RateLimitOptions>() ?? new RateLimitOptions();
+if (int.TryParse(builder.Configuration["RATE_LIMIT_PER_MINUTE_PER_IP"], out var perMin))
+    rateLimitOpts.PerMinutePerIp = perMin;
+if (int.TryParse(builder.Configuration["RATE_LIMIT_AUTH_PER_MINUTE_PER_IP"], out var authPerMin))
+    rateLimitOpts.AuthPerMinutePerIp = authPerMin;
+if (int.TryParse(builder.Configuration["RATE_LIMIT_AUTH_REFRESH_PER_MINUTE_PER_IP"], out var authRefreshPerMin))
+    rateLimitOpts.AuthRefreshPerMinutePerIp = authRefreshPerMin;
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = async (context, token) =>
+    {
+        context.HttpContext.Response.ContentType = "application/problem+json";
+        var traceId = FitmateProblemDetails.ResolveTraceId(context.HttpContext);
+        var problem = FitmateProblemDetails.Create(
+            status: StatusCodes.Status429TooManyRequests,
+            title: "Too Many Requests",
+            code: Fitmate.Api.Errors.ErrorCodes.GeneralRateLimited,
+            typeSlug: "rate-limited",
+            detail: "Rate limit exceeded. Please try again later.",
+            traceId: traceId);
+        await context.HttpContext.Response.WriteAsJsonAsync(
+            problem,
+            options: (System.Text.Json.JsonSerializerOptions?)null,
+            contentType: "application/problem+json",
+            cancellationToken: token);
+    };
+
+    // GlobalLimiter applies across all endpoints by default
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = rateLimitOpts.PerMinutePerIp,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+
+    options.AddPolicy("GeneralLimiter", httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = rateLimitOpts.PerMinutePerIp,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+
+    options.AddPolicy("AuthLimiter", httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = rateLimitOpts.AuthPerMinutePerIp,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+
+    options.AddPolicy("AuthRefreshLimiter", httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = rateLimitOpts.AuthRefreshPerMinutePerIp,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
+});
+
 // Controllers + ProblemDetails (RFC 7807). BE-080: format chuẩn hoá qua FitmateProblemDetails
 // (code + traceId theo api-contract.md §6).
 builder.Services.AddControllers()
@@ -366,6 +535,67 @@ builder.Services.AddHealthChecks()
     .AddCheck<Fitmate.Infrastructure.Persistence.DatabaseHealthCheck>("database", tags: new[] { "ready" });
 
 var app = builder.Build();
+
+// BE-080: Global exception handler (RFC 7807) đặt đầu pipeline để bắt lỗi toàn diện.
+app.UseExceptionHandler(handler =>
+{
+    handler.Run(async context =>
+    {
+        var ex = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+        var traceId = FitmateProblemDetails.ResolveTraceId(context);
+
+        // BE-080: mọi 4xx/5xx đi qua factory để format đồng nhất (code + traceId + type).
+        // BE-040+: DomainException mang code + status + errors map → dùng trực tiếp, không guess.
+        var (status, title, code, typeSlug, errors) = ex switch
+        {
+            Fitmate.Domain.Common.DomainException de => (
+                de.HttpStatus,
+                TitleForStatus(de.HttpStatus),
+                de.Code,
+                TypeSlugForCode(de.Code),
+                de.Errors),
+            ArgumentException => (400, "Bad request", ErrorCodes.GeneralBadRequest, "bad-request", (IReadOnlyDictionary<string, string[]>?)null),
+            KeyNotFoundException => (404, "Resource not found", ErrorCodes.GeneralNotFound, "not-found", null),
+            UnauthorizedAccessException => (401, "Unauthorized", ErrorCodes.AuthUnauthorized, "unauthorized", null),
+            _ => (500, "Internal server error", ErrorCodes.GeneralInternal, "internal", null)
+        };
+
+        context.Response.StatusCode = status;
+        context.Response.ContentType = "application/problem+json";
+
+        var problem = FitmateProblemDetails.Create(
+            status: status,
+            title: title,
+            code: code,
+            typeSlug: typeSlug,
+            detail: status == 500
+                ? "Unexpected error. See server logs with traceId."
+                : ex?.Message,
+            traceId: traceId,
+            errors: errors?.ToDictionary(kv => kv.Key, kv => kv.Value));
+
+        await context.Response.WriteAsJsonAsync(problem, options: (System.Text.Json.JsonSerializerOptions?)null, contentType: "application/problem+json");
+    });
+});
+
+// BE-822: Forwarded Headers middleware (must run before rate limiting and auth)
+app.UseForwardedHeaders();
+
+// BE-822: Security Headers middleware
+app.Use(async (context, next) =>
+{
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    context.Response.Headers["X-XSS-Protection"] = "0";
+    await next();
+});
+
+// BE-822: CORS middleware
+app.UseCors("FitmateCorsPolicy");
+
+// BE-822: Rate Limiter middleware
+app.UseRateLimiter();
 
 // BE-030: JWT auth pipeline.
 app.UseAuthentication();
@@ -407,47 +637,6 @@ app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
     RequestPath = "/" + storageRequestPath,
     ServeUnknownFileTypes = false,
     ContentTypeProvider = contentTypeProvider
-});
-
-app.UseExceptionHandler(handler =>
-{
-    handler.Run(async context =>
-    {
-        var ex = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
-        var traceId = FitmateProblemDetails.ResolveTraceId(context);
-
-        // BE-080: mọi 4xx/5xx đi qua factory để format đồng nhất (code + traceId + type).
-        // BE-040+: DomainException mang code + status + errors map → dùng trực tiếp, không guess.
-        var (status, title, code, typeSlug, errors) = ex switch
-        {
-            Fitmate.Domain.Common.DomainException de => (
-                de.HttpStatus,
-                TitleForStatus(de.HttpStatus),
-                de.Code,
-                TypeSlugForCode(de.Code),
-                de.Errors),
-            ArgumentException => (400, "Bad request", ErrorCodes.GeneralBadRequest, "bad-request", (IReadOnlyDictionary<string, string[]>?)null),
-            KeyNotFoundException => (404, "Resource not found", ErrorCodes.GeneralNotFound, "not-found", null),
-            UnauthorizedAccessException => (401, "Unauthorized", ErrorCodes.AuthUnauthorized, "unauthorized", null),
-            _ => (500, "Internal server error", ErrorCodes.GeneralInternal, "internal", null)
-        };
-
-        context.Response.StatusCode = status;
-        context.Response.ContentType = "application/problem+json";
-
-        var problem = FitmateProblemDetails.Create(
-            status: status,
-            title: title,
-            code: code,
-            typeSlug: typeSlug,
-            detail: status == 500
-                ? "Unexpected error. See server logs with traceId."
-                : ex?.Message,
-            traceId: traceId,
-            errors: errors?.ToDictionary(kv => kv.Key, kv => kv.Value));
-
-        await context.Response.WriteAsJsonAsync(problem, options: (System.Text.Json.JsonSerializerOptions?)null, contentType: "application/problem+json");
-    });
 });
 
 static string TitleForStatus(int status) => status switch

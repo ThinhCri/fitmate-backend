@@ -12,6 +12,7 @@ public static class ErrorCodes
     public const string GeneralInternal = "FITMATE.GENERAL.INTERNAL";
     public const string GeneralNotFound = "FITMATE.GENERAL.NOT_FOUND";
     public const string GeneralBadRequest = "FITMATE.GENERAL.BAD_REQUEST";
+    public const string GeneralRateLimited = "FITMATE.GENERAL.RATE_LIMITED";
 
     // VALIDATION
     public const string ValidationFailed = "FITMATE.VALIDATION.FAILED";

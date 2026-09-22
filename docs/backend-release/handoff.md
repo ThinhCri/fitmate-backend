@@ -221,7 +221,29 @@
   - Container API khởi động và phản hồi `/health/ready` -> `HTTP/1.1 200 OK` (`Healthy`), `/health/live` -> `HTTP/1.1 200 OK` (`Healthy`).
 - File evidence: `docs/backend-release/production-plans/evidence/BE-821.md`.
 
-**Next:** Tiếp tục triển khai **BE-822 (Security và quản lý secrets)** (P0).
+**BE-822: Security và quản lý secrets — VERIFIED**
+- Thu hẹp triệt để `.gitleaks.toml`: loại bỏ toàn bộ allowlist diện rộng (`docs/`, `README.md`, `AGENTS.md`, `.env.example`), mở rộng regex phát hiện secret cả có nháy lẫn không có nháy, mở rộng mảng `keywords` bao gồm các biến thể dấu gạch ngang/dưới.
+- Xử lý Client IP an toàn qua Reverse Proxy: Cấu hình `ForwardedHeadersOptions` với `XForwardedFor | XForwardedProto`. Giữ nguyên loopback trong `KnownNetworks`/`KnownProxies` mặc định, cho phép bổ sung IP/subnet proxy tin cậy qua env `FORWARDED_KNOWN_PROXIES` và `FORWARDED_KNOWN_NETWORKS`. Không tin `X-Forwarded-For` tùy tiện để chống IP spoofing vượt rate limiting.
+- CORS Fail-closed trong Production: Khi chạy ở môi trường Production (`IsProduction()`), bắt buộc `CORS_ALLOWED_ORIGINS` phải được cấu hình rõ ràng, cấm tuyệt đối wildcard `*` và `localhost`/`127.0.0.1`. Throw `InvalidOperationException` ngay khi khởi động nếu vi phạm.
+- Triển khai Rate Limiting phân tầng (.NET 8):
+  - `GlobalLimiter`: áp dụng tự động cho toàn bộ API (mặc định 60 req/min/IP, cấu hình được qua `RateLimit:PerMinutePerIp`).
+  - `AuthLimiter`: gắn qua `[EnableRateLimiting("AuthLimiter")]` vào `/register`, `/login`, `/password/forgot`, `/password/reset` (mặc định 5 req/min/IP).
+  - `AuthRefreshLimiter`: gắn qua `[EnableRateLimiting("AuthRefreshLimiter")]` vào `/refresh` (mặc định 30 req/min/IP).
+  - Phản hồi 429 ProblemDetails chuẩn RFC 7807 với code `FITMATE.GENERAL.RATE_LIMITED`.
+- Bảo vệ tài nguyên & Tiêu đề HTTP: Kestrel `MaxRequestBodySize = 10MB` và Security Headers (`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `X-XSS-Protection: 0`).
+- Fail-Closed startup check: kiểm tra cấu hình payment (`VNPAY_HASH_SECRET`) trong Production khi `FEATURE_PAYMENT_ENABLED == true`.
+- Tích hợp Trivy Container Scanner trong `.github/workflows/ci.yml` quét lỗ hổng ảnh `fitmate-ci-api`.
+- Bổ sung bộ unit tests trong `SecurityConfigurationTests.cs`: kiểm tra allowlist gitleaks, regex secret unquoted/quoted, fail-closed payment, production CORS validation, rate limit options defaults.
+- Kết quả kiểm chứng thực tế từ User:
+  - Build sạch: 0 warning, 0 error.
+  - Unit tests: 553/553 PASS.
+  - Integration tests trên PostgreSQL thật: 12/12 PASS.
+  - Container health (`/health/ready`, `/health/live`, `/`): 200 OK kèm đủ 4 Security Headers.
+  - CORS preflight (`OPTIONS /api/v1/auth/login`): 204 No Content, credentials allowed, allowed origin `http://localhost:5173`.
+  - Rate limiting 429 verified: ProblemDetails RFC 7807 với mã `FITMATE.GENERAL.RATE_LIMITED` khi vượt quá 5 req/min.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-822.md`.
+
+**Next:** Đã hoàn thành BE-822 (VERIFIED); mở khóa và tiến tới **BE-823 (Performance và capacity đo thật)**.
 
 ### Lịch sử các phiên trước
 

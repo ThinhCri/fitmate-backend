@@ -199,6 +199,16 @@ jobs:
             --file Dockerfile.migrate \
             .
 
+      - name: Scan API image for vulnerabilities (Trivy)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: fitmate-ci-api:ci-${{ github.sha }}
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
       # Promote new cache (buildx writes to a sibling dir; swap atomically).
       - name: Move cache
         run: |

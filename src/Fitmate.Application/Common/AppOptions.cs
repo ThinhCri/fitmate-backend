@@ -52,4 +52,5 @@ public class RateLimitOptions
 {
     public int PerMinutePerIp { get; set; } = 60;
     public int AuthPerMinutePerIp { get; set; } = 5;
+    public int AuthRefreshPerMinutePerIp { get; set; } = 30;
 }

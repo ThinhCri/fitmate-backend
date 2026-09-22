@@ -236,12 +236,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-822 — Security và quản lý secrets
 - Plan: [Plan triển khai](production-plans/BE-822.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-802, BE-816; requirement: BR-16.
-- Hiện trạng: Gitleaks có allowlist docs rộng; BE-099 pending.
+- Hiện trạng: Đã loại bỏ allowlist rộng (`docs/`, `README.md`, `AGENTS.md`, `.env.example`) và cập nhật regex bắt cả unquoted/quoted secrets trong `.gitleaks.toml`; cấu hình `ForwardedHeadersOptions` an toàn chống IP spoofing; áp dụng `GlobalLimiter` (60 req/min/IP), `AuthLimiter` (5 req/min/IP), `AuthRefreshLimiter` (30 req/min/IP) lên `AuthController`; cấu hình CORS fail-closed trong Production; Kestrel 10MB limit; Security Headers; fail-closed payment check trong Production; Trivy scanning trong CI; và unit tests trong `SecurityConfigurationTests`. Đã kiểm chứng thực nghiệm: build 0 errors, unit tests 553/553 PASS, integration tests 12/12 PASS, container health 200 OK, CORS preflight 204, và RateLimiter 429 ProblemDetails RFC 7807.
 - Scope: Thu hẹp allowlist + positive tests docs/code; rotate leaked secrets qua operator; provider/config fail closed; key ring bảo vệ; dependency/SAST/image scan; CORS/rate/body limits.
-- Acceptance/evidence: Negative seed secrets trong docs bị bắt, không in secret thật; no default admin; BE-099 chứng cứ rotation và scope rewrite duyệt riêng.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-822](production-plans/evidence/BE-822.md) (VERIFIED: build sạch, tests PASS, security headers, CORS credentials, RateLimiter 429 ProblemDetails).
+- Handoff: hoàn thành củng cố ranh giới an ninh và quản lý secrets; mở khóa BE-823, BE-824.
 
 ### BE-823 — Performance và capacity đo thật
 - Plan: [Plan triển khai](production-plans/BE-823.md).

@@ -14,9 +14,9 @@ extend = { useDefault = true }
 [[rules]]
 id = "fitmate-jwt-signing-key"
 description = "JWT signing key (HS256/HS512). Real keys >= 32 bytes; placeholders match __SET_*__."
-# Lookbehind: var assignment with quoted or unquoted value containing >=32 base64-ish chars.
-regex = '''(?i)(?:jwt[_-]?signing[_-]?key|jwt[_-]?secret|jwt__signingkey)\s*[:=]\s*["']([A-Za-z0-9+/=_\-]{32,})["']'''
-keywords = ["jwt_signing_key", "jwt__signingkey", "jwt-signing-key"]
+# Var assignment with quoted or unquoted value containing >=32 base64-ish chars.
+regex = '''(?i)(?:jwt[_-]?signing[_-]?key|jwt[_-]?secret|jwt__signingkey)\s*[:=]\s*["']?([A-Za-z0-9+/=_\-]{32,})["']?'''
+keywords = ["jwt_signing_key", "jwt__signingkey", "jwt-signing-key", "jwt_secret", "jwt-secret", "jwtsecret"]
 [rules.allowlist]
 regexes = [
   '''__SET_[A-Z0-9_]+__''',
@@ -25,10 +25,9 @@ regexes = [
 
 [[rules]]
 id = "fitmate-db-password"
-description = "Postgres / DB password env var (quoted value, real secret)."
-# Require a quoted or non-empty non-whitespace value after `=` / `:` (not array index).
-regex = '''(?i)(?:^|\s)(?:db[_-]?password|postgres[_-]?password|database[_-]?password)\s*[:=]\s*["']([^\s"'#]{8,})["']'''
-keywords = ["db_password", "postgres_password", "database_password"]
+description = "Postgres / DB password env var (quoted or unquoted value, real secret)."
+regex = '''(?i)(?:^|\s)(?:db[_-]?password|postgres[_-]?password|database[_-]?password)\s*[:=]\s*["']?([^\s"'#]{8,})["']?'''
+keywords = ["db_password", "postgres_password", "database_password", "db-password", "postgres-password", "database-password"]
 [rules.allowlist]
 regexes = [
   '''__SET_[A-Z0-9_]+__''',
@@ -38,8 +37,8 @@ regexes = [
 [[rules]]
 id = "fitmate-vnpay-secret"
 description = "VNPay hash secret + TMN code."
-regex = '''(?i)(?:vnpay[_-]?hash[_-]?secret|vnpay[_-]?tmn[_-]?code|vnpay[_-]?secret)\s*[:=]\s*["']([A-Za-z0-9]{16,})["']'''
-keywords = ["vnpay_hash_secret", "vnpay_tmn_code"]
+regex = '''(?i)(?:vnpay[_-]?hash[_-]?secret|vnpay[_-]?tmn[_-]?code|vnpay[_-]?secret)\s*[:=]\s*["']?([A-Za-z0-9]{16,})["']?'''
+keywords = ["vnpay_hash_secret", "vnpay_tmn_code", "vnpay-hash-secret", "vnpay-tmn-code", "vnpay_secret", "vnpay-secret"]
 [rules.allowlist]
 regexes = [
   '''__SET_VNPAY[A-Z0-9_]+__''',
@@ -48,8 +47,8 @@ regexes = [
 [[rules]]
 id = "fitmate-smtp-password"
 description = "SMTP password / app password."
-regex = '''(?i)(?:^|\s)(?:smtp[_-]?password|smtp[_-]?pass|mail[_-]?password)\s*[:=]\s*["']([^\s"'#]{6,})["']'''
-keywords = ["smtp_password", "smtp_pass", "mail_password"]
+regex = '''(?i)(?:^|\s)(?:smtp[_-]?password|smtp[_-]?pass|mail[_-]?password)\s*[:=]\s*["']?([^\s"'#]{6,})["']?'''
+keywords = ["smtp_password", "smtp_pass", "mail_password", "smtp-password", "smtp-pass", "mail-password"]
 [rules.allowlist]
 regexes = [
   '''__SET_[A-Z0-9_]+__''',
@@ -58,26 +57,21 @@ regexes = [
 [[rules]]
 id = "fitmate-storage-credentials"
 description = "Storage adapter credentials / signed URL secret."
-regex = '''(?i)(?:storage[_-]?(?:access[_-]?key|secret[_-]?key|client[_-]?secret)|signed[_-]?url[_-]?secret)\s*[:=]\s*["']([A-Za-z0-9+/=_\-]{16,})["']'''
-keywords = ["storage_access_key", "storage_secret_key", "signed_url_secret"]
+regex = '''(?i)(?:storage[_-]?(?:access[_-]?key|secret[_-]?key|client[_-]?secret)|signed[_-]?url[_-]?secret)\s*[:=]\s*["']?([A-Za-z0-9+/=_\-]{16,})["']?'''
+keywords = ["storage_access_key", "storage_secret_key", "signed_url_secret", "storage-access-key", "storage-secret-key", "signed-url-secret"]
 
 [[rules]]
 id = "fitmate-bootstrap-admin-secret"
 description = "Bootstrap admin password or token (high entropy only)."
-regex = '''(?i)(?:bootstrap[_-]?admin[_-]?(?:password|token|secret)|admin[_-]?bootstrap[_-]?(?:password|token))\s*[:=]\s*["']([A-Za-z0-9@#$%^&+=_\-]{12,})["']'''
-keywords = ["bootstrap_admin_password", "admin_bootstrap_password"]
+regex = '''(?i)(?:bootstrap[_-]?admin[_-]?(?:password|token|secret)|admin[_-]?bootstrap[_-]?(?:password|token))\s*[:=]\s*["']?([A-Za-z0-9@#$%^&+=_\-]{12,})["']?'''
+keywords = ["bootstrap_admin_password", "admin_bootstrap_password", "bootstrap-admin-password", "admin-bootstrap-password"]
 
 # ---------------------------------------------------------------------------
-# Allowlist — paths that contain placeholders / demos / mocks / docs / tests.
+# Allowlist — only build artifacts and meta files. All documentation and env files are scanned.
 # ---------------------------------------------------------------------------
 [allowlist]
-description = "Allowlist docs, env example, generated code, and tests."
+description = "Allowlist build artifacts, package managers and meta configs."
 paths = [
-  '''\.env\.example$''',
-  '''docs/''',
-  '''README\.md$''',
-  '''AGENTS\.md$''',
-  '''\.mdc$''',
   '''\.gitleaks\.toml$''',
   '''node_modules/''',
   '''bin/''',
@@ -85,7 +79,6 @@ paths = [
   '''out/''',
   '''\.git/''',
   '''tests/load/.*\.json$''',
-  '''tests/load/README\.md$''',
   '''\.gitignore$''',
 ]
 

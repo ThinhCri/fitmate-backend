@@ -8,6 +8,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Fitmate.Api.Auth;
 
@@ -49,6 +50,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("register")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
         var validation = await _registerValidator.ValidateAsync(request, ct);
@@ -96,6 +98,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("login")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
         var validation = await _loginValidator.ValidateAsync(request, ct);
@@ -134,6 +137,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("refresh")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthRefreshLimiter")]
     public async Task<IActionResult> Refresh([FromBody] RefreshRequest? request, CancellationToken ct)
     {
         var rawToken = request?.RefreshToken;
@@ -205,6 +209,7 @@ public class AuthController : ControllerBase
     [HttpPost("password/forgot")]
     [HttpPost("forgot-password")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> ForgotPassword(
         [FromBody] ForgotPasswordRequest request,
         [FromServices] IValidator<ForgotPasswordRequest> validator,
@@ -229,6 +234,7 @@ public class AuthController : ControllerBase
     [HttpPost("password/reset")]
     [HttpPost("reset-password")]
     [AllowAnonymous]
+    [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> ResetPassword(
         [FromBody] ResetPasswordRequest request,
         [FromServices] IValidator<ResetPasswordRequest> validator,
