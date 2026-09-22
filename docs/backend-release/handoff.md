@@ -195,7 +195,19 @@
 - Unit tests: `AiAdapterTests.cs` (14 test cases) kiểm thử toàn diện các tình huống disabled 503, cancellation token, input validation, capabilities mapping, golden fixtures; và cập nhật `NutritionServiceTests.cs`.
 - Kết quả test thực tế từ User: Build 0 error, Tests 521/521 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-817.md`.
 
-**Next:** Tiếp tục triển khai **BE-820 (Integration và contract verification)**.
+**BE-820: Integration và contract verification — VERIFIED**
+- Thiết lập dự án mới `Fitmate.IntegrationTests` (`tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj`) liên kết trong `Fitmate.slnx`.
+- Bổ sung `public partial class Program { }` vào cuối `Program.cs` hỗ trợ `WebApplicationFactory<Program>`.
+- Chuẩn hóa middleware xử lý ngoại lệ toàn cục trong `Program.cs` gọi `WriteAsJsonAsync(problem, options: (JsonSerializerOptions?)null, contentType: "application/problem+json")` tuân thủ nghiêm ngặt RFC 7807 ProblemDetails.
+- Xây dựng `FitmateTestAppFactory` kết nối PostgreSQL thật (`fitmate_integration_test` trên Docker host), tự động nhận diện mật khẩu host (`dev` / `localverify300pw`), khởi tạo schema sớm qua `EnsureCreated()`, và cung cấp client xác thực JWT cho `Admin`, `PT`, `Member`.
+- Viết 4 bộ test suites (12 test cases) kiểm thử tích hợp & hợp đồng API:
+  - `CapabilitiesAndHealthTests`: `/health/live`, `/health/ready` (PostgreSQL connection check), metadata hệ thống và công bố năng lực an toàn.
+  - `AuthAndSecurityTests`: 401 unauthenticated, 403 RBAC authorization, 401 invalid login với ProblemDetails.
+  - `NutritionAndAiContractTests`: 503 AI unavailable ProblemDetails, manual meal logging roundtrip và PostgreSQL persistence.
+  - `SupportAndPreferencesTests`: User preferences roundtrip persistence, support ticket IDOR protection (404 cho người dùng khác).
+- Kết quả test thực tế từ User: Build 0 error, Tests 12/12 PASS trên PostgreSQL thật. File evidence: `docs/backend-release/production-plans/evidence/BE-820.md`.
+
+**Next:** Tiếp tục triển khai **BE-821 (Docker và CI/CD bằng chứng thật)** (P0).
 
 ### Lịch sử các phiên trước
 

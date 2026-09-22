@@ -446,7 +446,7 @@ app.UseExceptionHandler(handler =>
             traceId: traceId,
             errors: errors?.ToDictionary(kv => kv.Key, kv => kv.Value));
 
-        await context.Response.WriteAsJsonAsync(problem);
+        await context.Response.WriteAsJsonAsync(problem, options: (System.Text.Json.JsonSerializerOptions?)null, contentType: "application/problem+json");
     });
 });
 
@@ -493,3 +493,5 @@ app.MapGet("/", () => Results.Ok(new
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }

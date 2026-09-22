@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj" />
+    <Project Path="tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj" />
   </Folder>
 </Solution>

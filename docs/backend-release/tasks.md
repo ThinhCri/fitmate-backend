@@ -218,12 +218,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-820 — Integration và contract verification
 - Plan: [Plan triển khai](production-plans/BE-820.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-801; requirement: BR-16.
-- Hiện trạng: Hiện chưa có project IntegrationTests/ContractTests chuyên biệt.
+- Hiện trạng: Hoàn tất dự án `Fitmate.IntegrationTests` với `WebApplicationFactory<Program>`, kết nối PostgreSQL thật (`fitmate_integration_test`), client xác thực đa vai trò (`Admin`, `PT`, `Member`), và 4 bộ test suites: `CapabilitiesAndHealthTests`, `AuthAndSecurityTests`, `NutritionAndAiContractTests`, `SupportAndPreferencesTests`.
 - Scope: WebApplicationFactory + PostgreSQL test container isolated; auth roles; OpenAPI runtime response/request checks; migration upgrade/down recovery; negative/security/concurrency suites.
-- Acceptance/evidence: CI chạy DB thật, không EF InMemory thay constraint; mỗi endpoint relevant 2xx/4xx; artifacts và failures không bị skip để xanh.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-820](production-plans/evidence/BE-820.md) (12/12 integration tests PASS trên PostgreSQL).
+- Handoff: hoàn thành test harness tích hợp và kiểm chứng hợp đồng API; mở khóa BE-821.
 
 ### BE-821 — Docker và CI/CD bằng chứng thật
 - Plan: [Plan triển khai](production-plans/BE-821.md).
