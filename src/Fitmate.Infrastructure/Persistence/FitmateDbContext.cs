@@ -10,6 +10,7 @@ using Fitmate.Domain.Workout;
 using Fitmate.Domain.Nutrition;
 using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Review;
+using Fitmate.Domain.Support;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
@@ -94,6 +95,11 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
 
     // Review
     public DbSet<Review> Reviews => Set<Review>();
+
+    // Support & Preferences (BE-819)
+    public DbSet<SupportTicket> SupportTickets => Set<SupportTicket>();
+    public DbSet<SupportTicketMessage> SupportTicketMessages => Set<SupportTicketMessage>();
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {

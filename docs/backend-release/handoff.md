@@ -1,5 +1,12 @@
 # Handoff — Backend Release
 
+## AI artifact preparation — 2026-09-23
+- Theo user: nhóm AI phụ trách AI, dự kiến bàn giao `.pt` vài hôm tới; chưa biết format/runtime/I/O.
+- Cập nhật ai-contract.md, ai-handoff-checklist.md, BE-817 revision 2, BE-430, OPS-06/task tracking và README production của Android/Admin.
+- Chuẩn bị boundary/config disabled/typed unavailable/test fixtures trước; chỉ chọn runtime/transport/hardware sau khi nhận đủ gói inference và kiểm chứng. Không tự train, không fake production output.
+- Đây là cập nhật tài liệu, chưa triển khai boundary/adapter hay xác minh model. Không đổi source code, chạy build/test/migration, commit hoặc deploy trong phiên này.
+- Tiếp theo: thực hiện phần PREPARE NOW của BE-817 theo dependency; khi nhận file dùng checklist bàn giao, ghi các mục còn thiếu thay vì đoán kiến trúc.
+
 ## Task execution plans — hoàn tất sau khi tiếp tục phiên
 - Đã kiểm tra file đã lưu trước khi tiếp tục; bổ sung WEB-807 còn thiếu, không tạo lại 30 BE plans.
 - Có 30 plan BE-800..829, 3 plan cụ thể BE-099/400/410 và 4 alias lifecycle BE-430/500/600/700. Mục lục: [production-plans/README.md](production-plans/README.md).
@@ -144,15 +151,6 @@
 - Bổ sung và cập nhật unit tests trong `DeviceServiceTests.cs`, `NotificationPushHandlerTests.cs`, `PushDeliveryDispatcherTests.cs`.
 - Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-815.md`.
 
-**BE-815: Thông báo và push thật — VERIFIED**
-- Triển khai bảo vệ chống rò rỉ push đa tài khoản (Cross-account push leak protection): khi tài khoản mới đăng ký trên cùng thiết bị/token, tự động thu hồi (`Revoke()`) thiết bị của tài khoản cũ theo BR-12.
-- Triển khai cơ chế kích hoạt lại thiết bị (`Reactivate`) khi cùng tài khoản đăng ký lại thiết bị đã bị vô hiệu hóa trước đó.
-- Cập nhật `IDeviceStore` và `EfDeviceStore` với `FindActiveDevicesByTokenHashAsync`.
-- Kiểm chứng cách ly khi tắt push provider (tạo inbox notification, ghi audit `push_disabled`, không tạo delivery/outbox dồn tích).
-- Kiểm chứng sender-side checks, block check 2 chiều cho thông báo bạn bè, phân loại kết quả gửi từ provider và redact log nhạy cảm.
-- Bổ sung và cập nhật unit tests trong `DeviceServiceTests.cs`, `NotificationPushHandlerTests.cs`, `PushDeliveryDispatcherTests.cs`.
-- Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-815.md`.
-
 **BE-816: Storage access và durability — VERIFIED**
 - Bổ sung kiểm tra chữ ký Magic bytes cho các file ảnh (JPEG, PNG, WEBP) trong `UploadsController` chống tấn công giả danh định dạng file.
 - Định danh file lưu trữ không đoán được (`unguessable key`), làm sạch tên file và chống Path Traversal trong `LocalStorageService`.
@@ -174,7 +172,18 @@
 - Bổ sung unit tests trong `BookingServiceTests.cs`.
 - Kết quả test thực tế từ User: Build 0 error, Tests 490/490 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-818.md`.
 
-**Next:** Tiếp tục thực hiện **BE-819** (Support, settings và capabilities) hoặc **BE-817** (AI artifact capability).
+**BE-819: Support, settings và capabilities — VERIFIED**
+- Triển khai Support Tickets:
+  - User: `POST /api/v1/support/tickets`, `GET /api/v1/support/tickets`, `GET /api/v1/support/tickets/{id}` (IDOR protection trả về 404), `POST /api/v1/support/tickets/{id}/reply`, `POST /api/v1/support/tickets/{id}/close`.
+  - Admin: `GET /api/v1/admin/support/tickets`, `GET /api/v1/admin/support/tickets/{id}`, `POST /api/v1/admin/support/tickets/{id}/reply`, `POST /api/v1/admin/support/tickets/{id}/status`.
+- Triển khai User Preferences:
+  - `GET /api/v1/users/me/preferences`, `PUT /api/v1/users/me/preferences` (lưu giữ ngôn ngữ, theme, múi giờ, notification consents qua các phiên đăng nhập).
+- Triển khai System Capabilities:
+  - `GET /api/v1/system/capabilities` (công bố trung thực `ai_enabled: false` theo cập nhật BE-817 / `ai-contract.md`, chính sách nền tảng, contact info an toàn, không lộ secrets).
+- Bổ sung unit tests: `SupportServiceTests.cs` (11 tests), `UserPreferenceServiceTests.cs` (2 tests).
+- Kết quả test thực tế từ User: Build 0 error, Tests 503/503 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-819.md`.
+
+**Next:** Tiếp tục thực hiện **BE-817 (PREPARE NOW)** hoặc **BE-820 (Integration verification)**.
 
 ### Lịch sử các phiên trước
 

@@ -246,6 +246,11 @@ builder.Services.AddScoped<INutritionService, NutritionService>();
 // BE-813: dashboard daily progress summary.
 builder.Services.AddScoped<Fitmate.Application.Dashboard.IDashboardStore, Fitmate.Infrastructure.Dashboard.EfDashboardStore>();
 builder.Services.AddScoped<Fitmate.Application.Dashboard.IDashboardService, Fitmate.Application.Dashboard.DashboardService>();
+// BE-819: Support, Preferences & Capabilities.
+builder.Services.AddScoped<Fitmate.Application.Support.ISupportTicketStore, Fitmate.Infrastructure.Support.EfSupportTicketStore>();
+builder.Services.AddScoped<Fitmate.Application.Support.ISupportService, Fitmate.Application.Support.SupportService>();
+builder.Services.AddScoped<Fitmate.Application.Preferences.IUserPreferenceStore, Fitmate.Infrastructure.Preferences.EfUserPreferenceStore>();
+builder.Services.AddScoped<Fitmate.Application.Preferences.IUserPreferenceService, Fitmate.Application.Preferences.UserPreferenceService>();
 // BE-140 & BE-808: payment provider gating (StubPaymentProvider in dev/test explicit, MissingPaymentProvider in production).
 var paymentOptions = builder.Configuration.GetSection(PaymentOptions.SectionName).Get<PaymentOptions>() ?? new PaymentOptions();
 builder.Services.Configure<PaymentOptions>(builder.Configuration.GetSection(PaymentOptions.SectionName));

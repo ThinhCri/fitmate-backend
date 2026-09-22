@@ -209,12 +209,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-819 — Support, settings và capabilities
 - Plan: [Plan triển khai](production-plans/BE-819.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-801, BE-802; requirement: BR-15.
-- Hiện trạng: Support/settings chủ yếu prototype.
+- Hiện trạng: Đã triển khai trọn vẹn Support Tickets (lifecycle, replies, IDOR 404), User Preferences (lưu giữ qua relogin) và System Capabilities (công bố trung thực AI disabled theo BE-817/ai-contract, safe public policies và contact info). User đã chạy build (0 errors) và unit tests (503/503 PASS).
 - Scope: Support ticket lifecycle/owner attachments/admin reply, public contact/privacy/deletion URLs; capabilities versioned; user preferences; API không lộ infrastructure secrets.
-- Acceptance/evidence: Ticket người khác 404; no fake sent; disabled capability UI consistent; health settings/notifications không mất qua relogin.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-819](production-plans/evidence/BE-819.md) (Build 0 errors, Tests 503/503 PASS).
+- Handoff: hoàn thành các tính năng support/settings/capabilities; mở khóa BE-817 (PREPARE NOW) và BE-820.
 
 ### BE-820 — Integration và contract verification
 - Plan: [Plan triển khai](production-plans/BE-820.md).
@@ -321,7 +321,7 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 - Acceptance: verify/reset/support mail delivered staging, bounce/retry, no PII logs, link allowlist.
 ### BE-430 — Artifact AI
 - Plan: [Plan triển khai](production-plans/BE-430.md).
-- Status: BLOCKED (AI handoff); tracking implementation BE-817, không duplicate task scope.
+- Status: BLOCKED phần inference thật (chờ `.pt` + gói handoff); preparation làm trước theo BE-817 revision 2, không duplicate task scope.
 ### BE-500 — Staging deploy
 - Plan: [Plan triển khai](production-plans/BE-500.md).
 - Status: BLOCKED (OPS-05); implementation/gate BE-821/826.
