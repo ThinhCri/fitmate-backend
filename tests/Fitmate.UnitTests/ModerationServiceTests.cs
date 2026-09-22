@@ -1,12 +1,14 @@
 using Fitmate.Application.Auth;
 using Fitmate.Application.Identity;
 using Fitmate.Application.Moderation;
+using Fitmate.Application.Notifications;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Social;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
 using Fitmate.Domain.Moderation;
+using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Social;
 using Fitmate.Domain.Trainers;
 using FluentAssertions;
@@ -155,6 +157,17 @@ public class ModerationServiceTests
         public Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct) => Task.FromResult<string?>("Member");
     }
 
+    /// <summary>BE-200: capture NotificationPayload dispatched by ModerationService.Warn.</summary>
+    private sealed class CapturingPushDispatcher : IPushDeliveryDispatcher
+    {
+        public List<NotificationPayload> Dispatched { get; } = new();
+        public Task<Guid> DispatchAsync(NotificationPayload payload, CancellationToken ct = default)
+        {
+            Dispatched.Add(payload);
+            return Task.FromResult(Guid.NewGuid());
+        }
+    }
+
     private static ModerationService NewService(
         InMemoryModerationStore modStore,
         InMemorySocialStore socialStore,
@@ -162,7 +175,8 @@ public class ModerationServiceTests
         InMemoryAdminUserStore adminStore,
         InMemoryOutboxDispatcher outbox,
         InMemoryAuditLogger audit,
-        string? requiredRole = "Admin")
+        string? requiredRole = "Admin",
+        CapturingPushDispatcher? push = null)
     {
         return new ModerationService(
             modStore,
@@ -173,7 +187,8 @@ public class ModerationServiceTests
             new InMemoryUserRoleLookup(),
             outbox,
             audit,
-            new RoleRequireAuthz { RequiredRole = requiredRole });
+            new RoleRequireAuthz { RequiredRole = requiredRole },
+            push ?? new CapturingPushDispatcher());
     }
 
     private static (Guid postId, Guid ptUserId, Guid reporterId, Guid adminId, Guid postAuthorId) SetupPostScenario(InMemorySocialStore social, InMemoryModerationStore modStore)

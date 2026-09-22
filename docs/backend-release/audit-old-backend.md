@@ -1,5 +1,7 @@
 # Backend cũ — Kiểm kê thực tế
 
+> Baseline update 2026-09-22: tài liệu này giữ chi tiết/lịch sử; khi có mâu thuẫn, dùng [README](README.md), [domain rules](domain-rules.md), [tasks](tasks.md) và DEC-051. Không dùng giá/quota, trạng thái DONE, mock adapter hoặc route giả định trong tài liệu cũ làm bằng chứng production. Nguồn policy cập nhật: [release sources](policy-and-runtime-sources.md).
+
 > **Nguồn**: `D:\Ky8\exe201\FitmateAI_BE\src\main\java\com\fitmate\backend\` (Spring Boot + JPA + Lombok). Đọc trực tiếp từ file. Cập nhật 2026-09-18.
 
 ## 1. Phạm vi thực tế

@@ -177,6 +177,19 @@ Khi nhóm AI bàn giao, cung cấp đầy đủ mục trong `ai-handoff-checklis
   - Đăng ký Privacy policy + Terms URL (UA-012).
 - **Note quan trọng** (DEC-031): Không viết "Google Play compliant" chỉ từ việc đọc policy. Việc trên Console là khác biệt với rà soát tài liệu.
 
+## UA-FCM-001 — Chốt push notification provider (Expo Push Token vs FCM trực tiếp)
+
+- **Ngày tạo**: 2026-09-20 (BE-200 khảo sát)
+- **Lý do**: BE-200 Notifications cần wire `POST /users/me/devices` với provider cụ thể để validate format token + adapter FCM/Expo. FE chưa có implementation push trong repo hiện tại (BE-200 khảo sát 2026-09-20: thấy `expo-router`, `expo-secure-store`, `expo-image-picker`, **không** thấy `expo-notifications` hay `@react-native-firebase/messaging`).
+- **Bắt buộc**: ✅ (trước khi triển khai BE-200c Push adapter)
+- **Hướng dẫn**:
+  - Repo `FitmateAI_FE` đang dùng **Expo SDK** (managed workflow). Recommended: **Expo Push Token** (`ExponentPushToken[...]`) — đơn giản, miễn phí tier 1, không cần GoogleService-Info.plist.
+  - Nếu chọn **FCM trực tiếp** → cần service account JSON qua UA-009-style secret manager + `google-services.json` cho Android.
+  - Backend BE-200 chỉ validate format `device_token` rất lỏng (`Length 32..4096`, charset `[A-Za-z0-9_\-:.=+/]`) trong MVP; validation cứng theo provider là task BE-200c.
+- **Verify**: User confirm Expo Push Token hay FCM, cập nhật DEC-044 với quyết định.
+- **Task bị chặn**: BE-200c (FCM/Expo adapter). BE-200 in-app notification KHÔNG bị chặn bởi UA này.
+- **Trạng thái**: ⏳ Pending (BE-200 DONE sau khi DEC-044 chốt).
+
 ## Secrets không bao giờ commit
 
 - File `.env` thật → dùng secret manager.

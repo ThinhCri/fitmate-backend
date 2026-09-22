@@ -1,5 +1,18 @@
 # Decisions Log
 
+## DEC-051 — Production baseline và contract chung ba repo (2026-09-22)
+- Status: Accepted for planning under user request to hoàn thiện business/nghiệp vụ/tasks. Không chứng nhận implementation hoặc tự duyệt deploy.
+- Baseline: PROD-2026-09-22-v1; đọc README/business-requirements/domain-rules/tasks mới.
+- Thay chỉ dẫn cũ mâu thuẫn: CUID→UUID; role inheritance PT=Member capabilities; state diagram không có Refunded trong Appointment; API confirm không dựa vào FE redirect; reschedule giữ booking ID/event; Paid+Completed mới recognition; public cert→private scan; timestamp-only chat marker→sequence target.
+- Mặc định mới: booking min lead30min, hold5min, PT accept trước min(paid+24h,slot start), no auto-complete/no no-show penalty; Fitmate chịu provider fee riêng; settlement weekly với hold7ngày; deletion target30ngày. Operator review terms/retention/banking trước release.
+- Thay DEC-044 phần timestamp-only bằng monotonic conversation sequence để không bỏ tin cùng timestamp; BE-814 migration/test trước áp dụng.
+- Bổ sung DEC-050: local storage implementation không đủ production durability; cert private và signed URL cấp sau authz. Không tự đổi adapter đã làm.
+- Không còn gọi mock payment/dev skeleton là production DONE. BE-800..829 là production acceptance, legacy tasks giữ crosswalk.
+- Docs tasks/BE-*-plan.md, old handoff và architectural notes chỉ là lịch sử khi xung đột; không tạo thêm nguồn chuẩn ngang hàng.
+- AI/VIP/reward giữ inventory nhưng feature gate; chưa có provider không fake success. Product owner duyệt manifest nếu release trước capability.
+- FE có snapshot nghiệp vụ + contract hash; cập nhật nguồn BE trước rồi đồng bộ cả hai.
+- .NET runtime support là release gate BE-828; nguồn trong policy-and-runtime-sources.md. Không tự nâng stack trong task docs.
+
 > Mỗi quyết định kiến trúc/sản phẩm đáng kể ghi ở đây. Format: DEC-NNN, ngày, người chốt, bối cảnh, quyết định, hệ quả, trạng thái.
 
 ---

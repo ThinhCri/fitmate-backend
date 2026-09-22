@@ -1,5 +1,7 @@
 # So sánh Managed PostgreSQL — cho production Fitmate
 
+> Baseline update 2026-09-22: tài liệu này giữ chi tiết/lịch sử; khi có mâu thuẫn, dùng [README](README.md), [domain rules](domain-rules.md), [tasks](tasks.md) và DEC-051. Không dùng giá/quota, trạng thái DONE, mock adapter hoặc route giả định trong tài liệu cũ làm bằng chứng production. Nguồn policy cập nhật: [release sources](policy-and-runtime-sources.md).
+
 > Viết 2026-09-18. Cập nhật 2026-09-18 (phiên 7) theo DEC-030.
 >
 > **Phạm vi**:

@@ -1,14 +1,48 @@
 # Handoff — Backend Release
 
+## Task execution plans — hoàn tất sau khi tiếp tục phiên
+- Đã kiểm tra file đã lưu trước khi tiếp tục; bổ sung WEB-807 còn thiếu, không tạo lại 30 BE plans.
+- Có 30 plan BE-800..829, 3 plan cụ thể BE-099/400/410 và 4 alias lifecycle BE-430/500/600/700. Mục lục: [production-plans/README.md](production-plans/README.md).
+- Có 9 Android plans MOB-800..808 và 8 admin plans WEB-800..807 ở docs/production/plans của repo tương ứng.
+- Mỗi task tracker đã có link plan; có execution guide, dependency milestones, evidence template. Plans gồm scope in/out, API/data, steps, lỗi/retry/concurrency, client impact, recovery và DoD.
+- Verification: 59 Markdown files trong ba thư mục plans, 54 task plans đầy đủ; links/task IDs/required core sections/commit message lengths kiểm tra không lỗi. Không chạy app tests cho docs-only.
+- Implementation statuses vẫn TODO/BLOCKED; không claim code đã làm. Không commit/push/deploy hoặc sửa source/runtime của user.
+- Tiếp theo bắt đầu thực thi BE-800 rồi BE-801 theo module; BE-820 harness và BE-828 runtime làm sớm. Đừng chờ toàn bộ contract/harness toàn dự án mới code module đầu.
+
+## Production baseline handoff — 2026-09-22
+- User yêu cầu viết lại business requirements/nghiệp vụ/tasks cho cả BE, Android và admin.
+- Đã tạo baseline PROD-2026-09-22-v1, BR-01..17 và BE-800..829; task cũ có crosswalk, không claim đã hoàn thiện code.
+- Rewrite README/domain/authorization/API conventions/feature matrix/tasks/release checklist/capacity. Thêm operator-actions, policy sources, documentation maintenance.
+- App docs/production có requirements/rules/screen mapping + MOB-800..808; admin tương ứng WEB-800..807; contract SHA256 ghi trong JSON.
+- Đối chiếu routes/DTO inventory cho thấy spec-only APIs, pending providers, thiếu integration evidence. Storage mới có code nên không còn đánh TODO tuyệt đối.
+- Giữ nguyên OpenAPI và implementation; task BE-801 sẽ reconcile spec/runtime trước freeze. Các rule target mới chưa là schema đã triển khai.
+- Giữ nguyên user uncommitted changes (notification/social/moderation/payment, user-actions và FE changes). Không commit/push/deploy.
+- Verification của phiên này: docs links/task IDs/cross-repo snapshots/git diff; không chạy lại test ứng dụng cho thay đổi docs-only.
+- Kết quả: 20 files nguồn/snapshot kiểm tra links PASS, 30 task BE-800..829 unique, 2 contract manifests và rule snapshots khớp (SHA256 normalize CRLF→LF); diff check các file task sửa PASS. Ba warning blank EOF ở web design_system/functional_audit/screen_specs là thay đổi có sẵn, không sửa. Hai file lịch sử mobile có invalid UTF-8 sẵn được giữ nguyên bytes và append chỉ dẫn ASCII.
+- Tiếp theo: BE-800 baseline build/code ownership → BE-801 contract và BE-820 integration harness; đọc operator-actions trước yêu cầu credentials.
+- Bản mới của task roadmap là tasks.md. Các phiên cũ dưới đây chỉ là lịch sử, kể cả khi ghi DONE.
+
 > Điểm đang dừng + việc tiếp theo. Cập nhật cuối mỗi phiên.
 
 ## Phiên hiện tại
 
-### Phiên 35 — đang chạy (2026-09-22) [BE-420]
+### Phiên 36 — đang chạy (2026-09-22) [BE-800]
 
-**BE-140: Payment skeleton (mock URL, no VNPay) — DONE**
+**BE-800: Đối chiếu working tree và dọn baseline — VERIFIED**
 
-Plan rev 1 lưu ở `docs/backend-release/tasks/BE-140-plan.md`.
+- Khảo sát tĩnh working tree và uncommitted changes:
+  - Xoá thư mục trùng `src/Fitmate.Domain/Payments/` (plural), giữ lại `src/Fitmate.Domain/Payment/` (singular) được cấu hình trong EF Core và `EfPaymentStore`.
+  - Khảo sát các thay đổi notification/push producer wiring trong `FriendService.cs`, `ModerationService.cs`, `NotificationService.cs`, `PushDeliveryDispatcher.cs`.
+  - Khảo sát cập nhật test harnesses trong `FriendServiceTests.cs` và `ModerationServiceTests.cs`.
+- Tạo file evidence: `docs/backend-release/production-plans/evidence/BE-800.md`.
+- `tasks.md` cập nhật: BE-800 chuyển sang `VERIFIED`.
+- Kết quả verification thực tế từ User: `dotnet build Fitmate.slnx` thành công 0 errors (8 warnings), `dotnet test` thành công 402/402 unit tests PASS (0 failed, 0 skipped).
+
+**Next:** Triển khai **BE-801** (Đóng băng contract liên repo) và dựng **BE-820** (Integration test harness).
+
+### Lịch sử các phiên trước
+
+### Phiên 35 (2026-09-22) [BE-140 / BE-420]
 
 **Phát hiện:** `Payment` entity đã có sẵn trong `Fitmate.Domain.Payment` (InitialSchema + `PaymentConfiguration`). Existing constructor `Payment.CreatePending(appointmentId, method, amountVnd, redirectUrl)` nhận `redirectUrl` ngay từ đầu → stub provider tạo URL trước, pass vào constructor, sau đó `MarkPaid(providerTxnRef)`.
 

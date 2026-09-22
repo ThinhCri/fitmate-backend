@@ -1,5 +1,7 @@
 # Android Integration Guide
 
+> Baseline update 2026-09-22: tài liệu này giữ chi tiết/lịch sử; khi có mâu thuẫn, dùng [README](README.md), [domain rules](domain-rules.md), [tasks](tasks.md) và DEC-051. Không dùng giá/quota, trạng thái DONE, mock adapter hoặc route giả định trong tài liệu cũ làm bằng chứng production. Nguồn policy cập nhật: [release sources](policy-and-runtime-sources.md).
+
 > Hướng dẫn tích hợp Android app với BE .NET mới. Đọc `docs/mobile-redesign/decisions.md` (FE repo) trước để hiểu nguyên tắc mobile.
 
 ## 1. Nguồn chuẩn

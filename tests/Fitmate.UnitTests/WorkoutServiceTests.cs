@@ -83,7 +83,7 @@ public class WorkoutServiceTests
 
     private static Exercise CreateTestExercise(Guid exerciseId, Guid planId)
     {
-        var ex = Exercise.Create(planId, "Push-up", ExerciseType.Reps, 3, 10, null, 60, 0, 50, null, null, null, null, null);
+        var ex = Exercise.Create(planId, "Push-up", ExerciseType.Reps, 3, 10, null, 60, 0, 50, null, null, null, null, new List<string>());
         typeof(Exercise).GetProperty("Id")!.SetValue(ex, exerciseId);
         return ex;
     }

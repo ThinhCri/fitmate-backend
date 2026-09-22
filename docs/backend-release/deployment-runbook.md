@@ -1,5 +1,7 @@
 # Deployment Runbook
 
+> Baseline update 2026-09-22: tài liệu này giữ chi tiết/lịch sử; khi có mâu thuẫn, dùng [README](README.md), [domain rules](domain-rules.md), [tasks](tasks.md) và DEC-051. Không dùng giá/quota, trạng thái DONE, mock adapter hoặc route giả định trong tài liệu cũ làm bằng chứng production. Nguồn policy cập nhật: [release sources](policy-and-runtime-sources.md).
+
 > Triển khai BE lên môi trường staging/production bằng Docker Compose trên 1 VPS. Chưa tự deploy production.
 
 ## 1. Topology

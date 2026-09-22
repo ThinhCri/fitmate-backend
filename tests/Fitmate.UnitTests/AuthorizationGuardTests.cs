@@ -34,7 +34,7 @@ public class AuthorizationGuardTests
         lookup.Roles.Add((u, "PT"));
 
         await guard.EnsureRoleAsync(u, "PT", CancellationToken.None); // không throw
-        guard.HasRoleAsync(u, "PT", CancellationToken.None).Result.Should().BeTrue();
+        (await guard.HasRoleAsync(u, "PT", CancellationToken.None)).Should().BeTrue();
     }
 
     [Fact]

@@ -49,6 +49,8 @@ public class NotificationService : INotificationService
                 n.Message,
                 n.Summary,
                 payload,
+                n.SourceEventId,
+                n.SourceType,
                 n.Read,
                 n.CreatedAt));
         }

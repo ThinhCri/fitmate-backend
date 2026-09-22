@@ -1,8 +1,10 @@
 using Fitmate.Application.Moderation;
+using Fitmate.Application.Notifications;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Social;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Outbox;
 using Fitmate.Domain.Social;
 using FluentAssertions;
@@ -81,6 +83,18 @@ public class FriendServiceTests
         }
     }
 
+    /// <summary>BE-200: capture NotificationPayload dispatched by FriendService.</summary>
+    private sealed class CapturingPushDispatcher : IPushDeliveryDispatcher
+    {
+        public List<NotificationPayload> Dispatched { get; } = new();
+        public Task<Guid> DispatchAsync(NotificationPayload payload, CancellationToken ct = default)
+        {
+            Dispatched.Add(payload);
+            // Return a fresh id — tests don't inspect the value, just count.
+            return Task.FromResult(Guid.NewGuid());
+        }
+    }
+
     private sealed class InMemorySocialStore : ISocialStore
     {
         public Task<SocialAuthorRow?> GetAuthorAsync(Guid userId, CancellationToken ct)
@@ -105,8 +119,14 @@ public class FriendServiceTests
         public Task<ReportRow?> FindOpenReportByKeyAsync(Guid r, string k, CancellationToken ct) => Task.FromResult<ReportRow?>(null);
     }
 
-    private static FriendService NewService(InMemoryFriendStore fs, InMemoryBlockStore bs, InMemoryUserLookup ul, CapturingOutbox ob, InMemorySocialStore ss)
-        => new(fs, bs, ul, ss, ob);
+    private static FriendService NewService(
+        InMemoryFriendStore fs,
+        InMemoryBlockStore bs,
+        InMemoryUserLookup ul,
+        CapturingOutbox ob,
+        InMemorySocialStore ss,
+        CapturingPushDispatcher? push = null)
+        => new(fs, bs, ul, ss, ob, push ?? new CapturingPushDispatcher());
 
     [Fact]
     public async Task SendRequest_ToSelf_ThrowsValidation()

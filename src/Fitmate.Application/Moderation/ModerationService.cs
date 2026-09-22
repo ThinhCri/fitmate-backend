@@ -1,17 +1,19 @@
 using Fitmate.Application.Auth;
 using Fitmate.Application.Identity;
 using Fitmate.Application.Moderation;
+using Fitmate.Application.Notifications;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Social;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Moderation;
+using Fitmate.Domain.Notifications;
 
 namespace Fitmate.Application.Moderation;
 
 /// <summary>
 /// BE-210 + BE-211: Moderation — admin list/resolve/dismiss reports.
-/// Mở rộng BE-211: Warn (outbox user.warning), Lock (4 duration + stamp bump), DeleteContent (soft-delete Post/Comment),
+/// Mở rộng BE-211: Warn (outbox user.warning + push notification), Lock (4 duration + stamp bump), DeleteContent (soft-delete Post/Comment),
 /// idempotency (spam check), audit log.
 /// Authorization 2 lớp: AuthorizationGuard.EnsureRoleAsync(Admin) + controller [Authorize(Policy=AdminOnly)].
 /// </summary>
@@ -26,6 +28,7 @@ public class ModerationService : IModerationService
     private readonly IOutboxDispatcher _outbox;
     private readonly IAuditLogger _audit;
     private readonly IAuthorizationGuard _authz;
+    private readonly IPushDeliveryDispatcher _push;
 
     private const int DefaultPage = 1;
     private const int DefaultPageSize = 20;
@@ -41,7 +44,8 @@ public class ModerationService : IModerationService
         IUserRoleLookup userLookup,
         IOutboxDispatcher outbox,
         IAuditLogger audit,
-        IAuthorizationGuard authz)
+        IAuthorizationGuard authz,
+        IPushDeliveryDispatcher push)
     {
         _store = store;
         _actionStore = actionStore;
@@ -52,6 +56,7 @@ public class ModerationService : IModerationService
         _outbox = outbox;
         _audit = audit;
         _authz = authz;
+        _push = push;
     }
 
     public async Task<ReportPage> ListReportsAsync(Guid adminUserId, ReportStatus? status, int page, int pageSize, CancellationToken ct)
@@ -104,6 +109,18 @@ public class ModerationService : IModerationService
         {
             await RecordModerationActionAsync(targetUserId, adminUserId, reportId, UserModerationActionKind.Warn, null, note, ct);
             _outbox.Enqueue("user.warning", new UserWarningPayload(targetUserId, reportId, note ?? "", adminUserId));
+
+            // Push notification: warn the user in-app + optional push delivery (BE-200).
+            var pushPayload = new NotificationPayload(
+                targetUserId,
+                NotificationType.System,
+                "You received a warning",
+                note is { Length: > 0 } ? TruncateNote(note, 100) : "Your content was flagged by our moderation team.",
+                new { reportId, reason = note ?? "" },
+                reportId,
+                "moderation_warning");
+            await _push.DispatchAsync(pushPayload, ct);
+
             await _audit.LogAsync("report.resolve.warn", "Report", reportId, adminUserId,
                 $"Warn: {note}", ct);
         }
@@ -254,6 +271,9 @@ public class ModerationService : IModerationService
         if (string.IsNullOrWhiteSpace(note)) return action;
         return $"{action}: {note.Trim()}";
     }
+
+    private static string TruncateNote(string note, int max) =>
+        note.Length <= max ? note : note[..max];
 
     private static ReportView ToView(ReportRow r) => new(
         Id: r.Id, ReporterId: r.ReporterId, TargetType: r.TargetType, TargetId: r.TargetId,

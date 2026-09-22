@@ -1,5 +1,7 @@
 # Data Model & ERD (đề xuất)
 
+> Baseline update 2026-09-22: tài liệu này giữ chi tiết/lịch sử; khi có mâu thuẫn, dùng [README](README.md), [domain rules](domain-rules.md), [tasks](tasks.md) và DEC-051. Không dùng giá/quota, trạng thái DONE, mock adapter hoặc route giả định trong tài liệu cũ làm bằng chứng production. Nguồn policy cập nhật: [release sources](policy-and-runtime-sources.md).
+
 > Mỗi bounded context có schema riêng trong Postgres. Chỉ liệt kê các aggregate chính; chi tiết FK + index sẽ được implement khi viết EF Core entities.
 
 ## Schemas

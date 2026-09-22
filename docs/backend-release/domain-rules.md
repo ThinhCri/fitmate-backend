@@ -1,291 +1,150 @@
-# Domain Rules
+# Fitmate — Quy tắc nghiệp vụ production
+Baseline PROD-2026-09-22-v1; thay đặc tả cũ bị mâu thuẫn. Xem DEC-051 trong [decisions.md](decisions.md).
+Đây là hành vi mục tiêu cần triển khai/kiểm thử, không phải mô tả mọi code đang có.
 
-> Quy tắc nghiệp vụ bắt buộc cho mọi implementation. Mọi thay đổi phải cập nhật file này + `decisions.md`.
+## 1. Identity, roles và ownership
+- ID API là UUID; email là thuộc tính có thể thay đổi, không phải khóa quan hệ hoặc quyền.
+- Member quản lý dữ liệu mình; PT có quyền Member và quản lý dịch vụ/lịch/doanh thu riêng.
+- verified là trạng thái kiểm định PT, không phải role do client được set.
+- Đăng ký PT tạo hồ sơ chờ duyệt; không tự verified hoặc tự cấp Admin. Admin bootstrap qua CLI không password mặc định.
+- Public được xem marketplace/public PT fields; health/chat/contact riêng không public.
+- Service layer enforce role + ownership; không tin isSelf/isPt/userId do client truyền.
+- Token hợp lệ không đủ nếu account locked/pending_deletion/deleted hoặc session đã revoked.
+- Register/forgot/resend không tiết lộ email đã tồn tại. Mật khẩu không lưu/log/echo qua DTO.
+- Email verification/reset token single-use, có TTL; resend rate limit. Reset/đổi mật khẩu revoke các phiên khác và rotate phiên hiện tại.
+- Member/PT chưa verify chỉ có quyền hoàn tất onboarding, verify và logout; không payment/post/chat/upload cho tới verify.
+- Admin TOTP MFA trước full session, recovery codes hash dùng một lần; khóa/xóa admin cuối cùng bị chặn.
+- Mobile refresh token qua secure storage; web qua HttpOnly Secure cookie với CSRF/Origin protection. Không đưa refresh token vào localStorage.
+- Token TTL, lockout, reset TTL được ghi trong config/contract và tests, không nhân bản số khác nhau giữa FE/BE.
 
-## 1. Vai trò (Roles)
+## 2. Hồ sơ và dữ liệu cá nhân
+Owner fields: name, avatar, bio, goal, phone, birthday, gender, height_cm, timezone; weight hiển thị lấy từ lần đo hợp lệ mới nhất.
+Extended: medicalConditions, medicalNotes, allergies, allergySurveyDone, trainingDays/trainingTimes.
+PT bổ sung specialties, experienceYears, services, certificates; price hiển thị phải gắn dịch vụ, không dùng một giá hồ sơ mơ hồ để thu tiền.
+Null là chưa cung cấp; không biến null thành 0 kg/0 tuổi hoặc tự điền dữ liệu sức khỏe.
+Public profile: UUID, tên hiển thị/avatar/bio và PT public fields; không trả email/phone/birthday/medical survey.
+Đổi email có verify và chống chiếm account; đổi password/role audit và revoke sessions.
+Hồ sơ/cert chỉ được gắn storage object đúng owner/category; không gắn URL bất kỳ của người khác.
 
-| Role | Mô tả | Quyền tổng quát |
+## 3. Booking — ba state machine độc lập
+AppointmentStatus: Held, Pending, Confirmed, InProgress, Completed, Cancelled, Expired.
+PaymentStatus: Pending, Paid, Failed, PartialRefunded, Refunded.
+RefundStatus: Pending, Succeeded, Failed.
+Late là attendance flag; reschedule là event. Refund không phải AppointmentStatus.
+Client không PATCH status tùy ý; transition đi qua command có guard + audit.
+
+| Chuyển | Actor/trigger | Guard và kết quả |
 |---|---|---|
-| `member` | Hội viên | CRUD trên data của mình; đặt booking; marketplace; chat; social. |
-| `pt` | Huấn luyện viên | Tất cả quyền của member + quản lý cert, availability, services, my bookings, my revenue. |
-| `pt_verified` | PT đã được admin duyệt cert | Hiện trên marketplace; nhận booking. |
-| `admin` | Quản trị nền tảng | Quản lý user, cert, booking, payment, finance, moderation, audit, settings. **Không** xem mặc định chat riêng / dữ liệu sức khỏe thô. |
+| none → Held | Member hoặc PT đặt PT khác | Dịch vụ active, PT verified, không self-book; atomic giữ interval; TTL 5 phút |
+| Held → Pending | Verified payment settlement | Payment đúng merchant/amount/currency/booking; hold còn hợp lệ; không cần app còn mở |
+| Held → Expired | Worker | TTL hết, chưa settlement hợp lệ; giải phóng slot |
+| Pending → Confirmed | PT của booking accept | Đã Paid, slot vẫn thuộc booking, chưa hết acceptance deadline |
+| Pending → Expired | Worker | PT chưa accept trước min(paid_at + 24h, slot_start); yêu cầu refund toàn bộ |
+| Confirmed → InProgress | PT explicit start | Paid; không trước slot_start - 5 phút; không auto-start chỉ vì đồng hồ |
+| InProgress → Completed | PT explicit complete | Sau slot_end; không dispute đang mở; client retry không nhân revenue |
+| Held/Pending/Confirmed/InProgress → Cancelled | Participant hoặc Admin | Chưa Completed; lý do; tạo refund nếu đã Paid; audit |
 
-User **không** tự nâng role hay tự set `isVerified`. Chỉ admin.
+- Chỉ bán slot bắt đầu ít nhất 30 phút sau thời điểm tạo hold; 30 phút/24 giờ là mặc định sản phẩm mới, cấu hình versioned và công bố trước checkout.
+- IPN và expiry cùng lúc serialize bằng transaction/lock; verify payment đến muộn không chiếm slot đã cấp cho người khác. Ghi tiền đã nhận và tạo case refund/đối soát, không báo booking confirmed.
+- Browser return chỉ là UX hint; client poll payment/booking. /bookings/confirm nếu giữ để tương thích phải idempotent, không tin client nói Paid.
+- Không giữ DB transaction trong lúc gọi payment provider. Outbox/provider attempt có recovery sau crash.
+- Chống overlap khoảng [start,end), không chỉ unique start time. Hold/booking cùng PT phải có DB-backed concurrency guard.
+- Đổi lịch: participant tạo request; bên còn lại accept. Giữ slot cũ tới khi atomically chiếm slot mới; thất bại không mất slot cũ.
+- Baseline giữ cùng booking ID, append event old/new/actor/reason; không clone payment/doanh thu. previous_booking_id chỉ cho dữ liệu thay thế legacy.
+- Nếu thay service/giá: không sửa snapshot đã trả tiền; hủy/refund và đặt mới.
+- Quá giờ không tự Complete, không tự phạt no-show. Participant mở support/dispute; admin xử lý có chứng cứ/audit.
 
-## 2. Trạng thái tài khoản
+## 4. Money, refunds, earnings và settlement PT
+- Tiền integer VND; tính server bằng checked integer/decimal; reject overflow/ngoài range.
+- Snapshot: listed, discount, actual_paid, fee_bps=1000, fee, PT_share, policy_version.
+- Payment amount phải bằng server quote (listed - discount), không lấy amount/fee client làm chuẩn.
+- Fee = round-half-up(actual_paid * 1000 / 10000); PT_share = actual_paid - fee.
+- Ví dụ 100.000đ → fee 10.000đ, PT 90.000đ. GMV không phải doanh thu nền tảng.
+- Ghi nhận doanh thu khi Paid + Completed. Paid chưa Completed là chờ ghi nhận. Sau refund, đọc ledger để điều chỉnh chứ không biến doanh thu về 0 bằng enum check.
+- Chưa thanh toán: hủy không refund. Đã Paid trước Completed: refund toàn bộ, không phí phạt.
+- Completed: refund theo admin review/dispute, có reason và financial idempotency.
+- Refund Pending không được báo đã hoàn. Chỉ provider/reconciliation xác nhận mới Succeeded.
+- Tổng refund successful + reserved pending không vượt actual_paid; transaction chống hai refund đồng thời.
+- Phân bổ lũy kế: fee_refunded = round-half-up(original_fee * cumulative_refund / actual_paid); PT_refunded = cumulative_refund - fee_refunded. Mỗi lần ghi delta, full refund đảo đúng toàn bộ. actual_paid=0 không chia.
+- Giữ original recognition và adjustment ở kỳ phát sinh; không rewrite báo cáo kỳ trước.
+- Mặc định đề xuất Fitmate chịu provider fee riêng; không trừ âm thầm vào 90% PT. Chi phí này tách khỏi gross platform fee.
+- PT revenue chỉ owner: gross, fee, share, refunds, pending recognition, recognized net, available payable, processing payout, paid out.
+- Payout != refund != reward withdrawal. Không hiển thị available payable như đã chuyển khoản.
+- Settlement baseline: admin lập batch thủ công hàng tuần cho phần completed đủ 7 ngày, không tranh chấp; có statement, account verification, reference chuyển tiền và xác nhận độc lập.
+- Trước khi chi, kiểm tra refund/dispute pending; một ledger item không vào hai payout. Refund sau payout tạo debit/negative payable kỳ tới, không sửa lịch sử payout.
+- Merchant capability, điều khoản/PT banking và quy trình chi cần operator duyệt trước thu tiền thật (OPS-03).
+- Phí 10% read-only ở admin; thay policy tương lai cần version/audit, không đổi snapshot cũ.
 
-| State | Ý nghĩa | Hành vi |
-|---|---|---|
-| `active` | Hoạt động bình thường | Mọi quyền. |
-| `locked` | Bị admin khóa hoặc hệ thống khóa (spam, payment fraud) | Không login; refresh token bị revoke; API trả 403 `FITMATE.AUTH.ACCOUNT_LOCKED`. |
-| `pending_deletion` | User yêu cầu xóa; chờ retention xử lý | Không login mới; data giữ cho finance/audit. |
-| `deleted` | Đã xóa theo retention | Username/email không tái sử dụng. |
+## 5. Workout và cân nặng
+- Plan owner-only CRUD, nhiều plan/ngày được phép. Delete plan không cascade session.
+- Session giữ snapshot phiên bản đã bắt đầu; offline client snapshot phải validate và đánh dấu source, không pretend server-verified.
+- Exercise reps yêu cầu target_reps >0; time yêu cầu target_duration_sec >0. Không quy reps thành giây.
+- rest_sec giữa hiệp, rest_after_sec chuyển bài. Timer/pause/audio là FE.
+- Mỗi set: index duy nhất, completed/partial/skipped, actual_reps hoặc actual_duration_sec đúng loại. Unknown là null, không tự đổi thành 0.
+- Extra sets explicit; completedSets derive từ sets. Session completion theo ngày/timezone, không cờ completed vĩnh viễn trên plan.
+- client_id body unique(owner,client_id) bền vững, cộng Idempotency-Key header theo contract. Retry same payload trả record cũ; khác payload 409; soft-delete không cho retry hồi sinh bản ghi.
+- Media phải có license/source/attribution và trường cơ chính/phụ có review. Không scrape asset app khác hoặc hứa hiệu quả y tế.
+- Weight decimal kg (range 20..400 là giới hạn sản phẩm); recorded_at do client hoặc server now, created_at do server; reject future >5 phút, cho phép backfill lịch sử.
+- Nhiều lần đo/ngày; chart lấy lần cuối theo timezone. List cursor default50/max100; stable recorded_at,id.
+- Calories burned là ước tính; không dùng làm tín dụng tiền hoặc reward thật.
 
-## 3. Booking — state machine & tiền
+## 6. Dinh dưỡng và dashboard
+- Manual meal luôn dùng được; date/time/meal slot, food name, serving quantity/unit, calories/protein/carbs/fat và source rõ.
+- Khẩu phần scale các nutrient cùng base quantity; retry update không nhân đôi.
+- Scan trả candidate/estimate/confidence khi provider có; user chỉnh và confirm mới ghi nhật ký.
+- Không dùng ảnh AI chưa confirm để cộng calories; allergy profile là dữ liệu tự khai, không đảm bảo món an toàn.
+- Meal schedule và logged meals là hai khái niệm; xóa/sửa meal cập nhật aggregate.
+- Dashboard phân biệt target/intake/exercise expenditure; công thức không tự coi intake - exercise là chẩn đoán.
+- Streak: ngày local có >=1 completed workout; nhiều session cùng ngày chỉ 1; retry không tăng; historical backfill recompute theo ngày, không tăng qua click.
+- RewardPoints prototype chưa có giá trị tiền; cấm dùng RewardSimulation trong production.
 
-### 3.1 Trạng thái
+## 7. Social, friend và chat
+- Post public/friends/private kiểm tra ở mọi list/detail/media; report không tự block/lock.
+- Report targets Post/Comment/User/Certificate; PT là User. Chỉ được report target được phép thấy.
+- Friend request UUID recipient; một pending pair kể cả ngược chiều. Cross-request 409 và offer accept.
+- Friendship canonical pair + CHECK/UNIQUE; unfriend xóa relation, không xóa chat/booking.
+- Block directed; chặn friend/send/comment/reaction/direct interaction cả hai chiều, ẩn feed/profile tương tác; không lộ ai block ai.
+- Booking/payment lịch sử vẫn participant-access, thông báo giao dịch vẫn hoạt động.
+- Chat chỉ friend không blocked được send; sau unfriend/block vẫn xem history của mình.
+- Message client_message_id do client giữ ổn định; duplicate khác payload 409. Kiểm tra scope có sender để hai người không chiếm key nhau.
+- Read marker theo per-conversation monotonic sequence (mục tiêu); timestamp-only không đủ khi hai tin cùng timestamp. UUID chỉ là tie-breaker trong cursor, không thời gian.
+- GET không mark read; marker không lùi giữa thiết bị; unread không đếm tin của mình.
+- Transaction check lại không tự chứng minh race-safe: implement shared lock/serialization phù hợp cho send/block và accept/block, test PostgreSQL thật.
+- Admin chỉ đọc evidence người báo cáo cung cấp qua case được audit; không có API đọc tùy ý mọi private chat/health.
+- Polling có giới hạn ở release đầu; websocket không bắt buộc.
 
-> Theo DEC-026: **không gộp** trạng thái lịch / thanh toán / hoàn tiền vào một enum.
-> - `AppointmentStatus` chỉ mô tả vòng đời của buổi hẹn.
-> - `PaymentStatus` mô tả vòng đời của payment intent.
-> - `RefundStatus` mô tả vòng đời của refund.
+## 8. Notifications
+- In-app notification và push delivery là hai tài nguyên khác nhau; push disabled không phá inbox.
+- Friend request created → recipient; accepted → sender. Rejected/unfriend/block không notify target; moderation warning gửi user liên quan.
+- Domain mutation, notification/outbox phải atomic và unique dedup. Không gọi provider trong transaction.
+- Token mã hóa giải mã được; hash để lookup, không dùng hash làm destination.
+- Một active token/provider/installation không đồng thời thuộc nhiều user; đăng ký lại/refresh/logout phải atomic và revoke đúng session/installation.
+- Kiểm tra owner, active, block, validity và expiry ngay trước gửi.
+- TTL 24 giờ tính từ source event, retry không gia hạn; sweep 30 phút theo batch, không là điều kiện duy nhất chặn expired send.
+- Disabled → skipped có audit, không backlog vô hạn; enabled nhưng thiếu cấu hình → lỗi rõ; deferred có expiry.
+- Không claim exactly-once push; dedup nội bộ/per-device và provider outcomes.
+- Lock-screen payload tối thiểu, không health/chat/payment details. Deep link vẫn re-authorize.
 
-```
-held → pending → confirmed → in_progress → completed
-                                 ↘ cancelled → refunded
-                                 ↘ cancelled → expired (TTL)
-```
+## 9. Storage và privacy
+- Upload category/owner/entity gắn metadata; server-generated key; kiểm magic bytes, MIME, size, path traversal, quota; strip metadata ảnh nhạy cảm.
+- Avatar public opt-in; certificate file private dù approved, chỉ public metadata/trạng thái. Thay quy tắc cũ public cert để tránh lộ số/PII.
+- Post media theo visibility; meal/cert/health private; chỉ cấp signed URL sau authorization. TTL tối đa 15 phút.
+- Local persistent volume cho dev. Production cần durable media + backup/restore đã chứng minh; không dùng ephemeral container disk.
+- Chưa hỗ trợ video/audio upload thì reject rõ, không quảng cáo hỗ trợ chỉ vì DTO có URL.
+- Account deletion: revoke sessions/devices ngay, ngừng public profile; xử lý xóa/anonymize có job retry/audit.
+- Mục tiêu xóa dữ liệu cá nhân không còn cần thiết trong 30 ngày; operator duyệt retention tài chính/pháp lý trước release, không hard-delete giao dịch cần lưu.
+- Backup có expiry và quy trình tái áp dụng deletion sau restore; không hứa xóa khỏi mọi backup tức thì.
+- Email không phải blacklist vĩnh viễn theo mặc định; reuse/retention phải theo policy được công bố và chống lạm dụng tối thiểu.
+- Không log nội dung chat, ảnh sức khỏe, tokens, payload payment thô; audit allowlist metadata.
 
-| `AppointmentStatus` | Ý nghĩa |
-|---|---|
-| `Held` | Slot tạm giữ, TTL 5 phút. |
-| `Pending` | Đã tạo booking, đang chờ PT xác nhận. |
-| `Confirmed` | PT đã xác nhận lịch (KHÔNG đồng nghĩa đã thanh toán). |
-| `InProgress` | Buổi tập đã bắt đầu. |
-| `Completed` | PT xác nhận hoàn thành. |
-| `Cancelled` | Member, PT hoặc admin hủy. |
-| `Expired` | Giữ chỗ/yêu cầu hết hạn. |
+## 10. AI và release capabilities
+- AI không quyết định role/giá/thanh toán, không trả fake success; unavailable là lỗi có cấu trúc và UI phục hồi.
+- AI team bàn giao artifact/version/license/checksum/schema/resources; adapter sandboxed, timeout/quota/cancellation, health và metrics riêng.
+- Không lấy lời khuyên rule-based prototype gắn nhãn AI thật. Không chuyển health data cho provider ngoài phạm vi consent.
+- Capability contract công bố phần enabled/disabled; cờ không thay authorization.
+- VIP/digital purchases/reward redemption cần business và billing riêng; không tái dùng VNPay PT tùy tiện.
 
-| `PaymentStatus` | Ý nghĩa |
-|---|---|
-| `Pending` | Đã tạo payment intent, chờ redirect/IPN. |
-| `Paid` | Provider xác nhận thanh toán thành công. |
-| `Failed` | Thanh toán thất bại hoặc user hủy ở trang provider. |
-| `Refunded` | Đã hoàn toàn bộ `actual_paid_vnd`. |
-| `PartialRefunded` | Đã hoàn một phần; còn dư nợ. |
-
-| `RefundStatus` | Ý nghĩa |
-|---|---|
-| `Pending` | Admin yêu cầu, chờ provider confirm. |
-| `Succeeded` | Provider xác nhận đã chuyển tiền. |
-| `Failed` | Provider từ chối (giữ nguyên payment không thay đổi). |
-
-### 3.1.1 Sự kiện (event) — không phải trạng thái
-
-- **`is_late_attendee: bool`**: thông tin attendance/arrival. Member đến trễ → flag `true`. **KHÔNG tự kết luận no-show** chỉ vì quá giờ.
-- **`BookingRescheduleEvent`**: sự kiện đổi lịch có audit. Fields:
-  - `booking_id`, `requested_by`, `requested_at`.
-  - `old_slot_start_utc`, `new_slot_start_utc`.
-  - `accepted_by?`, `accepted_at?`.
-  - `status`: `Pending | Accepted | Rejected | Cancelled`.
-  - `reason?`.
-- Booking có thêm field `previous_booking_id?` để trace lịch sử reschedule.
-- Reschedule có **transaction** check slot mới trước khi release slot cũ. Nếu đổi lịch thất bại → slot cũ **không bị mất**.
-
-### 3.2 Transition matrix (AppointmentStatus)
-
-| From → To | Trigger | Actor | Guard |
-|---|---|---|---|
-| (none) → Held | `POST /bookings/holds` | Member | Slot available, service hợp lệ |
-| Held → Pending | `POST /bookings/confirm` (sau Payment.Paid) | Member | Hold chưa hết TTL, payment=Paid |
-| Held → Expired | cron TTL | system | Hold.quota > TTL (5 phút) |
-| Pending → Confirmed | PT đồng ý | PT của booking | status hiện tại = Pending |
-| Confirmed → InProgress | Slot bắt đầu | system auto (slot_start_utc - 5 min) hoặc PT manual | status = Confirmed, payment = Paid |
-| InProgress → Completed | PT xác nhận | PT của booking | status = InProgress |
-| {Held, Pending, Confirmed, InProgress} → Cancelled | Member / PT / Admin yêu cầu cancel | Owner hoặc admin | chưa Completed, chưa Refunded |
-| Pending → Expired | admin expire (PT không phản hồi trong N ngày) | admin | status = Pending, payment quá hạn |
-
-**Client KHÔNG được PATCH `appointment.status` tùy ý**. Mỗi transition qua endpoint riêng.
-
-### 3.3 Snapshot tại thời điểm thanh toán
-
-Mỗi booking lưu immutable snapshot:
-- `price_listed_vnd` — giá niêm yết.
-- `discount_vnd` — giảm giá (nếu có).
-- `actual_paid_vnd` — integer VND thực trả (không âm, không vượt `price_listed_vnd - discount_vnd`).
-- `platform_fee_rate_bps` — basis points (vd: `1000` = 10.00%).
-- `platform_fee_vnd` — tính từ `actual_paid_vnd × platform_fee_rate_bps / 10000`, half-up.
-- `trainer_share_vnd` = `actual_paid_vnd - platform_fee_vnd`.
-- `policy_version` — phiên bản `domain-rules.md` đã dùng (vd: `v1`).
-- **`payment_fee_rate_bps` không nhận từ client** — luôn lấy từ server config (DEC-029). Booking snapshot ghi lại giá trị thực dùng để tính.
-
-### 3.4 Hủy & hoàn tiền (chính sách phát triển hiện tại)
-
-| Thời điểm hủy | Hoàn tiền | Ghi nhận doanh thu |
-|---|---|---|
-| Trước khi `Payment.Paid` | Không có gì để hoàn | Không |
-| Sau `Payment.Paid`, trước `Appointment.Completed` | Hoàn toàn bộ `actual_paid_vnd` | Thu nhập PT chưa ghi nhận |
-| Sau `Appointment.Completed` | Qua quy trình admin duyệt; có thể partial/full | Refund tạo điều chỉnh kỳ hoàn |
-| Sau `Payment.Paid`, quá giờ hẹn không diễn ra | Cần quyết định sản phẩm (no-show policy) — **chưa chốt** | — |
-
-**Đã chốt (BR)**:
-- Không tự động `Appointment.Completed` khi quá giờ.
-- Không có phí phạt hủy (chưa).
-- Refund giảm phần PT + phí tương ứng.
-- Hoàn nhiều lần dùng tính lũy kế để tránh lệch làm tròn.
-- Tổng refund không vượt tổng đã thanh toán.
-- Không tính trùng khi retry.
-- **Điều kiện bắt đầu buổi tập và ghi nhận doanh thu** phải kiểm tra CẢ `AppointmentStatus = Confirmed/InProgress/Completed` LẪN `PaymentStatus = Paid`.
-
-### 3.5 Money rules
-
-- Mọi cột tiền: `BIGINT` (đồng VND).
-- `platform_fee_rate_bps` lưu `INTEGER`, đơn vị basis points (`1000` = 10.00%). Không float.
-- Làm tròn half-up ở đồng gần nhất (`(x + 5) / 10` cho integer xu phát sinh, hoặc `(long)Math.Round(x, MidpointRounding.AwayFromZero)` cho decimal đầu vào).
-- Refund cộng dồn: `refunded_so_far + new_refund ≤ actual_paid_vnd`.
-- Refund idempotent qua `idempotency_key`.
-- Provider fee (nếu có) tách khỏi platform fee; trừ vào share PT nếu BR chốt sau.
-
-### 3.6 Concurrency
-
-- Unique constraint `(trainer_id, slot_start_utc)` khi `AppointmentStatus ∈ {Held, Pending, Confirmed, InProgress, Completed}`.
-- Không chỉ check availability rồi insert; insert phải nằm trong transaction với constraint.
-- Giữ chỗ có TTL: cron job mỗi 1 phút release slot hết hạn.
-- Webhook payment: idempotent qua `payment_id`, chấp nhận out-of-order đến khi trạng thái terminal.
-
-## 4. Thời gian
-
-- DB lưu `TIMESTAMPTZ` (UTC).
-- API trả ISO-8601 UTC + field `timezone` của user (mặc định `Asia/Ho_Chi_Minh`).
-- Slot PT lưu local `slot_start_local` + `slot_start_utc` + `trainer_timezone`.
-- Lọc ngày theo `slot_start_local` của PT (không phải UTC) khi query admin theo "ngày".
-
-## 5. Dữ liệu sức khỏe & chat riêng tư
-
-- Thu thập tối thiểu: cân nặng, chiều cao, giới tính, ngày sinh, mục tiêu tập, tình trạng y tế (tự khai), dị ứng.
-- Không log nội dung chat riêng (AI + friend).
-- Admin **không** mặc định đọc được:
-  - Nội dung chat AI cá nhân.
-  - Log sức khỏe thô (vd: meal detail, weight log) — chỉ aggregate.
-  - Kết quả AI estimate (trừ khi có moderation liên quan).
-- Audit cho mỗi lần admin đọc ngoại lệ (vd: mở chat cá nhân khi có report).
-- Retention: chưa chốt, sẽ đề xuất trong `data-model.md`.
-
-## 6. Upload & media
-
-- Size limit: image ≤ 5MB, video ≤ 50MB, audio ≤ 20MB, certificate image ≤ 10MB.
-- Content-type whitelist (`image/jpeg`, `image/png`, `image/webp`, `video/mp4`, `audio/mpeg`).
-- Storage key: `{context}/{entity_id}/{uuid}.{ext}` — không để user kiểm soát path.
-- Public read: chỉ avatar/PT certificate được coi là public sau khi admin duyệt. Mọi file khác qua signed URL TTL ≤ 15 phút.
-- Không lưu production upload trên ephemeral disk.
-
-## 7. Audit
-
-Hành động bắt buộc audit:
-- Admin duyệt / từ chối certificate.
-- Admin lock / unlock user.
-- Admin refund.
-- Admin resolve / dismiss report.
-- Admin force-complete booking.
-- Role change.
-- AI admin override.
-
-Mỗi audit row: `actor_id`, `actor_role`, `action`, `target_type`, `target_id`, `reason?`, `metadata?`, `created_at`. Không log secrets.
-
-## 8. AI usage (đề xuất, chờ nhóm AI)
-
-- AI **không** quyết định quyền, giá, payment, role.
-- Output AI có confidence; FE render "ước tính" khi `source === 'ai_estimate'`.
-- Khi AI unavailable: trả `FITMATE.AI.UNAVAILABLE` có cấu trúc. Không fallback sang fake.
-- Chức năng không cần AI vẫn chạy khi AI down.
-
-## 9. Quyết định cần user chốt trước production
-
-- [ ] Hạn hủy booking (giờ).
-- [ ] No-show policy.
-- [ ] Ai xác nhận hoàn thành (chỉ PT? hay cả member confirm?).
-- [ ] Tranh chấp (dispute) flow.
-- [ ] Ai duyệt refund — admin riêng hay theo quyền finance.
-- [ ] Pay-out PT — tần suất, ngưỡng tối thiểu, kênh.
-- [ ] Ai chịu provider fee (Fitmate hay PT).
-- [ ] Data retention từng loại dữ liệu.
-- [ ] Account deletion: hard delete vs anonymize sau bao lâu.
-- [ ] Mức giá min/max cho service PT.
-
-## 11. Friend + Block policy (BE-181, chốt 2026-09-19)
-
-### 11.1 Friend
-
-- **Recipient**: client gửi `to_user_id` (UUID). Không dùng email. Lấy `from_user_id` từ authenticated principal.
-- **FriendRequest**: 1 row hướng `(SenderId, RecipientId, Status)`. Status: `Pending | Accepted | Rejected | Cancelled`.
-- **Friendship**: 1 row canonical duy nhất cho mỗi cặp `(UserLowId, UserHighId)` với `UserLowId < UserHighId` (PostgreSQL `<` so sánh UUID qua value byte order; .NET `Guid.CompareTo` cùng quy ước). Application phải dùng `Friendship.CanonicalPair(a, b)` trước khi insert; DB có `CHECK (user_low_id < user_high_id)` để từ chối row nghịch trận.
-- **Partial unique**: `(sender_id, recipient_id)` unique khi `Status = 0` (Pending). Cho phép nhiều row `Accepted/Rejected/Cancelled` giữa cùng cặp (audit history).
-- **Cross request**: nếu A→B đang pending, B gửi lại cho A → `409 FRIEND_REQUEST_ALREADY_EXISTS`. Client dùng `GET /social/friends/status/{user_id}` để phát hiện `incoming_pending` và accept.
-- **Accept atomic**: 1 transaction — status guard + block re-check + insert Friendship (canonical) + outbox `friend.request.accepted`.
-- **Idempotency**: gửi duplicate request cùng `(sender, recipient)` Pending → trả row cũ, không enqueue outbox thêm.
-- **Outbox events**:
-  - `friend.request.created` → thông báo cho recipient.
-  - `friend.request.accepted` → thông báo cho sender ban đầu.
-  - `friend.request.rejected` / `friend.request.cancelled` → KHÔNG gửi notification.
-  - `friendship.removed` → KHÔNG gửi notification cho người bị huỷ kết bạn.
-- **Friends list**: cursor pagination (`limit` ≤ 100). Outbox chỉ enqueue khi có consumer thực sự; không tạo event thừa.
-
-### 11.2 Block
-
-- **BlockedUsers**: `(BlockerId, BlockedId)` PK. Composite index `(blocked_id)` để query 2 chiều.
-- **Block policy** (chốt 2026-09-19):
-  - Chặn `sendFriendRequest` theo cả 2 chiều (`IsBlockedEitherWayAsync`).
-  - Khi block: huỷ mọi pending `FriendRequest` giữa 2 người + xoá Friendship nếu có (hard delete).
-  - Khi unblock: KHÔNG tự khôi phục Friendship.
-  - KHÔNG tự gửi notification cho người bị block.
-- **Block tách khỏi moderation/report**: report KHÔNG tự tạo block. UI có thể đề nghị block sau report, nhưng là action riêng.
-- **Block KHÔNG ảnh hưởng booking/finance**: không tự huỷ booking, hoàn tiền hay xoá giao dịch khi block. Hai bên vẫn truy cập booking record của mình.
-- **Feed/profile visibility**:
-  - Post `visibility = friends`: ẩn với người bị block (cả 2 chiều).
-  - Friend list filter: người bị block không xuất hiện.
-  - Block list KHÔNG lộ cho người khác (admin moderation exception chưa chốt — ghi UA-FUTURE).
-- **Friend chat (BE-191, chưa implement)**: block cản gửi message mới và mở thread mới; thông báo giao dịch/hệ thống vẫn gửi. Khi chat module chưa sẵn, integration task cụ thể sẽ được ghi ở `tasks.md`.
-
-### 11.3 Outbox + retry
-
-- Mọi outbox event ghi trong cùng `SaveChangesAsync` với business row (transaction).
-- Retry worker kiểm tra block + request status trước khi dispatch notification. Không tạo notification trùng (event ID + dedup).
-- Block / unblock enqueue outbox cho audit/đồng bộ (consumer chưa có → không có user-visible notification).
-
-## 12. Friend chat policy (BE-191, chốt 2026-09-20)
-
-### 12.1 Conversation canonical
-
-- Mỗi cặp friend có đúng 1 `FriendConversation` canonical `(UserLowId, UserHighId)` với `UserLowId < UserHighId`. Đồng bộ với Friendship (DEC-037).
-- `CHECK (user_low_id < user_high_id)` + `UNIQUE (user_low_id, user_high_id)` ở DB.
-- 2 request đồng thời tạo conversation → chỉ 1 row (UNIQUE constraint); retry qua lookup.
-- Không cascade delete với Friendship.
-
-### 12.2 Idempotency
-
-- Client cung cấp `client_message_id` (UUID v4) optional trong `POST /chat/friends/messages`.
-- Partial unique `(conversation_id, client_message_id) WHERE ConversationId IS NOT NULL AND ClientMessageId IS NOT NULL`.
-- Retry cùng key + cùng payload → trả row cũ (201).
-- Retry cùng key + khác payload → `409 FITMATE.CHAT.IDEMPOTENCY_MISMATCH` (xem DEC-043).
-
-### 12.3 Authorization cho send
-
-- Sender lấy từ authenticated context. KHÔNG nhận từ client.
-- Kiểm tra (theo thứ tự, atomic trong transaction):
-  - Self → `400 FITMATE.CHAT.CANNOT_SELF_MESSAGE`.
-  - Block 2 chiều (`IsBlockedEitherWayAsync`) → `403 FITMATE.CHAT.BLOCKED`.
-  - Không phải friend (`FriendshipExistsAsync`) → `403 FITMATE.CHAT.NOT_FRIEND`.
-- Race: re-check block trong transaction khi send. Nếu block xảy ra giữa check và insert → `403`. UNIQUE constraint `(low, high)` bảo vệ conversation creation race.
-
-### 12.4 Read marker
-
-- Bảng `chat_thread_reads(conversation_id, user_id, last_read_message_id, last_read_at)`, PK composite.
-- Marker chỉ tiến lên. So sánh `candidate_message.CreatedAt > current.LastReadAt`. Cũ hơn hoặc trùng → no-op (idempotent 204).
-- `last_read_message_id` KHÔNG so sánh trực tiếp (UUID ngẫu nhiên, không order-stable). Dùng `created_at` của message đó.
-- Mark-read KHÔNG tự trigger khi GET messages.
-
-### 12.5 Unread count
-
-- Đếm `chat_messages` where `conversation_id = X AND sender_user_id != viewer AND created_at > viewer_marker.last_read_at`.
-- Tin của chính mình KHÔNG tính.
-- Race: tin mới đến sau marker → count tăng đúng (cursor theo `created_at`).
-
-### 12.6 History + block/unfriend
-
-- Block / unfriend KHÔNG xoá conversation, messages, hay read markers.
-- Sau block: cả 2 bên vẫn xem được history, KHÔNG gửi mới.
-- Kết bạn lại → dùng lại conversation cũ.
-
-### 12.7 Pagination + ordering
-
-- Conversations list: cursor `(last_message_at desc, id desc)`.
-- Messages list: cursor `(created_at desc, id desc)`.
-- Limit 1..100, default 30.
-- Không dùng UUID order (không order-stable).
-
-### 12.8 Privacy
-
-- Admin KHÔNG đọc mặc định nội dung chat friend (xem §5).
-- Log KHÔNG chứa `text` message; chỉ log `message_id`, `conversation_id`, `sender_id`.
+## 11. Operator decisions trước release
+Xem [operator-actions.md](operator-actions.md). Các mặc định TTL/acceptance/payout/retention ở đây là baseline thiết kế, phải đồng bộ điều khoản và cấu hình trước phục vụ khách thật.
+Không tự mua tài nguyên, phát hành, migrate production hoặc rewrite lịch sử Git.
 

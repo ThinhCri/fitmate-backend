@@ -50,9 +50,10 @@ public class PushDeliveryDispatcher : IPushDeliveryDispatcher
     {
         ArgumentNullException.ThrowIfNull(payload);
 
-        // Validate payload upfront.
+        // Validate payload upfront. Dispatcher uses Title as the Message field
+        // for the in-app inbox (see TitleToMessage below).
         PushPayload.ValidateTitle(payload.Title);
-        PushPayload.ValidateMessage(""); // message stored separately in metadata; not used here
+        PushPayload.ValidateMessage(payload.Title);
         PushPayload.ValidateSummary(payload.Summary);
         var payloadJson = payload.Payload is null ? null
             : PushPayload.SerializeAndValidate(payload.Type, payload.Payload);

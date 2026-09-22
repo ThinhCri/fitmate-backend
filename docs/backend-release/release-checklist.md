@@ -1,153 +1,30 @@
-# Release Checklist
+# Release gates — bằng chứng bắt buộc
+PROD-2026-09-22-v1. Tất cả gate dưới đây chưa được VERIFIED bởi lần docs này.
 
-> Gate trước khi release. Mỗi gate có trạng thái: PASS / FAIL / NOT_RUN / BLOCKED. Không gán PASS nếu không có bằng chứng.
+| Gate | Tiêu chí | Evidence |
+|---|---|---|
+| G1 Contract | BR→operation→auth→test→client | OpenAPI SHA256, route report, generated TS, breaking diff |
+| G2 Identity/privacy | verify/reset/lock/revoke/MFA/deletion/private media | Real PostgreSQL API + browser/mobile E2E |
+| G3 Money | slot race, late IPN, refund concurrency, 10/90, payout | Sandbox IDs sanitized, ledger invariants |
+| G4 Features | Core BR acceptance; AI/VIP/reward capability explicit | BE-802..819 evidence, no fake prod |
+| G5 CI/Docker | clean DB, migration repeat, DP/media continuity, GH jobs green | Run URL, commit/image digest, scans |
+| G6 Load | normal/peak/soak, meaningful traffic, no resource leak | k6 raw report, dataset/environment/metrics |
+| G7 UAT | Android/admin cùng contract, offline/errors/auth expiry | E2E report/video/commits, no P0/P1 open |
+| G8 Operations | Alerts, restore DB/media/keys, incident ownership | Restore timings, rollback rehearsal |
+| G9 Product/policy | terms/retention/media/merchant/Play/deletion URL | Operator approvals + current policy check |
+| G10 Release | supported runtime, provider config, protected deploy | Manifest + explicit operator approval |
 
-## Gate matrix
+## Targets ban đầu, không phải kết quả đã đạt
+- Availability mục tiêu 99.5%/tháng; một API node vẫn SPOF.
+- Normal50 RPS/30 phút; peak100 RPS/10 phút; soak20 RPS/2 giờ.
+- Core reads p95<=500ms, writes<=1s, unexpected5xx<1%; đo provider/AI riêng.
+- Booking20 callers tranh interval chỉ 1 hold. Không chỉ hit health.
+- Restore baseline RPO<=24h/RTO<=4h; verify capability nhà cung cấp và budget.
+- Queue bounded, retry/dead-letter/expiry quan sát được.
+Nếu fail, ghi bottleneck/capacity limit và sửa, không đổi tiêu chí sau chạy chỉ để PASS.
 
-| # | Gate | Trạng thái | Bằng chứng / command |
-|---|---|---|---|
-| 1 | Local reproducible | NOT_RUN | — |
-| 2 | BE functional | NOT_RUN | — |
-| 3 | Android integration-ready | NOT_RUN | — |
-| 4 | Admin integration-ready | NOT_RUN | — |
-| 5 | CI verified | NOT_RUN | — |
-| 6 | Staging deployed/tested | NOT_RUN | — |
-| 7 | Load targets measured | NOT_RUN | — |
-| 8 | Backup/restore verified | NOT_RUN | — |
-| 9 | Payment production-ready | NOT_RUN | — |
-| 10a | AI integration-ready | NOT_RUN | — |
-| 10b | AI thực tế deployed | NOT_RUN | — |
-| 11 | Production release-ready | NOT_RUN | — |
-| 12 | Google Play submission prerequisites | NOT_RUN | — |
-
-## Chi tiết
-
-### 1. Local reproducible
-
-- [ ] `docker compose up` chạy được từ clean.
-- [ ] Migration tự chạy qua profile `migrate`.
-- [ ] Seed demo tạo được qua `dotnet run -- seed`.
-- [ ] Login demo user hoạt động.
-- [ ] Curl `/health/ready` trả 200.
-
-### 2. BE functional
-
-- [ ] Tất cả endpoint trong OpenAPI có implementation.
-- [ ] Unit tests pass: `dotnet test`.
-- [ ] Integration tests pass (DB).
-- [ ] Contract tests pass (snapshot vs OpenAPI).
-- [ ] Auth tests pass (401, 403, ownership).
-- [ ] Idempotency tests pass (retry, conflict).
-- [ ] Concurrency tests pass (booking conflict).
-- [ ] Money tests pass (rounding, sum cap).
-- [ ] Timezone tests pass.
-- [ ] Upload tests pass (size, type).
-- [ ] AI adapter tests pass (mock provider: success, no result, timeout, invalid output).
-
-### 3. Android integration-ready
-
-- [ ] Mobile app build với base URL staging OK.
-- [ ] Auth flow end-to-end: register / login / refresh / logout.
-- [ ] Marketplace list + filter.
-- [ ] Booking hold + payment + confirm + complete.
-- [ ] Cancel + refund (qua admin).
-- [ ] Workout log + session.
-- [ ] Meal log + scan (AI unavailable fallback).
-- [ ] Social post + comment + react.
-- [ ] Chat friend + AI fallback.
-- [ ] Notification list + read.
-
-### 4. Admin integration-ready
-
-- [ ] Admin login + session.
-- [ ] Overview dashboard load đúng số liệu.
-- [ ] User list + lock/unlock.
-- [ ] PT list + certificate approve/reject.
-- [ ] Booking list + force refund.
-- [ ] Finance overview + ledger + PT earnings.
-- [ ] Reports list + resolve/dismiss.
-- [ ] Audit log.
-- [ ] Settings đổi password admin.
-
-### 5. CI verified
-
-- [ ] BE CI: install lockfile, lint/typecheck, build, unit/integration/contract tests, Docker build, container smoke.
-- [ ] Web CI: install, lint/typecheck, production build.
-- [ ] Mobile CI: install, lint/typecheck, type-check, test.
-- [ ] Secret scanning pass.
-- [ ] Container scanning pass.
-
-### 6. Staging deployed/tested
-
-- [ ] Staging compose up.
-- [ ] Migration chạy thành công.
-- [ ] Health check pass.
-- [ ] Smoke script pass.
-- [ ] Logs structured.
-- [ ] Metrics endpoint expose.
-
-### 7. Load targets measured
-
-- [ ] Smoke load pass.
-- [ ] Normal load pass.
-- [ ] Peak load pass.
-- [ ] Spike pass.
-- [ ] Soak pass (no leak).
-- [ ] Stress — ghi saturation point.
-- [ ] Booking concurrency test pass.
-- [ ] DB connection pool không saturate.
-
-### 8. Backup/restore verified
-
-- [ ] Backup script chạy nightly.
-- [ ] Restore test trong 90 ngày gần nhất có ghi nhận RPO/RTO.
-- [ ] Off-VPS storage verify.
-
-### 9. Payment production-ready
-
-- [ ] VNPay merchant account verified.
-- [ ] Sandbox E2E pass.
-- [ ] Webhook verify HMAC + idempotency.
-- [ ] Reconciliation job chạy mỗi giờ.
-- [ ] Refund flow test.
-- [ ] Alert cho mismatch.
-
-### 10a. AI integration-ready
-
-- [ ] AI adapter trả `AI_UNAVAILABLE` đúng khi provider down.
-- [ ] Schema validation pass.
-- [ ] Timeout / retry / circuit breaker theo `ai-contract.md`.
-- [ ] Rate limit theo user.
-
-### 10b. AI thực tế deployed
-
-- [ ] Nhóm AI bàn giao theo `ai-handoff-checklist.md`.
-- [ ] Run trong môi trường cô lập.
-- [ ] Đo tài nguyên / latency.
-- [ ] Quyết định deployment (in-process / sidecar / service riêng).
-- [ ] Production deploy.
-
-### 11. Production release-ready
-
-- [ ] Tất cả gate trên PASS.
-- [ ] User confirm release window.
-- [ ] Backup ngay trước deploy.
-- [ ] Migration safety reviewed.
-- [ ] Release record ghi (commit, digest, version, time).
-- [ ] Monitor 30 phút đầu.
-
-### 12. Google Play submission prerequisites
-
-- [ ] Application ID đã đặt.
-- [ ] Keystore + upload key generated và lưu secret manager.
-- [ ] Play Console account có quyền upload.
-- [ ] Service account JSON (cho CI auto upload internal-testing).
-- [ ] AAB release build OK.
-- [ ] Store listing (text, icon, screenshots) sẵn.
-- [ ] Privacy policy URL.
-- [ ] Data Safety form completed.
-- [ ] Account deletion flow verified end-to-end.
-- [ ] Health declaration (nếu app có health features).
-- [ ] Target SDK mới nhất (theo Google policy hiện hành).
-- [ ] Permissions giảm thiểu.
-- [ ] Permissions policy cho location/health nếu có.
+## Release manifest
+Version/date; BE/app/admin commits; OpenAPI SHA256; image digest; migration from/to; environment/capabilities.
+Test/CI/report links; provider mode; secret reference names (không value); residual issues/owners.
+Operator approver; migration recovery; prior compatible image; smoke/rollback triggers; incident contact.
+Đừng tự Down migration destructive như rollback mặc định.

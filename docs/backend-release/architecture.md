@@ -1,5 +1,7 @@
 # Fitmate Backend — Kiến trúc
 
+> Baseline update 2026-09-22: tài liệu này giữ chi tiết/lịch sử; khi có mâu thuẫn, dùng [README](README.md), [domain rules](domain-rules.md), [tasks](tasks.md) và DEC-051. Không dùng giá/quota, trạng thái DONE, mock adapter hoặc route giả định trong tài liệu cũ làm bằng chứng production. Nguồn policy cập nhật: [release sources](policy-and-runtime-sources.md).
+
 > Nguyên tắc: **Modular monolith trên ASP.NET Core 8**, PostgreSQL self-hosted, Docker Compose. Không microservices, không K8s, không Redis/cache trừ khi đo được bottleneck thật.
 
 ## 1. Tổng quan

@@ -13,6 +13,8 @@ public sealed record NotificationView(
     string Message,
     string? Summary,
     JsonElement? Payload,
+    Guid? SourceEventId,
+    string? SourceType,
     bool Read,
     DateTime CreatedAt);
 

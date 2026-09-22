@@ -1,14 +1,15 @@
+using Fitmate.Application.Notifications;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Social;
 
 namespace Fitmate.Application.Social;
 
 /// <summary>
 /// BE-181: Friend + FriendRequest use cases.
-/// Tất cả mutation đều atomic: validate → write → outbox enqueue → SaveChangesAsync.
-/// Không tự gửi notification; worker (BE-200 phase) dispatch outbox event.
+/// Tất cả mutation đều atomic: validate → write → outbox enqueue → dispatch push → SaveChangesAsync.
 /// </summary>
 public class FriendService : IFriendService
 {
@@ -17,6 +18,7 @@ public class FriendService : IFriendService
     private readonly IUserRoleLookup _users;
     private readonly ISocialStore _socialStore;
     private readonly IOutboxDispatcher _outbox;
+    private readonly IPushDeliveryDispatcher _push;
 
     private const int DefaultLimit = 20;
     private const int MaxLimit = 100;
@@ -26,14 +28,18 @@ public class FriendService : IFriendService
         IBlockStore blockStore,
         IUserRoleLookup users,
         ISocialStore socialStore,
-        IOutboxDispatcher outbox)
+        IOutboxDispatcher outbox,
+        IPushDeliveryDispatcher push)
     {
         _store = store;
         _blockStore = blockStore;
         _users = users;
         _socialStore = socialStore;
         _outbox = outbox;
+        _push = push;
     }
+
+    // ─── Use cases ──────────────────────────────────────────────────────────
 
     public async Task<FriendRequestView> SendRequestAsync(Guid senderId, Guid recipientId, CancellationToken ct)
     {
@@ -76,6 +82,19 @@ public class FriendService : IFriendService
             recipientId,
             createdAt = request.CreatedAt
         });
+
+        // Enqueue push notification (BE-200: in-app + optional push delivery).
+        var senderAuthor = await LookupAuthorAsync(senderId, ct);
+        var senderName = senderAuthor?.DisplayName ?? "Someone";
+        var pushPayload = new NotificationPayload(
+            recipientId,
+            NotificationType.FriendRequest,
+            $"Friend request from {senderName}",
+            null,
+            new { requestId = request.Id, senderId },
+            request.Id,
+            "friend_request_sent");
+        await _push.DispatchAsync(pushPayload, ct);
 
         await _store.SaveChangesAsync(ct);
         return ToView(request);
@@ -123,6 +142,19 @@ public class FriendService : IFriendService
             recipientId = request.RecipientId,
             acceptedAt = request.UpdatedAt
         });
+
+        // Enqueue push notification: tell sender that their request was accepted (BE-200).
+        var actorAuthor = await LookupAuthorAsync(actorId, ct);
+        var actorName = actorAuthor?.DisplayName ?? "Someone";
+        var pushPayload = new NotificationPayload(
+            request.SenderId,
+            NotificationType.FriendRequest,
+            $"{actorName} accepted your friend request",
+            null,
+            new { requestId = request.Id, senderId = request.SenderId },
+            request.Id,
+            "friend_request_accepted");
+        await _push.DispatchAsync(pushPayload, ct);
 
         await _store.SaveChangesAsync(ct);
     }
