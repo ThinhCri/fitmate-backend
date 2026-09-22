@@ -4,7 +4,7 @@
 
 ## Phiên hiện tại
 
-### Phiên 34 — đang chạy (2026-09-21) [BE-340 + BE-200]
+### Phiên 35 — đang chạy (2026-09-22) [BE-420]
 
 **BE-140: Payment skeleton (mock URL, no VNPay) — DONE**
 
@@ -96,6 +96,44 @@ State verify trên local Postgres (`fitmateai_be-postgres-1` healthy):
 
 **Next:**
 - Tasks còn TODO không phụ thuộc UA: **BE-130 (Booking flows admin)**, **BE-420 (Storage adapter)**.
+
+### Phiên 35 update (2026-09-22) [BE-420]
+
+**BE-420: Storage adapter — DONE.**
+
+State verify trên solution `Fitmate.slnx`:
+- Application: `IStorageService` (UploadAsync path+stream+contentType → Uri) + `ISignedUrlService` (CreatePresignedReadUrl + TryValidateAndExtractPath) + `StorageOptions` (BasePath, BaseUrl, MaxFileSizeBytes=5 MiB, AllowedContentTypes=[jpeg,png,webp], AllowedCategories=[avatars,certificates,posts], SignedUrlSecret, SignedUrlTtlMinutes=15).
+- Infrastructure: `LocalStorageService` (atomic write via temp+rename, path-traversal guard) + `HmacSignedUrlService` (HMAC-SHA256 over `{relativePath}\n{expires}` → base64url, TTL clamp, constant-time sig compare).
+- API: `SignedUrlMiddleware` (gates `/uploads/*` → 403 nếu sig invalid/expired trước static file handler) + `UploadsController.POST /api/v1/uploads` (multipart `file` + `category` → 201 `{storageKey, uri, signedUrl}`).
+- Wire `CertificatesController.Submit` nhận `image_storage_key` từ upload flow.
+- DI: `Program.cs` register options + services + middleware + `UseStaticFiles` với PhysicalFileProvider + ContentTypeProvider cho jpg/png/webp.
+- DEC-050 chốt local volume + HMAC presigned URL (cloud adapter + secret manager rotation → UA-STOR-001).
+
+**Verify recipe:**
+- `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --no-restore` → **402/402 PASS** (10 mới BE-420 + 392 cũ).
+- 10 BE-420 tests cover: local write atomic + subdirs + no temp leaks + path traversal; signed URL format + round-trip + expiry + tamper + missing params + TTL clamp.
+- `dotnet build src/Fitmate.Api/Fitmate.Api.csproj --no-restore` → 0 errors (just NU1603 warning).
+
+**Tổng kết:**
+- `tasks.md` BE-420 → DONE; DONE count 19.
+- `decisions.md` DEC-050 → Accepted.
+
+**Commits (6 theo plan):**
+1. `docs(be): add BE-420 plan for storage adapter [BE-420]` (`5120227`)
+2. `feat(storage): add StorageService and SignedUrlService abstractions + options [BE-420]`
+3. `feat(storage): add LocalStorageService and HmacSignedUrlService implementations [BE-420]`
+4. `feat(storage): add UploadsController and SignedUrlMiddleware with static file serve [BE-420]`
+5. `feat(storage): wire certificate upload flow in CertificatesController [BE-420]`
+6. `test(storage): add unit tests for StorageService and HmacSignedUrlService [BE-420]`
+7. `docs(storage): add DEC-050 decision record and mark BE-420 done [BE-420]`
+
+**Pending beyond BE-420:**
+- UA-DP-001: chốt provider secret manager production (Azure Key Vault / AWS KMS / Vault) — không chặn dev local.
+- UA-FCM-001: chốt push provider (Expo vs FCM) — không chặn BE-200 in-app notification.
+- UA-STOR-001: chốt storage secret manager rotation (cloud adapter phase 2) — không chặn local dev.
+
+**Next:**
+- Tất cả các task trong TODO list không phụ thuộc UA đã xong. Các task còn lại đều BLOCKED UA (BE-400, BE-500, BE-600) hoặc AI (BE-430).
 
 ### Phiên 33 — đã làm (2026-09-21) [BE-170 + BE-320]
 

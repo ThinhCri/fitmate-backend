@@ -612,3 +612,24 @@
   - Authorization matrix §9 cập nhật: `GET /chat/friends/conversations/{id}/messages` vẫn OK sau block (chỉ chặn send).
   - Privacy: cả 2 bên vẫn thấy peer trong conversation list (1 conversation / 1 peer), unread count vẫn cập nhật từ peer side. Admin KHÔNG đọc được content (DEC-005 + domain-rules §5) trừ khi có report → moderation.
 - **Trạng thái**: ✅ Accepted (BE-191 PARTIAL DONE — committed phiên 28).
+
+## DEC-050 — Media storage: local volume + HMAC presigned URL
+
+- **Ngày**: 2026-09-22
+- **Người chốt**: AI (BE-420)
+- **Bối cảnh**: User upload ảnh (avatar, certificate, post image). Cần lưu file + serve lại cho client với URL an toàn. Không gọi cloud SDK trong MVP.
+- **Quyết định**:
+  - **Storage backend**: `IStorageService` interface; MVP impl là `LocalStorageService` ghi vào `StorageOptions.BasePath` (folder cấu hình, bind-mount trong Docker). Atomic write (temp + rename). Path traversal protection ở impl.
+  - **Categories allowlist**: `avatars`, `certificates`, `posts` (config-driven). Mỗi file lưu vào `{category}/{filename}_{guid}.{ext}`.
+  - **Content type allowlist**: `image/jpeg`, `image/png`, `image/webp`. MIME không khớp → 400.
+  - **Size limit**: 5 MiB mặc định. Exceed → 400.
+  - **Access URL**: HMAC-SHA256 presigned URL — `HmacSignedUrlService`. Format: `{BaseUrl}/{path}?expires={unix}&sig={base64url-hmac}`. Sig covers `"{path}\n{expires}"`.
+  - **TTL**: mặc định 15 phút, clamp không vượt quá `SignedUrlTtlMinutes`. URL hết hạn → 403.
+  - **Gate**: `SignedUrlMiddleware` chặn trước `UseStaticFiles` — không bypass được.
+  - **Secret**: `StorageOptions.SignedUrlSecret` (env `Storage__SignedUrlSecret`). Min 32 chars. **Production phải rotate qua secret manager** (UA-STOR-001).
+- **Hệ quả**:
+  - `POST /api/v1/uploads` (multipart) → 201 `{ storageKey, uri, signedUrl }`. Caller dùng `storageKey` cho các entity liên quan (e.g. `Certificate.imageStorageKey`).
+  - `GET /uploads/{path}?expires=...&sig=...` → file. Không hợp lệ/hết hạn → 403.
+  - Cloud adapter (S3 / GCS) sau này chỉ cần implement `IStorageService` + swap HMAC bằng provider-native presigned URL. Không sửa controller.
+  - Không có thumbnail / image processing trong MVP — FE tự scale.
+- **Trạng thái**: ✅ Accepted (BE-420 DONE — phiên 35, 2026-09-22).

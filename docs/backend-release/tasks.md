@@ -246,7 +246,7 @@
 - Scope: local volume (dev) + signed URL.
 - Depends on: BE-080
 - Done when: upload OK, signed URL TTL ≤ 15min.
-- Status: TODO
+- Status: **DONE (phiên 35, 2026-09-22)** — Plan rev 1 lưu ở `docs/backend-release/tasks/BE-420-plan.md`. Application: `IStorageService` + `ISignedUrlService` interfaces + `StorageOptions` (BasePath, BaseUrl, MaxFileSizeBytes=5MiB, AllowedContentTypes=[jpeg,png,webp], AllowedCategories=[avatars,certificates,posts], SignedUrlSecret, SignedUrlTtlMinutes=15). Infrastructure: `LocalStorageService` (atomic write temp+rename, path-traversal guard) + `HmacSignedUrlService` (HMAC-SHA256 over `path\n\nexpires` → base64url, expiry check + constant-time sig compare, TTL clamp). API: `SignedUrlMiddleware` (gates `/uploads/*`, 403 nếu invalid/expired trước static file handler) + `UploadsController.POST /api/v1/uploads` (multipart `file` + `category` → 201 `{storageKey, uri, signedUrl}`). Wire `CertificatesController` nhận `image_storage_key` từ upload. DI registration trong `Program.cs` + `UseStaticFiles` với PhysicalFileProvider. Unit tests: **10/10 PASS** (`LocalStorageServiceTests` 4 cases + `HmacSignedUrlServiceTests` 6 cases) — **tổng 402/402 PASS**. DEC-050 chốt local volume + HMAC presigned URL, deferred cloud adapter + secret manager rotation về UA-STOR-001.
 
 ### BE-430 AI adapter (chờ handoff)
 - Scope: sidecar / in-process theo `ai-handoff-checklist.md`.
@@ -276,7 +276,7 @@
 
 | Status | Count |
 |---|---|
-| DONE | 18 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151, BE-380, BE-310, BE-330, BE-340, **BE-200**) |
+| DONE | 19 (BE-001, BE-010, BE-020, BE-021, BE-080, BE-030, BE-070, BE-090, BE-100, BE-040, BE-050, BE-110, BE-151, BE-380, BE-310, BE-330, BE-340, BE-200, **BE-420**) |
 | IN_PROGRESS | 0 |
 | PARTIAL_DONE | 1 (BE-060 — cần BE-160 để hoàn thiện Confirm/Accept) |
 | TODO | ~16 |
