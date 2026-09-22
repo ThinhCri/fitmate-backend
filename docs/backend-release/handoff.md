@@ -95,16 +95,24 @@
 - Mở rộng `EfAdminFinanceStore` và bổ sung 9 unit tests mới trong `AdminFinanceServiceTests.cs`.
 - Kết quả test thực tế từ User: `dotnet test` 450/450 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-809.md`.
 
-**BE-810: Doanh thu PT và settlement — IMPLEMENTED (PENDING USER VERIFICATION)**
+**BE-810: Doanh thu PT và settlement — VERIFIED**
 - Triển khai `ITrainerRevenueService` & `TrainerRevenueService`:
   - `GET /api/v1/me/revenue`: Thống kê tổng quan doanh thu PT, phí nền tảng 10%, net share 90%, khấu trừ hoàn tiền và biểu đồ theo ngày.
   - `GET /api/v1/me/revenue/history`: Lịch sử doanh thu từng booking có phân trang.
   - `POST /api/v1/admin/finance/settlements`: Quyết toán Admin cho PT có mã đối soát và outbox event `finance.trainer_settled`.
 - Triển khai `EfTrainerRevenueStore` và controller `TrainerRevenueController`.
 - Bổ sung 8 unit tests mới trong `TrainerRevenueServiceTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-810.md`.
+- Kết quả test thực tế từ User: `dotnet test` 458/458 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-810.md`.
 
-**Next:** Sau khi User verify BE-810 (458/458 tests PASS), chuyển sang **BE-811** (Workout plan, session và weight hoàn chỉnh).
+**BE-811: Workout plan, session và weight hoàn chỉnh — IMPLEMENTED — PENDING USER VERIFICATION**
+- Triển khai trọn bộ CRUD cho Workout Plans: `GET/POST /api/v1/me/workout/plans`, `GET/PATCH/DELETE /api/v1/me/workout/plans/{id}`.
+- Xử lý xóa kế hoạch vẫn bảo toàn lịch sử buổi tập `workout_sessions` và snapshot fields.
+- Phát hiện xung đột 409 Conflict khi client_id đã tồn tại với payload khác.
+- Thêm kiểm tra biên độ ngày cân nặng không vượt quá 1 ngày trong tương lai.
+- Bổ sung các test cases toàn diện trong `WorkoutServiceTests.cs` và `WeightServiceTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-811.md`.
+
+**Next:** Chờ User chạy build và test nghiệm thu BE-811; sau đó chuyển sang **BE-812** (Dinh dưỡng và nhật ký đầy đủ).
 
 ### Lịch sử các phiên trước
 

@@ -9,6 +9,48 @@ namespace Fitmate.Application.Workout;
 public interface IWorkoutService
 {
     /// <summary>
+    /// List workout plans for the given user.
+    /// </summary>
+    Task<IReadOnlyList<WorkoutPlanView>> ListPlansAsync(
+        Guid userId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Get a workout plan with its exercises.
+    /// Returns null if not found or not owned by the user.
+    /// </summary>
+    Task<WorkoutPlanDetailView?> GetPlanDetailAsync(
+        Guid userId,
+        Guid planId,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Create a new workout plan with optional exercises.
+    /// </summary>
+    Task<WorkoutPlanDetailView> CreatePlanAsync(
+        Guid userId,
+        CreateWorkoutPlanRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Update an existing workout plan and its exercises.
+    /// </summary>
+    Task<WorkoutPlanDetailView> UpdatePlanAsync(
+        Guid userId,
+        Guid planId,
+        UpdateWorkoutPlanRequest request,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Delete a workout plan and its exercises.
+    /// Existing workout sessions preserve their historical snapshots.
+    /// </summary>
+    Task DeletePlanAsync(
+        Guid userId,
+        Guid planId,
+        CancellationToken ct = default);
+
+    /// <summary>
     /// List workout sessions for the given user with optional date range filter.
     /// Items are ordered by <c>Date DESC, CreatedAt DESC</c>.
     /// </summary>

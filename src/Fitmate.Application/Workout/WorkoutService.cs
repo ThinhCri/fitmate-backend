@@ -27,6 +27,181 @@ public class WorkoutService : IWorkoutService
         _outbox = outbox;
     }
 
+    public async Task<IReadOnlyList<WorkoutPlanView>> ListPlansAsync(Guid userId, CancellationToken ct = default)
+    {
+        var plans = await _store.ListPlansAsync(userId, ct);
+        if (plans.Count == 0) return Array.Empty<WorkoutPlanView>();
+        var planIds = plans.Select(p => p.Id).ToList();
+        var counts = await _store.CountPlanExercisesAsync(planIds, ct);
+        return plans.Select(p => new WorkoutPlanView(
+            p.Id,
+            p.DayOfWeek,
+            p.WorkoutName,
+            p.DurationMinutes,
+            p.TargetCaloriesBurn,
+            p.IsCompleted,
+            counts.GetValueOrDefault(p.Id, 0),
+            p.CreatedAt)).ToList();
+    }
+
+    public async Task<WorkoutPlanDetailView?> GetPlanDetailAsync(Guid userId, Guid planId, CancellationToken ct = default)
+    {
+        var plan = await _store.FindPlanByIdAsync(planId, ct);
+        if (plan is null || plan.UserId != userId) return null;
+
+        var exercises = await _store.ListPlanExercisesAsync(planId, ct);
+        return new WorkoutPlanDetailView(
+            plan.Id,
+            plan.DayOfWeek,
+            plan.WorkoutName,
+            plan.DurationMinutes,
+            plan.TargetCaloriesBurn,
+            plan.IsCompleted,
+            plan.CreatedAt,
+            exercises.Select(MapExerciseItem).ToList());
+    }
+
+    public async Task<WorkoutPlanDetailView> CreatePlanAsync(
+        Guid userId, CreateWorkoutPlanRequest request, CancellationToken ct = default)
+    {
+        ValidateCreatePlanRequest(request);
+
+        var plan = WorkoutPlan.Create(
+            userId,
+            request.DayOfWeek.Trim(),
+            request.WorkoutName.Trim(),
+            request.DurationMinutes,
+            request.TargetCaloriesBurn);
+
+        await _store.AddPlanAsync(plan, ct);
+
+        var exerciseItems = new List<Exercise>();
+        if (request.Exercises is { Count: > 0 })
+        {
+            foreach (var ex in request.Exercises)
+            {
+                var entity = Exercise.Create(
+                    plan.Id,
+                    ex.Name.Trim(),
+                    ex.Type,
+                    ex.Sets,
+                    ex.Reps,
+                    ex.DurationSec,
+                    ex.RestSec,
+                    ex.RestAfterSec,
+                    ex.Calories,
+                    ex.Notes,
+                    ex.MediaUrl,
+                    ex.MediaType,
+                    ex.MediaSource,
+                    ex.Tags ?? new List<string>());
+                await _store.AddPlanExerciseAsync(entity, ct);
+                exerciseItems.Add(entity);
+            }
+        }
+
+        await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("workout.plan_created", new
+        {
+            planId = plan.Id,
+            userId
+        });
+
+        return new WorkoutPlanDetailView(
+            plan.Id,
+            plan.DayOfWeek,
+            plan.WorkoutName,
+            plan.DurationMinutes,
+            plan.TargetCaloriesBurn,
+            plan.IsCompleted,
+            plan.CreatedAt,
+            exerciseItems.Select(MapExerciseItem).ToList());
+    }
+
+    public async Task<WorkoutPlanDetailView> UpdatePlanAsync(
+        Guid userId, Guid planId, UpdateWorkoutPlanRequest request, CancellationToken ct = default)
+    {
+        var plan = await _store.FindPlanByIdAsync(planId, ct);
+        if (plan is null || plan.UserId != userId)
+            throw new NotFoundException(WorkoutErrorCodes.PlanNotFound, $"Workout plan {planId} not found.");
+
+        ValidateUpdatePlanRequest(request);
+
+        plan.Update(
+            request.DayOfWeek?.Trim(),
+            request.WorkoutName?.Trim(),
+            request.DurationMinutes,
+            request.TargetCaloriesBurn,
+            request.IsCompleted);
+
+        var exerciseItems = new List<Exercise>();
+        if (request.Exercises is not null)
+        {
+            await _store.DeletePlanExercisesAsync(plan.Id, ct);
+            foreach (var ex in request.Exercises)
+            {
+                var entity = Exercise.Create(
+                    plan.Id,
+                    ex.Name.Trim(),
+                    ex.Type,
+                    ex.Sets,
+                    ex.Reps,
+                    ex.DurationSec,
+                    ex.RestSec,
+                    ex.RestAfterSec,
+                    ex.Calories,
+                    ex.Notes,
+                    ex.MediaUrl,
+                    ex.MediaType,
+                    ex.MediaSource,
+                    ex.Tags ?? new List<string>());
+                await _store.AddPlanExerciseAsync(entity, ct);
+                exerciseItems.Add(entity);
+            }
+        }
+        else
+        {
+            var existing = await _store.ListPlanExercisesAsync(plan.Id, ct);
+            exerciseItems.AddRange(existing);
+        }
+
+        await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("workout.plan_updated", new
+        {
+            planId = plan.Id,
+            userId
+        });
+
+        return new WorkoutPlanDetailView(
+            plan.Id,
+            plan.DayOfWeek,
+            plan.WorkoutName,
+            plan.DurationMinutes,
+            plan.TargetCaloriesBurn,
+            plan.IsCompleted,
+            plan.CreatedAt,
+            exerciseItems.Select(MapExerciseItem).ToList());
+    }
+
+    public async Task DeletePlanAsync(Guid userId, Guid planId, CancellationToken ct = default)
+    {
+        var plan = await _store.FindPlanByIdAsync(planId, ct);
+        if (plan is null || plan.UserId != userId)
+            throw new NotFoundException(WorkoutErrorCodes.PlanNotFound, $"Workout plan {planId} not found.");
+
+        await _store.DeletePlanExercisesAsync(plan.Id, ct);
+        await _store.DeletePlanAsync(plan, ct);
+        await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("workout.plan_deleted", new
+        {
+            planId = plan.Id,
+            userId
+        });
+    }
+
     public async Task<IReadOnlyList<WorkoutSessionView>> ListSessionsAsync(
         Guid userId, DateOnly? from, DateOnly? to, CancellationToken ct = default)
     {
@@ -95,6 +270,16 @@ public class WorkoutService : IWorkoutService
             if (existing.UserId != userId)
                 throw new ConflictException(WorkoutErrorCodes.DuplicateClientId,
                     $"ClientId {request.ClientId} already used by another user.");
+
+            if (existing.DurationMin != request.DurationMin ||
+                existing.CaloriesBurned != request.CaloriesBurned ||
+                existing.Date != request.Date ||
+                existing.Status != request.Status)
+            {
+                throw new ConflictException(WorkoutErrorCodes.DuplicateClientId,
+                    $"ClientId {request.ClientId} already used with different workout payload.");
+            }
+
             return MapSession(existing);
         }
 
@@ -153,6 +338,89 @@ public class WorkoutService : IWorkoutService
         return MapSession(session);
     }
 
+    private static void ValidateCreatePlanRequest(CreateWorkoutPlanRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (string.IsNullOrWhiteSpace(request.DayOfWeek))
+            errors["day_of_week"] = new[] { "required" };
+        else if (request.DayOfWeek.Trim().Length > 16)
+            errors["day_of_week"] = new[] { "max length 16 characters" };
+
+        if (string.IsNullOrWhiteSpace(request.WorkoutName))
+            errors["workout_name"] = new[] { "required" };
+        else if (request.WorkoutName.Trim().Length > 200)
+            errors["workout_name"] = new[] { "max length 200 characters" };
+
+        if (request.DurationMinutes <= 0 || request.DurationMinutes > 600)
+            errors["duration_minutes"] = new[] { "must be 1..600" };
+
+        if (request.TargetCaloriesBurn < 0 || request.TargetCaloriesBurn > 10000)
+            errors["target_calories_burn"] = new[] { "must be 0..10000" };
+
+        ValidateExerciseInputs(request.Exercises, errors);
+
+        if (errors.Count > 0)
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Invalid create plan request.",
+                errors);
+    }
+
+    private static void ValidateUpdatePlanRequest(UpdateWorkoutPlanRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (request.DayOfWeek is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.DayOfWeek))
+                errors["day_of_week"] = new[] { "cannot be empty" };
+            else if (request.DayOfWeek.Trim().Length > 16)
+                errors["day_of_week"] = new[] { "max length 16 characters" };
+        }
+
+        if (request.WorkoutName is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.WorkoutName))
+                errors["workout_name"] = new[] { "cannot be empty" };
+            else if (request.WorkoutName.Trim().Length > 200)
+                errors["workout_name"] = new[] { "max length 200 characters" };
+        }
+
+        if (request.DurationMinutes.HasValue && (request.DurationMinutes.Value <= 0 || request.DurationMinutes.Value > 600))
+            errors["duration_minutes"] = new[] { "must be 1..600" };
+
+        if (request.TargetCaloriesBurn.HasValue && (request.TargetCaloriesBurn.Value < 0 || request.TargetCaloriesBurn.Value > 10000))
+            errors["target_calories_burn"] = new[] { "must be 0..10000" };
+
+        ValidateExerciseInputs(request.Exercises, errors);
+
+        if (errors.Count > 0)
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Invalid update plan request.",
+                errors);
+    }
+
+    private static void ValidateExerciseInputs(List<WorkoutPlanExerciseInput>? exercises, Dictionary<string, string[]> errors)
+    {
+        if (exercises is null) return;
+        for (int i = 0; i < exercises.Count; i++)
+        {
+            var ex = exercises[i];
+            if (string.IsNullOrWhiteSpace(ex.Name))
+                errors[$"exercises[{i}].name"] = new[] { "required" };
+            if (ex.Sets <= 0 || ex.Sets > 100)
+                errors[$"exercises[{i}].sets"] = new[] { "must be 1..100" };
+            if (ex.Reps.HasValue && ex.Reps.Value < 0)
+                errors[$"exercises[{i}].reps"] = new[] { "cannot be negative" };
+            if (ex.DurationSec.HasValue && ex.DurationSec.Value < 0)
+                errors[$"exercises[{i}].duration_sec"] = new[] { "cannot be negative" };
+            if (ex.RestSec < 0)
+                errors[$"exercises[{i}].rest_sec"] = new[] { "cannot be negative" };
+            if (ex.Calories < 0)
+                errors[$"exercises[{i}].calories"] = new[] { "cannot be negative" };
+        }
+    }
+
     private static void ValidateLogRequest(LogWorkoutSessionRequest request)
     {
         var errors = new Dictionary<string, string[]>();
@@ -183,6 +451,11 @@ public class WorkoutService : IWorkoutService
         DayOfWeek.Sunday => "Sun",
         _ => "Mon"
     };
+
+    private static ExerciseItemView MapExerciseItem(Exercise e) => new(
+        e.Id, e.WorkoutPlanId, e.Name, e.Type, e.Sets, e.Reps,
+        e.DurationSec, e.RestSec, e.RestAfterSec, e.Calories,
+        e.Notes, e.MediaUrl, e.MediaType, e.MediaSource, e.Tags);
 
     private static WorkoutSessionView MapSession(WorkoutSession s) => new(
         s.Id, s.WorkoutPlanId, s.SnapshotPlanName, s.Date, s.Day,

@@ -52,8 +52,50 @@ public class EfWorkoutStore : IWorkoutStore
     public Task<WorkoutPlan?> FindPlanByIdAsync(Guid planId, CancellationToken ct) =>
         _db.WorkoutPlans.FirstOrDefaultAsync(p => p.Id == planId && p.DeletedAt == null, ct);
 
+    public async Task<IReadOnlyList<WorkoutPlan>> ListPlansAsync(Guid userId, CancellationToken ct) =>
+        await _db.WorkoutPlans
+            .Where(p => p.UserId == userId && p.DeletedAt == null)
+            .OrderBy(p => p.CreatedAt)
+            .ToListAsync(ct);
+
+    public async Task<IReadOnlyList<Exercise>> ListPlanExercisesAsync(Guid planId, CancellationToken ct) =>
+        await _db.Exercises
+            .Where(e => e.WorkoutPlanId == planId && e.DeletedAt == null)
+            .OrderBy(e => e.CreatedAt)
+            .ToListAsync(ct);
+
+    public async Task<Dictionary<Guid, int>> CountPlanExercisesAsync(IReadOnlyList<Guid> planIds, CancellationToken ct) =>
+        await _db.Exercises
+            .Where(e => planIds.Contains(e.WorkoutPlanId) && e.DeletedAt == null)
+            .GroupBy(e => e.WorkoutPlanId)
+            .Select(g => new { PlanId = g.Key, Count = g.Count() })
+            .ToDictionaryAsync(x => x.PlanId, x => x.Count, ct);
+
     public Task<Exercise?> FindCatalogExerciseByIdAsync(Guid exerciseId, CancellationToken ct) =>
         _db.Exercises.FirstOrDefaultAsync(e => e.Id == exerciseId && e.DeletedAt == null, ct);
+
+    public async Task AddPlanAsync(WorkoutPlan plan, CancellationToken ct) =>
+        await _db.WorkoutPlans.AddAsync(plan, ct);
+
+    public async Task AddPlanExerciseAsync(Exercise exercise, CancellationToken ct) =>
+        await _db.Exercises.AddAsync(exercise, ct);
+
+    public async Task DeletePlanExercisesAsync(Guid planId, CancellationToken ct)
+    {
+        var exercises = await _db.Exercises
+            .Where(e => e.WorkoutPlanId == planId && e.DeletedAt == null)
+            .ToListAsync(ct);
+        foreach (var ex in exercises)
+        {
+            ex.SoftDelete();
+        }
+    }
+
+    public Task DeletePlanAsync(WorkoutPlan plan, CancellationToken ct)
+    {
+        plan.SoftDelete();
+        return Task.CompletedTask;
+    }
 
     public async Task AddSessionAsync(WorkoutSession session, CancellationToken ct) =>
         await _db.WorkoutSessions.AddAsync(session, ct);

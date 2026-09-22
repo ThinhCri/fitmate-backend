@@ -25,5 +25,15 @@ public class WorkoutPlan : AuditableEntity
         UpdatedAt = DateTime.UtcNow
     };
 
+    public void Update(string? dayOfWeek, string? workoutName, int? durationMinutes, int? targetCaloriesBurn, bool? isCompleted = null)
+    {
+        if (!string.IsNullOrWhiteSpace(dayOfWeek)) DayOfWeek = dayOfWeek;
+        if (!string.IsNullOrWhiteSpace(workoutName)) WorkoutName = workoutName;
+        if (durationMinutes.HasValue) DurationMinutes = durationMinutes.Value;
+        if (targetCaloriesBurn.HasValue) TargetCaloriesBurn = targetCaloriesBurn.Value;
+        if (isCompleted.HasValue) IsCompleted = isCompleted.Value;
+        Touch();
+    }
+
     public void MarkCompleted() { IsCompleted = true; Touch(); }
 }

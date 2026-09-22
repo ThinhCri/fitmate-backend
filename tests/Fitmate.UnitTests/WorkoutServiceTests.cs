@@ -8,8 +8,8 @@ using FluentAssertions;
 namespace Fitmate.UnitTests;
 
 /// <summary>
-/// BE-160: WorkoutService unit tests — list sessions, get detail, log session,
-/// idempotency by client_id, snapshot plan fields.
+/// BE-160 & BE-811: WorkoutService unit tests — plan CRUD, list sessions, get detail, log session,
+/// idempotency by client_id, payload conflict 409, snapshot plan fields, and plan deletion preserving history.
 /// </summary>
 public class WorkoutServiceTests
 {
@@ -22,38 +22,71 @@ public class WorkoutServiceTests
         public List<WorkoutSession> Sessions { get; } = new();
         public List<WorkoutSessionExercise> Exercises { get; } = new();
         public List<WorkoutSessionExerciseSet> Sets { get; } = new();
+        public List<WorkoutPlan> Plans { get; } = new();
+        public List<Exercise> PlanExercises { get; } = new();
         public WorkoutPlan? Plan { get; set; }
         public Exercise? CatalogExercise { get; set; }
 
         public Task<WorkoutSession?> FindSessionByIdAsync(Guid sessionId, CancellationToken ct)
-            => Task.FromResult(Sessions.FirstOrDefault(s => s.Id == sessionId));
+            => Task.FromResult(Sessions.FirstOrDefault(s => s.Id == sessionId && !s.IsDeleted));
 
         public Task<WorkoutSession?> FindSessionByClientIdAsync(Guid userId, string clientId, CancellationToken ct)
-            => Task.FromResult(Sessions.FirstOrDefault(s => s.UserId == userId && s.ClientId == clientId));
+            => Task.FromResult(Sessions.FirstOrDefault(s => s.UserId == userId && s.ClientId == clientId && !s.IsDeleted));
 
         public Task<IReadOnlyList<WorkoutSession>> ListSessionsAsync(
             Guid userId, DateOnly? from, DateOnly? to, CancellationToken ct)
         {
-            var q = Sessions.Where(s => s.UserId == userId);
+            var q = Sessions.Where(s => s.UserId == userId && !s.IsDeleted);
             if (from.HasValue) q = q.Where(s => s.Date >= from.Value);
             if (to.HasValue) q = q.Where(s => s.Date <= to.Value);
             return Task.FromResult<IReadOnlyList<WorkoutSession>>(q.OrderByDescending(s => s.Date).ToList());
         }
 
         public Task<WorkoutSessionExercise?> FindSessionExerciseByIdAsync(Guid id, CancellationToken ct)
-            => Task.FromResult(Exercises.FirstOrDefault(e => e.Id == id));
+            => Task.FromResult(Exercises.FirstOrDefault(e => e.Id == id && !e.IsDeleted));
 
         public Task<IReadOnlyList<WorkoutSessionExercise>> ListExercisesAsync(Guid sessionId, CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<WorkoutSessionExercise>>(Exercises.Where(e => e.WorkoutSessionId == sessionId).ToList());
+            => Task.FromResult<IReadOnlyList<WorkoutSessionExercise>>(Exercises.Where(e => e.WorkoutSessionId == sessionId && !e.IsDeleted).ToList());
 
         public Task<IReadOnlyList<WorkoutSessionExerciseSet>> ListSetsAsync(Guid exerciseId, CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<WorkoutSessionExerciseSet>>(Sets.Where(s => s.WorkoutSessionExerciseId == exerciseId).ToList());
+            => Task.FromResult<IReadOnlyList<WorkoutSessionExerciseSet>>(Sets.Where(s => s.WorkoutSessionExerciseId == exerciseId && !s.IsDeleted).ToList());
 
         public Task<WorkoutPlan?> FindPlanByIdAsync(Guid planId, CancellationToken ct)
-            => Task.FromResult(Plan);
+            => Task.FromResult(Plan ?? Plans.FirstOrDefault(p => p.Id == planId && !p.IsDeleted));
+
+        public Task<IReadOnlyList<WorkoutPlan>> ListPlansAsync(Guid userId, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<WorkoutPlan>>(Plans.Where(p => p.UserId == userId && !p.IsDeleted).OrderBy(p => p.CreatedAt).ToList());
+
+        public Task<IReadOnlyList<Exercise>> ListPlanExercisesAsync(Guid planId, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<Exercise>>(PlanExercises.Where(e => e.WorkoutPlanId == planId && !e.IsDeleted).OrderBy(e => e.CreatedAt).ToList());
+
+        public Task<Dictionary<Guid, int>> CountPlanExercisesAsync(IReadOnlyList<Guid> planIds, CancellationToken ct)
+        {
+            var dict = PlanExercises
+                .Where(e => planIds.Contains(e.WorkoutPlanId) && !e.IsDeleted)
+                .GroupBy(e => e.WorkoutPlanId)
+                .ToDictionary(g => g.Key, g => g.Count());
+            return Task.FromResult(dict);
+        }
 
         public Task<Exercise?> FindCatalogExerciseByIdAsync(Guid exerciseId, CancellationToken ct)
             => Task.FromResult(CatalogExercise);
+
+        public Task AddPlanAsync(WorkoutPlan plan, CancellationToken ct) { Plans.Add(plan); return Task.CompletedTask; }
+        public Task AddPlanExerciseAsync(Exercise exercise, CancellationToken ct) { PlanExercises.Add(exercise); return Task.CompletedTask; }
+        public Task DeletePlanExercisesAsync(Guid planId, CancellationToken ct)
+        {
+            foreach (var ex in PlanExercises.Where(e => e.WorkoutPlanId == planId))
+            {
+                ex.SoftDelete();
+            }
+            return Task.CompletedTask;
+        }
+        public Task DeletePlanAsync(WorkoutPlan plan, CancellationToken ct)
+        {
+            plan.SoftDelete();
+            return Task.CompletedTask;
+        }
 
         public Task AddSessionAsync(WorkoutSession session, CancellationToken ct) { Sessions.Add(session); return Task.CompletedTask; }
         public Task AddExerciseAsync(WorkoutSessionExercise exercise, CancellationToken ct) { Exercises.Add(exercise); return Task.CompletedTask; }
@@ -87,6 +120,185 @@ public class WorkoutServiceTests
         typeof(Exercise).GetProperty("Id")!.SetValue(ex, exerciseId);
         return ex;
     }
+
+    // ─── Plan Tests ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ListPlansAsync_returns_empty_when_no_plans()
+    {
+        var result = await SUT().ListPlansAsync(UserId);
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ListPlansAsync_returns_user_plans_with_exercise_counts()
+    {
+        var store = new InMemoryWorkoutStore();
+        var plan1 = CreateTestPlan(Guid.NewGuid(), UserId);
+        var plan2 = CreateTestPlan(Guid.NewGuid(), UserId);
+        var otherUserPlan = CreateTestPlan(Guid.NewGuid(), Guid.NewGuid());
+        store.Plans.Add(plan1);
+        store.Plans.Add(plan2);
+        store.Plans.Add(otherUserPlan);
+
+        var ex1 = CreateTestExercise(Guid.NewGuid(), plan1.Id);
+        var ex2 = CreateTestExercise(Guid.NewGuid(), plan1.Id);
+        store.PlanExercises.Add(ex1);
+        store.PlanExercises.Add(ex2);
+
+        var result = await SUT(store).ListPlansAsync(UserId);
+
+        result.Should().HaveCount(2);
+        result.First(p => p.Id == plan1.Id).ExerciseCount.Should().Be(2);
+        result.First(p => p.Id == plan2.Id).ExerciseCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GetPlanDetailAsync_returns_null_when_not_found_or_different_user()
+    {
+        var store = new InMemoryWorkoutStore();
+        var plan = CreateTestPlan(PlanId, Guid.NewGuid());
+        store.Plans.Add(plan);
+
+        var result = await SUT(store).GetPlanDetailAsync(UserId, plan.Id);
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetPlanDetailAsync_returns_plan_with_exercises()
+    {
+        var store = new InMemoryWorkoutStore();
+        var plan = CreateTestPlan(PlanId, UserId);
+        store.Plans.Add(plan);
+        var ex = CreateTestExercise(ExerciseId, plan.Id);
+        store.PlanExercises.Add(ex);
+
+        var result = await SUT(store).GetPlanDetailAsync(UserId, plan.Id);
+
+        result.Should().NotBeNull();
+        result!.WorkoutName.Should().Be("Morning Run");
+        result.Exercises.Should().HaveCount(1);
+        result.Exercises[0].Name.Should().Be("Push-up");
+    }
+
+    [Fact]
+    public async Task CreatePlanAsync_creates_plan_and_exercises_and_emits_outbox()
+    {
+        var store = new InMemoryWorkoutStore();
+        var outbox = new TestOutbox();
+        var svc = SUT(store, outbox);
+
+        var request = new CreateWorkoutPlanRequest
+        {
+            DayOfWeek = "Tue",
+            WorkoutName = "Leg Day",
+            DurationMinutes = 45,
+            TargetCaloriesBurn = 350,
+            Exercises = new List<WorkoutPlanExerciseInput>
+            {
+                new()
+                {
+                    Name = "Squats",
+                    Type = ExerciseType.Reps,
+                    Sets = 4,
+                    Reps = 12,
+                    RestSec = 60,
+                    Calories = 100
+                }
+            }
+        };
+
+        var result = await svc.CreatePlanAsync(UserId, request);
+
+        result.Should().NotBeNull();
+        result.DayOfWeek.Should().Be("Tue");
+        result.WorkoutName.Should().Be("Leg Day");
+        result.Exercises.Should().HaveCount(1);
+        result.Exercises[0].Name.Should().Be("Squats");
+        store.Plans.Should().HaveCount(1);
+        outbox.Messages.Should().ContainSingle(m => m.Type == "workout.plan_created");
+    }
+
+    [Fact]
+    public async Task CreatePlanAsync_throws_validation_when_invalid()
+    {
+        var request = new CreateWorkoutPlanRequest
+        {
+            DayOfWeek = "",
+            WorkoutName = "",
+            DurationMinutes = 0,
+            TargetCaloriesBurn = -1
+        };
+
+        var act = () => SUT().CreatePlanAsync(UserId, request);
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task UpdatePlanAsync_updates_plan_and_replaces_exercises()
+    {
+        var store = new InMemoryWorkoutStore();
+        var outbox = new TestOutbox();
+        var plan = CreateTestPlan(PlanId, UserId);
+        store.Plans.Add(plan);
+        var oldEx = CreateTestExercise(Guid.NewGuid(), plan.Id);
+        store.PlanExercises.Add(oldEx);
+
+        var request = new UpdateWorkoutPlanRequest
+        {
+            WorkoutName = "Updated Run",
+            DurationMinutes = 50,
+            Exercises = new List<WorkoutPlanExerciseInput>
+            {
+                new()
+                {
+                    Name = "Sprint",
+                    Type = ExerciseType.Time,
+                    Sets = 5,
+                    DurationSec = 30,
+                    RestSec = 30,
+                    Calories = 80
+                }
+            }
+        };
+
+        var result = await SUT(store, outbox).UpdatePlanAsync(UserId, plan.Id, request);
+
+        result.WorkoutName.Should().Be("Updated Run");
+        result.DurationMinutes.Should().Be(50);
+        result.Exercises.Should().HaveCount(1);
+        result.Exercises[0].Name.Should().Be("Sprint");
+        oldEx.IsDeleted.Should().BeTrue();
+        outbox.Messages.Should().ContainSingle(m => m.Type == "workout.plan_updated");
+    }
+
+    [Fact]
+    public async Task DeletePlanAsync_deletes_plan_and_exercises_preserves_session()
+    {
+        var store = new InMemoryWorkoutStore();
+        var outbox = new TestOutbox();
+        var plan = CreateTestPlan(PlanId, UserId);
+        store.Plans.Add(plan);
+        var ex = CreateTestExercise(Guid.NewGuid(), plan.Id);
+        store.PlanExercises.Add(ex);
+
+        // Session created with snapshot from this plan
+        var session = WorkoutSession.Create(UserId, plan.Id, "c-del", new DateOnly(2026, 9, 10), "Mon",
+            60, 400, 1, WorkoutSessionStatus.Completed, 3, 3,
+            snapshotPlanName: plan.WorkoutName, snapshotPlanDayOfWeek: plan.DayOfWeek);
+        store.Sessions.Add(session);
+
+        await SUT(store, outbox).DeletePlanAsync(UserId, plan.Id);
+
+        plan.IsDeleted.Should().BeTrue();
+        ex.IsDeleted.Should().BeTrue();
+        // Session and its snapshot data remain fully intact
+        session.IsDeleted.Should().BeFalse();
+        session.SnapshotPlanName.Should().Be("Morning Run");
+        outbox.Messages.Should().ContainSingle(m => m.Type == "workout.plan_deleted");
+    }
+
+    // ─── Session Tests ──────────────────────────────────────────────────────
 
     [Fact]
     public async Task ListSessionsAsync_returns_empty_when_no_sessions()
@@ -157,7 +369,7 @@ public class WorkoutServiceTests
     }
 
     [Fact]
-    public async Task LogSessionAsync_idempotent_by_client_id_returns_existing()
+    public async Task LogSessionAsync_idempotent_by_client_id_returns_existing_when_same_payload()
     {
         var store = new InMemoryWorkoutStore();
         var existing = WorkoutSession.Create(UserId, null, "c-dup", new DateOnly(2026, 9, 1), "Mon", 60, 300, 2, WorkoutSessionStatus.Completed, null, null);
@@ -177,6 +389,28 @@ public class WorkoutServiceTests
 
         result.Id.Should().Be(existing.Id);
         store.Sessions.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task LogSessionAsync_throws_conflict_409_when_same_client_id_with_different_payload()
+    {
+        var store = new InMemoryWorkoutStore();
+        var existing = WorkoutSession.Create(UserId, null, "c-dup-diff", new DateOnly(2026, 9, 1), "Mon", 60, 300, 2, WorkoutSessionStatus.Completed, null, null);
+        store.Sessions.Add(existing);
+
+        var request = new LogWorkoutSessionRequest
+        {
+            ClientId = "c-dup-diff",
+            Date = new DateOnly(2026, 9, 1),
+            DurationMin = 90, // Different duration
+            CaloriesBurned = 500,
+            Exercises = 3,
+            Status = WorkoutSessionStatus.Completed
+        };
+
+        var act = () => SUT(store).LogSessionAsync(UserId, request, "idem-key", CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>();
     }
 
     [Fact]

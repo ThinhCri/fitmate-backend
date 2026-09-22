@@ -40,6 +40,15 @@ public class WeightService : IWeightService
                     ["weight_kg"] = new[] { $"must be {MinWeightKg}..{MaxWeightKg}" }
                 });
 
+        if (request.RecordedAt.HasValue && request.RecordedAt.Value > DateTime.UtcNow.AddDays(1))
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "recorded_at cannot be in the future.",
+                new Dictionary<string, string[]>
+                {
+                    ["recorded_at"] = new[] { "cannot be more than 1 day in the future" }
+                });
+
         var recordedAt = request.RecordedAt ?? DateTime.UtcNow;
         var log = WeightLog.Create(userId, request.WeightKg, recordedAt);
         await _store.AddAsync(log, ct);

@@ -128,21 +128,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-810 — Doanh thu PT và settlement
 - Plan: [Plan triển khai](production-plans/BE-810.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-807, BE-809; requirement: BR-07.
-- Hiện trạng: Đã triển khai `ITrainerRevenueService` và `TrainerRevenueController`: xem tổng quan doanh thu PT (`GET /api/v1/me/revenue`), lịch sử phân trang (`GET /api/v1/me/revenue/history`), quyết toán Admin (`POST /api/v1/admin/finance/settlements`), bảo đảm tỷ lệ chia 90/10 và trừ hoàn tiền chuẩn xác, enqueue outbox `finance.trainer_settled`, và bộ unit tests trong `TrainerRevenueServiceTests.cs`.
+- Hiện trạng: Đã triển khai `ITrainerRevenueService` và `TrainerRevenueController`: xem tổng quan doanh thu PT (`GET /api/v1/me/revenue`), lịch sử phân trang (`GET /api/v1/me/revenue/history`), quyết toán Admin (`POST /api/v1/admin/finance/settlements`), bảo đảm tỷ lệ chia 90/10 và trừ hoàn tiền chuẩn xác, enqueue outbox `finance.trainer_settled`, và bộ unit tests trong `TrainerRevenueServiceTests.cs`; user đã verify build 0 error và 458/458 tests PASS.
 - Scope: Owner revenue overview/chart/detail, ledger immutable recognized/adjustment; manual payout batch approved reference và khóa chống chi trùng; admin finance cùng projection.
-- Acceptance/evidence: [Evidence BE-810](production-plans/evidence/BE-810.md) (Chờ user chạy build & test verification).
+- Acceptance/evidence: [Evidence BE-810](production-plans/evidence/BE-810.md) (Build 0 error, 458/458 tests PASS).
 - Handoff: hoàn thiện doanh thu PT và settlement; mở khóa BE-811.
 
 ### BE-811 — Workout plan, session và weight hoàn chỉnh
 - Plan: [Plan triển khai](production-plans/BE-811.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-08.
-- Hiện trạng: Sessions/weight có code; plan CRUD và DB tests thiếu evidence.
+- Hiện trạng: Đã triển khai đầy đủ CRUD cho Workout Plan (`GET/POST /api/v1/me/workout/plans`, `GET/PATCH/DELETE /api/v1/me/workout/plans/{id}`), bảo toàn lịch sử buổi tập khi xóa kế hoạch, phát hiện xung đột payload 409 khi retry cùng `client_id`, lưu trữ snapshot kế hoạch, bổ sung kiểm tra biên độ ngày cân nặng, và mở rộng bộ unit tests toàn diện trong `WorkoutServiceTests.cs` và `WeightServiceTests.cs`.
 - Scope: Plan list/create/patch/delete; snapshot lúc bắt đầu/client offline; per-set result; idempotency bền; weight pagination/timezone/backfill; licensed media catalog minimal.
-- Acceptance/evidence: Plan delete không mất session; same client_id different payload 409; same timestamp paging; time/reps validation; mobile session replay.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-811](production-plans/evidence/BE-811.md).
+- Handoff: hoàn thiện workout plan, session snapshot và weight log; mở khóa BE-812 và BE-813.
 
 ### BE-812 — Dinh dưỡng và nhật ký đầy đủ
 - Plan: [Plan triển khai](production-plans/BE-812.md).
