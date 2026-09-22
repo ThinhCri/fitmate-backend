@@ -83,21 +83,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-805 — Xóa tài khoản và dữ liệu
 - Plan: [Plan triển khai](production-plans/BE-805.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-802, BE-804; requirement: BR-03.
-- Hiện trạng: Chưa đủ luồng deletion/export/retention.
+- Hiện trạng: Đã triển khai đầy đủ luồng in-app deletion (`POST /users/me/delete-request`), deletion status & 30-day retention window (`GET /users/me/deletion-status`), hủy xóa (`POST /users/me/cancel-deletion`), public form deletion request/confirm (`POST /public/account-deletion-request` & `/confirm`), export dữ liệu (`POST /users/me/export`), thu hồi phiên/thiết bị ngay lập tức, kiểm tra nghĩa vụ đặt lịch/tài chính, và bộ unit tests trong `AccountDeletionServiceTests.cs`; user đã verify build 0 error và 423/423 tests PASS.
 - Scope: In-app và public request path verified ownership, deletion job, export, revoke devices/sessions; retention policy và restore tombstones; support cho trường hợp còn nghĩa vụ tài chính.
-- Acceptance/evidence: E2E deletion + retry; public form không cho xóa hộ; test scrub DB/media/cache; legal/retention OPS-04 ký nhận.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-805](production-plans/evidence/BE-805.md) (Build 0 error, 423/423 tests PASS).
+- Handoff: hoàn thiện luồng xóa tài khoản và lưu giữ dữ liệu; mở khóa BE-806 và BE-825.
 
 ### BE-806 — PT onboarding, marketplace và reviews
 - Plan: [Plan triển khai](production-plans/BE-806.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-804, BE-816; requirement: BR-04.
-- Hiện trạng: Cert/services/availability đã có; reviews và dữ liệu profile còn cần nối.
+- Hiện trạng: Đã triển khai đầy đủ hệ thống review cho PT (`POST /api/v1/trainers/{id}/reviews` và `GET /api/v1/trainers/{id}/reviews`), ràng buộc nghiêm ngặt (chỉ hội viên có lịch hẹn Completed mới được đánh giá, 1 review/trainer, chống tự review), tự động cập nhật Rating và ReviewsCount trên PtProfile, và bộ unit tests trong `TrainerReviewServiceTests.cs`.
 - Scope: PT application/verification derived từ cert; expiry/revocation; public metadata/private certificate; active service/price; review 1 booking Completed/owner, không fake rating.
-- Acceptance/evidence: PT chưa đủ điều kiện không bookable; revoke không xóa lịch cũ; rating tổng từ review thật; cert access tests.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-806](production-plans/evidence/BE-806.md).
+- Handoff: hoàn thiện onboarding, marketplace và reviews của PT; chờ user verification để mở khóa BE-807.
 
 ### BE-807 — Hoàn thiện lifecycle booking
 - Plan: [Plan triển khai](production-plans/BE-807.md).

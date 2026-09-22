@@ -57,7 +57,21 @@
 - Bổ sung bộ unit tests trong `UserProfileServiceTests.cs` và đăng ký DI trong `Program.cs`.
 - Kết quả test thực tế từ User: `dotnet test` 417/417 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-804.md`.
 
-**Next:** Tiếp tục triển khai **BE-805** (Xóa tài khoản và dữ liệu) và **BE-806** (PT onboarding, marketplace và reviews).
+**BE-805: Xóa tài khoản, xuất dữ liệu và lưu giữ theo chính sách — VERIFIED**
+- Triển khai `POST /api/v1/users/me/delete-request` và `DELETE /api/v1/users/me`: chuyển tài khoản sang `PendingDeletion`, thu hồi toàn bộ refresh tokens và push devices, kiểm tra nghĩa vụ đặt lịch/tài chính đang diễn ra (`FITMATE.IDENTITY.HAS_ACTIVE_BOOKINGS`), enqueue outbox `user.deletion_requested`.
+- Triển khai `GET /api/v1/users/me/deletion-status`: tính toán cửa sổ lưu giữ 30 ngày và số ngày còn lại trước khi xóa vĩnh viễn.
+- Triển khai `POST /api/v1/users/me/cancel-deletion`: hủy yêu cầu xóa, khôi phục tài khoản về `Active` và enqueue `user.deletion_cancelled`.
+- Triển khai `POST /api/v1/public/account-deletion-request` & `POST /api/v1/public/account-deletion-confirm`: luồng xóa tài khoản công khai chuẩn Google Play / GDPR qua email token mã hóa DataProtection (TTL 24h) với phản hồi trung lập chống dò quét tài khoản.
+- Triển khai `POST /api/v1/users/me/export`: xuất gói dữ liệu cá nhân đã làm sạch.
+- Bổ sung bộ unit tests trong `AccountDeletionServiceTests.cs` và đăng ký DI trong `Program.cs`.
+- Kết quả test thực tế từ User: `dotnet test` 423/423 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-805.md`.
+
+**BE-806: PT onboarding, marketplace và reviews — IMPLEMENTED (PENDING USER VERIFICATION)**
+- Triển khai `POST /api/v1/trainers/{id}/reviews`: gửi đánh giá kèm ràng buộc chặt chẽ (chống tự review, chỉ cho phép hội viên có lịch hẹn Completed đánh giá, 1 review/PT), tự động cập nhật Rating và ReviewsCount trên PtProfile, enqueue outbox `trainer.review_submitted`.
+- Triển khai `GET /api/v1/trainers/{id}/reviews`: lấy danh sách đánh giá của PT kèm tên tác giả, phân trang và thống kê tổng quan.
+- Bổ sung bộ unit tests trong `TrainerReviewServiceTests.cs` và đăng ký DI trong `Program.cs`. File evidence: `docs/backend-release/production-plans/evidence/BE-806.md`.
+
+**Next:** Chờ User verify BE-806 (`dotnet build` và `dotnet test`), sau đó tiếp tục **BE-807** (Hoàn thiện lifecycle booking).
 
 ### Lịch sử các phiên trước
 

@@ -155,9 +155,11 @@ builder.Services.AddScoped<IAvailabilitySlotStore, Fitmate.Infrastructure.Traine
 builder.Services.AddScoped<IServiceOfferingService, Fitmate.Application.Trainers.ServiceOfferingService>();
 builder.Services.AddScoped<IAvailabilityService, Fitmate.Application.Trainers.AvailabilityService>();
 
-// BE-120: Trainer marketplace.
+// BE-120 & BE-806: Trainer marketplace & reviews.
 builder.Services.AddScoped<ITrainerMarketplaceStore, Fitmate.Infrastructure.Trainers.EfTrainerMarketplaceStore>();
 builder.Services.AddScoped<ITrainerMarketplaceService, Fitmate.Application.Trainers.TrainerMarketplaceService>();
+builder.Services.AddScoped<ITrainerReviewStore, Fitmate.Infrastructure.Trainers.EfTrainerReviewStore>();
+builder.Services.AddScoped<ITrainerReviewService, Fitmate.Application.Trainers.TrainerReviewService>();
 
 // BE-060: Booking lifecycle services.
 builder.Services.AddScoped<IAppointmentStore, Fitmate.Infrastructure.Booking.EfAppointmentStore>();
@@ -175,6 +177,11 @@ builder.Services.AddScoped<IAdminUserService, Fitmate.Application.Identity.Admin
 // BE-804: User profile and search.
 builder.Services.AddScoped<IUserProfileStore, Fitmate.Infrastructure.Identity.EfUserProfileStore>();
 builder.Services.AddScoped<IUserProfileService, Fitmate.Application.Identity.UserProfileService>();
+
+// BE-805: Account deletion and data retention.
+builder.Services.AddSingleton<IDeletionTokenProtector, Fitmate.Infrastructure.Identity.DataProtectionDeletionTokenProtector>();
+builder.Services.AddScoped<IAccountDeletionStore, Fitmate.Infrastructure.Identity.EfAccountDeletionStore>();
+builder.Services.AddScoped<IAccountDeletionService, Fitmate.Application.Identity.AccountDeletionService>();
 
 // BE-150: Admin finance.
 builder.Services.AddScoped<IAdminFinanceStore, Fitmate.Infrastructure.Finance.EfAdminFinanceStore>();

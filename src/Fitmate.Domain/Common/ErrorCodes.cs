@@ -21,13 +21,22 @@ public static class ErrorCodes
         public const string UserNotFound = "FITMATE.IDENTITY.USER_NOT_FOUND";
         public const string Forbidden = "FITMATE.IDENTITY.FORBIDDEN";
         public const string CannotSelfElevate = "FITMATE.IDENTITY.CANNOT_SELF_ELEVATE";
+        public const string CannotLockLastAdmin = "FITMATE.IDENTITY.CANNOT_LOCK_LAST_ADMIN";
         public const string NotAuthenticated = "FITMATE.IDENTITY.NOT_AUTHENTICATED";
+        public const string HasActiveBookings = "FITMATE.IDENTITY.HAS_ACTIVE_BOOKINGS";
+        public const string DeletionPending = "FITMATE.IDENTITY.DELETION_PENDING";
+        public const string DeletionNotPending = "FITMATE.IDENTITY.DELETION_NOT_PENDING";
+        public const string InvalidToken = "FITMATE.IDENTITY.INVALID_TOKEN";
     }
 
     public static class Trainer
     {
         public const string CertificateNotPending = "FITMATE.TRAINER.CERTIFICATE_NOT_PENDING";
         public const string CertificateMissingReason = "FITMATE.TRAINER.MISSING_REASON";
+        public const string CannotSelfReview = "FITMATE.TRAINER.CANNOT_SELF_REVIEW";
+        public const string BookingNotEligible = "FITMATE.TRAINER.BOOKING_NOT_ELIGIBLE";
+        public const string AlreadyReviewed = "FITMATE.TRAINER.ALREADY_REVIEWED";
+        public const string TrainerNotVerified = "FITMATE.TRAINER.NOT_VERIFIED";
     }
 
     public static class Booking
@@ -71,6 +80,7 @@ public static class ErrorCodes
     public static class General
     {
         public const string NotFound = "FITMATE.GENERAL.NOT_FOUND";
+        public const string Conflict = "FITMATE.GENERAL.CONFLICT";
         public const string Internal = "FITMATE.GENERAL.INTERNAL";
     }
 

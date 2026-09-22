@@ -39,7 +39,7 @@ public class PtProfile : AuditableEntity
         Touch();
     }
 
-    public void ApplyRating(int rating, int reviewsCount)
+    public void ApplyRating(decimal rating, int reviewsCount)
     {
         Rating = rating;
         ReviewsCount = reviewsCount;
