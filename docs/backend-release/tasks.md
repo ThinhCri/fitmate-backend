@@ -191,12 +191,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-817 — Tích hợp artifact AI thật
 - Plan: [Plan triển khai](production-plans/BE-817.md).
-- Status: TODO
+- Status: PREPARED (PREPARE NOW completed; chờ bàn giao .pt để tích hợp adapter thật)
 - Priority: P1-CAPABILITY; depends: BE-801, BE-816; requirement: BR-13.
-- Hiện trạng: Chờ AI team; không chặn manual features.
+- Hiện trạng: Đã triển khai và kiểm chứng xong giai đoạn PREPARE NOW: khảo sát và chuẩn hóa 3 ranh giới adapter (`IAiNutritionAdapter`, `IAiWorkoutAdapter`, `IAiCompanionAdapter`), cấu hình tắt AI mặc định (`AiOptions`), kiểm tra hợp lệ đầu vào, cancellation token, mã lỗi miền HTTP 503 (`FITMATE.AI.UNAVAILABLE`), test fixtures và doubles (`AiTestFixtures`), và bộ unit tests `AiAdapterTests`. User đã chạy build (0 errors) và tests (521/521 PASS). Đang chờ nhóm AI bàn giao file `.pt` để triển khai adapter inference thật.
 - Scope: Artifact/schema/version/license/checksum/resources; nutrition/workout/chat adapter; health/quota/timeouts; consent; unavailable/error contracts.
-- Acceptance/evidence: Contract fixtures + artifact smoke/resource test + thực tế provider; không mock production. Trước khi bật AI là release gate.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-817](production-plans/evidence/BE-817.md) (Build 0 errors, Tests 521/521 PASS).
+- Handoff: hoàn thành chuẩn bị ranh giới và cấu hình; tiếp tục BE-820 (Integration và contract verification).
 
 ### BE-818 — Hoàn thiện 7 module admin
 - Plan: [Plan triển khai](production-plans/BE-818.md).

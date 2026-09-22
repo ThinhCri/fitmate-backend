@@ -239,9 +239,13 @@ builder.Services.AddScoped<IWorkoutStore, Fitmate.Infrastructure.Workout.EfWorko
 builder.Services.AddScoped<IWeightStore, Fitmate.Infrastructure.Workout.EfWeightStore>();
 builder.Services.AddScoped<IWorkoutService, Fitmate.Application.Workout.WorkoutService>();
 builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightService>();
-// BE-170: nutrition meal log, schedule and AI scan stub.
+// BE-170 & BE-817: AI capability adapters & options. Disabled by default awaiting .pt handoff.
+builder.Services.Configure<Fitmate.Application.Ai.AiOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName));
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
 builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
+builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter, Fitmate.Application.Workout.AiWorkoutStubAdapter>();
+builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.AiCompanionStubAdapter>();
 builder.Services.AddScoped<INutritionService, NutritionService>();
 // BE-813: dashboard daily progress summary.
 builder.Services.AddScoped<Fitmate.Application.Dashboard.IDashboardStore, Fitmate.Infrastructure.Dashboard.EfDashboardStore>();
@@ -453,6 +457,9 @@ static string TitleForStatus(int status) => status switch
     403 => "Forbidden",
     404 => "Resource not found",
     409 => "Conflict",
+    429 => "Too Many Requests",
+    502 => "Bad Gateway",
+    503 => "Service Unavailable",
     _ => "Error"
 };
 

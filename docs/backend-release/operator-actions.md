@@ -8,7 +8,7 @@ Baseline PROD-2026-09-22-v1. Không chứa secret. [user-actions.md](user-action
 | OPS-03 | Business/finance + operator | VNPay merchant/sandbox/prod; quy trình refund/payout, tài khoản PT, điều khoản fee/cancel/settlement | Thu/hoàn/chi tiền thật | Adapter/tests sandbox khi có creds, ledger và UI |
 | OPS-04 | Product/privacy owner | Công bố privacy/terms, retention mỗi loại dữ liệu, quyền sử dụng media, health declarations | Release public | Deletion/export/jobs, private defaults |
 | OPS-05 | Operator | Budget + domain/TLS + registry + VPS + DB HA/backup/storage/DP keys; credentials qua secret manager | Provision/deploy staging/prod | Docker, IaC/runbooks, isolated test |
-| OPS-06 | Product + mobile/operator | Chọn FCM/Expo và Android config, credentials; team AI giao artifact/schema/license/resources | Push/AI enabled | In-app inbox, unavailable/manual paths, adapters |
+| OPS-06 | Product + mobile/operator + AI team | Chọn FCM/Expo và Android config, credentials; AI dự kiến giao `.pt`, cần code inference/dependencies/sample I/O/license/resources theo [checklist](ai-handoff-checklist.md); runtime chưa chốt | Push/AI enabled | In-app inbox, unavailable/manual paths, adapter boundaries; không chờ artifact để chuẩn bị |
 | OPS-07 | Play account owner | App ID, signing/upload key, Console access, current target API/testing rules, forms/store assets | Play release | Build config, privacy/deletion public page, tests |
 | OPS-08 | Release owner | Ký nhận release manifest, residual risk, incident owner và ngân sách | Production rollout | Chuẩn bị mọi evidence |
 Không yêu cầu gửi key/password qua chat hoặc commit. Ghi tên secret reference và owner, không ghi giá trị.

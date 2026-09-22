@@ -1,121 +1,50 @@
-# AI Handoff Checklist
+# AI handoff — dự kiến nhận file .pt
+Cập nhật 2026-09-23. Hiện chưa có artifact; các ô bên dưới CHƯA xác nhận.
+Không chặn backend preparation vì chưa đủ thông tin; hỏi nhóm AI các thiếu sót khi bàn giao thực tế.
 
-> Khi nhóm AI bàn giao gói AI, dùng checklist này để nhận và verify. **KHÔNG tự ý train, chọn provider, hay giả định runtime** trước khi có bàn giao.
+## A. Gói tối thiểu cần kiểm tra khi nhận
+- [ ] File .pt, version/checksum/nguồn và người bàn giao.
+- [ ] Mỗi file phục vụ capability nào; một hay nhiều model.
+- [ ] Cách lưu file: weights/state_dict, serialized model, TorchScript hay định dạng khác — do team AI xác nhận, không suy từ extension.
+- [ ] Code load + inference chạy được; model architecture nếu artifact yêu cầu.
+- [ ] Python/PyTorch/dependencies phiên bản và OS/architecture đã thử.
+- [ ] Labels/tokenizer/config/preprocessing/postprocessing/dataset phụ trợ nếu cần.
+- [ ] Một input mẫu hợp lệ + output mong đợi cho mỗi capability; không dùng PII thật.
+Nếu chỉ có .pt mà chưa có cách chạy, ghi RECEIVED/INCOMPLETE và danh sách thiếu; không tự dựng kiến trúc model hoặc fake inference.
 
-## A. Thông tin cần từ nhóm AI
+## B. Trước chọn deployment
+- [ ] CPU/GPU requirements, RAM/VRAM/disk, cold/warm latency và concurrency đã đo.
+- [ ] Sync/async/streaming; batch support/cancellation; max input/output.
+- [ ] Inference có gọi mạng/download model/telemetry không; data/privacy và egress.
+- [ ] License/quyền dùng thương mại, nguồn assets/model phụ trợ và limitations.
+- [ ] Confidence semantics nếu có; không yêu cầu fabricated chat confidence.
+- [ ] Cách health/readiness/warmup, shutdown, upgrade/rollback.
+Không mua GPU/cloud hoặc hardcode Python service trước khi biết requirements.
 
-### 1. Artifact
+## C. Quy trình tích hợp
+1. Ghi nhận file/checksum và inventory, lưu artifact ngoài tracked source; chưa execute/load trực tiếp vào API.
+2. Review entrypoint/dependencies và giới hạn quyền; artifact model có thể cần deserialization nên chỉ chạy nguồn tin cậy trong môi trường cô lập.
+3. Theo hướng dẫn nhóm AI chạy sample trên môi trường được phép; nếu user đang yêu cầu chạy tay, cung cấp commands để user chạy.
+4. Đối chiếu preprocessing/units/labels/output; ghi gap so với ai-contract.md. Không tự suy macros từ food label.
+5. Đo latency/memory/resources, chọn runtime/transport và sync-vs-job; mới viết adapter cụ thể và deployment config.
+6. Kiểm error/timeout/cancellation/concurrency/privacy và contract fixtures bằng output thực.
+7. Tích hợp staging Android flow; operator duyệt bật từng capability, giữ kill switch/manual fallback.
+8. Version-pin artifact; checksum mismatch hoặc thiếu required files không enable.
 
-- [ ] Format: ONNX / TorchScript / Python wheel / Docker image / binary khác.
-- [ ] Version (semver hoặc internal).
-- [ ] Digest (SHA256) cho binary/image.
-- [ ] Có reproducible build không.
-
-### 2. Runtime
-
-- [ ] OS & architecture (linux/amd64, linux/arm64, ...).
-- [ ] Python version (nếu Python).
-- [ ] Dependencies (requirements.txt / image base digest).
-- [ ] Phiên bản ONNX Runtime / Torch / TensorRT.
-
-### 3. Hardware
-
-- [ ] CPU-only hay cần GPU?
-- [ ] Loại GPU (A100 / L4 / T4 / ...).
-- [ ] VRAM tối thiểu.
-- [ ] RAM tối thiểu.
-- [ ] Disk cho model + cache.
-- [ ] Concurrent request tối đa (số worker / batch size).
-
-### 4. Command & lifecycle
-
-- [ ] Startup command.
-- [ ] Inference command (HTTP / gRPC / CLI?).
-- [ ] Health endpoint.
-- [ ] Graceful shutdown.
-
-### 5. I/O
-
-- [ ] Input schema (mime, size limit, format).
-- [ ] Output schema (JSON shape, units).
-- [ ] Sample input/output files.
-- [ ] Pre/postprocessing ownership: AI team làm, hay BE làm?
-
-### 6. Performance
-
-- [ ] Cold start latency.
-- [ ] Warm inference latency p50/p95/p99.
-- [ ] Throughput (req/s).
-- [ ] Behavior khi vượt capacity (queue / 429 / drop?).
-
-### 7. Network
-
-- [ ] Có gọi outbound (model update, telemetry)?
-- [ ] Có cần allowlist domain/IP?
-- [ ] Có cần proxy?
-
-### 8. Health & readiness
-
-- [ ] `/health/live`, `/health/ready` shape.
-- [ ] Có warm-up cần thiết?
-- [ ] Memory growth theo thời gian?
-
-### 9. Logging
-
-- [ ] Format (JSON / text).
-- [ ] Mức log default.
-- [ ] Có log request payload? (KHÔNG cho phép nếu có PII).
-- [ ] Retention.
-
-### 10. License & pháp lý
-
-- [ ] License.
-- [ ] Có dùng model có ràng buộc thương mại không?
-- [ ] Data dùng để train có nguồn gốc?
-
-### 11. Limitations
-
-- [ ] Known failure modes.
-- [ ] Domain ngoài phạm vi.
-- [ ] Bias đã phát hiện.
-- [ ] Confidence semantics: `confidence` có calibrated không?
-
-### 12. Upgrade & rollback
-
-- [ ] Cách upgrade (image tag).
-- [ ] Cách rollback (image tag cũ).
-- [ ] Có cần reindex/retrain khi đổi model?
-
-### 13. Hỗ trợ
-
-- [ ] Người liên hệ.
-- [ ] SLA nếu có.
-- [ ] Kênh báo lỗi.
-
-## B. Quy trình nhận & verify (phía BE)
-
-1. Chạy artifact trong môi trường cô lập (Docker, không expose public).
-2. Verify contract:
-   - Gửi sample input theo `ai-contract.md`.
-   - Verify output match schema + confidence ∈ [0,1].
-   - Verify error case (no result, missing data, timeout, invalid output).
-3. Đo tài nguyên thực tế khi chạy 5/20/50 concurrent.
-4. Đo latency p50/p95/p99.
-5. Quyết định deployment:
-   - **In-process** (nếu artifact là ONNX và < 2GB, latency OK).
-   - **Sidecar container** (khuyến nghị cho MVP; gọi qua HTTP localhost).
-   - **Separate service** (chỉ khi đo thấy bottleneck).
-6. Thêm vào Compose profile `ai`.
-7. Cập nhật `architecture.md` và `decisions.md`.
-8. Smoke end-to-end với FE.
-
-## C. Khi chưa bàn giao
-
-- Adapter trả `FITMATE.AI.UNAVAILABLE`.
-- Không có fake result.
-- Không có fake provider trong production env.
-- Tất cả tính năng không phụ thuộc AI vẫn chạy bình thường.
-
-## D. Khi bàn giao thiếu mục nào
-
-Dừng nhận. Ghi rõ blocker vào `handoff.md`. Không tự giả định.
+## D. Metadata template (để trống đến khi biết)
+- Artifact name/version/SHA256:
+- Capability mapping:
+- Format/save method:
+- Load/inference entrypoint:
+- Dependency lock/runtime:
+- Required companion files:
+- Input schema/preprocessing:
+- Output schema/postprocessing:
+- Confidence meaning (hoặc not provided):
+- Hardware/resource measurements:
+- Network/license/privacy constraints:
+- Known unsupported cases:
+- Owner/support contact:
+- Validation commands/results:
+- Selected deployment/rollback (sau đánh giá):
+Không commit model weights, secrets, health images hoặc chat samples của user; tham chiếu artifact storage/version phù hợp khi đã chốt.

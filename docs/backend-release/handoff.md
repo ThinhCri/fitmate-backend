@@ -183,7 +183,19 @@
 - Bổ sung unit tests: `SupportServiceTests.cs` (11 tests), `UserPreferenceServiceTests.cs` (2 tests).
 - Kết quả test thực tế từ User: Build 0 error, Tests 503/503 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-819.md`.
 
-**Next:** Tiếp tục thực hiện **BE-817 (PREPARE NOW)** hoặc **BE-820 (Integration verification)**.
+**BE-817: Tích hợp artifact AI thật (Giai đoạn PREPARE NOW) — PREPARED (Đã kiểm chứng)**
+- Khảo sát và chuẩn hóa 3 ranh giới adapter:
+  - `IAiNutritionAdapter`: Quét nhận diện món ăn (`EstimateFromImageAsync`), xác thực stream không rỗng, content type (jpeg/png/webp), cancellation token, trả HTTP 503 `AiUnavailableException` khi disabled hoặc chưa có mô hình.
+  - `IAiWorkoutAdapter`: Gợi ý kế hoạch luyện tập (`SuggestWorkoutPlanAsync`), xác thực `UserId`, cancellation token, trả HTTP 503 `AiUnavailableException`. Tuyệt đối không gắn ngầm inference vào luồng lưu session luyện tập.
+  - `IAiCompanionAdapter`: AI Companion chat (`GenerateReplyAsync`), cách ly theo user thread/history, giới hạn độ dài tin nhắn (2000 ký tự), cancellation token, trả HTTP 503 `AiUnavailableException`. Phi quyền hạn: không thể phân quyền hay can thiệp giao dịch.
+- Cấu hình tập trung `AiOptions` (kill switch mặc định `Enabled: false`, `FoodScanEnabled: false`, `CompanionChatEnabled: false`, `WorkoutAdjustEnabled: false`, `TimeoutSeconds: 30`, `MaxImageSizeBytes: 10MB`).
+- Cập nhật `SystemCapabilitiesController` liên kết động `AiOptions` để công bố trung thực trạng thái AI tới hai frontend.
+- Cập nhật `Program.cs` đăng ký DI các adapter và mapping HTTP titles RFC 7807 (429, 502, 503).
+- Dữ liệu kiểm thử test-only: `AiTestFixtures` (golden scan, golden workout, golden companion và test doubles) với cảnh báo nghiêm ngặt không dùng làm fallback trong production.
+- Unit tests: `AiAdapterTests.cs` (14 test cases) kiểm thử toàn diện các tình huống disabled 503, cancellation token, input validation, capabilities mapping, golden fixtures; và cập nhật `NutritionServiceTests.cs`.
+- Kết quả test thực tế từ User: Build 0 error, Tests 521/521 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-817.md`.
+
+**Next:** Tiếp tục triển khai **BE-820 (Integration và contract verification)**.
 
 ### Lịch sử các phiên trước
 

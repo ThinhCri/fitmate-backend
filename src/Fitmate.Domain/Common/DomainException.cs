@@ -47,3 +47,22 @@ public class ValidationException : DomainException
     public ValidationException(string code, string message, IReadOnlyDictionary<string, string[]> errors)
         : base(code, message, 400, errors) { }
 }
+
+public class AiUnavailableException : DomainException
+{
+    public AiUnavailableException(string message = "AI service is currently unavailable.")
+        : base(ErrorCodes.AI.Unavailable, message, 503) { }
+}
+
+public class AiInvalidOutputException : DomainException
+{
+    public AiInvalidOutputException(string message = "AI model produced an invalid or malformed output.")
+        : base(ErrorCodes.AI.InvalidOutput, message, 502) { }
+}
+
+public class AiRateLimitedException : DomainException
+{
+    public AiRateLimitedException(string message = "AI request quota or rate limit exceeded.")
+        : base(ErrorCodes.AI.RateLimited, message, 429) { }
+}
+

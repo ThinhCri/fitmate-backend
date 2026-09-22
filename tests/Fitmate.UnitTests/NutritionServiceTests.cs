@@ -252,6 +252,6 @@ public class NutritionServiceTests
         var act = () => sut.ScanMealAsync(UserId, stream, "image/jpeg");
 
         await act.Should().ThrowAsync<DomainException>()
-            .Where(e => e.Code == ErrorCodes.AI.Unavailable);
+            .Where(e => e.Code == ErrorCodes.AI.Unavailable && e.HttpStatus == 503);
     }
 }

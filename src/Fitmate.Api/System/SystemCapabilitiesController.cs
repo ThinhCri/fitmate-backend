@@ -1,12 +1,14 @@
+using Fitmate.Application.Ai;
 using Fitmate.Application.Capabilities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Fitmate.Api.Capabilities;
 
 /// <summary>
-/// BE-819 / BR-15 / ai-contract.md: Public system capabilities and contact information.
+/// BE-819 / BE-817 / BR-15 / ai-contract.md: Public system capabilities and contact information.
 /// Truthfully reflects module readiness (AI disabled until BE-817 artifact handoff),
 /// platform policy constants, and contact links without exposing infrastructure secrets.
 /// </summary>
@@ -16,24 +18,29 @@ namespace Fitmate.Api.Capabilities;
 public class SystemCapabilitiesController : ControllerBase
 {
     private readonly IWebHostEnvironment _env;
+    private readonly IOptions<AiOptions> _aiOptions;
 
-    public SystemCapabilitiesController(IWebHostEnvironment env)
+    public SystemCapabilitiesController(IWebHostEnvironment env, IOptions<AiOptions> aiOptions)
     {
         _env = env;
+        _aiOptions = aiOptions;
     }
 
     [HttpGet]
     public IActionResult GetCapabilities()
     {
+        var ai = _aiOptions.Value;
         var capabilities = new SystemCapabilitiesDto(
             ApiVersion: "1.0.0",
             Environment: _env.EnvironmentName.ToLowerInvariant(),
             Ai: new AiCapabilitiesStatus(
-                Enabled: false,
-                FoodScan: false,
-                CompanionChat: false,
-                WorkoutAdjust: false,
-                StatusReason: "AI capabilities are awaiting artifact delivery and validation (BE-817). Manual workout, nutrition, and chat features are fully operational."),
+                Enabled: ai.Enabled,
+                FoodScan: ai.FoodScanEnabled,
+                CompanionChat: ai.CompanionChatEnabled,
+                WorkoutAdjust: ai.WorkoutAdjustEnabled,
+                StatusReason: ai.Enabled
+                    ? "AI capabilities are active."
+                    : "AI capabilities are awaiting artifact delivery and validation (BE-817). Manual workout, nutrition, and chat features are fully operational."),
             PushNotificationsEnabled: true,
             PaymentsEnabled: true,
             StorageProvider: "local",
