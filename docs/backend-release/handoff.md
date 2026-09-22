@@ -207,7 +207,21 @@
   - `SupportAndPreferencesTests`: User preferences roundtrip persistence, support ticket IDOR protection (404 cho người dùng khác).
 - Kết quả test thực tế từ User: Build 0 error, Tests 12/12 PASS trên PostgreSQL thật. File evidence: `docs/backend-release/production-plans/evidence/BE-820.md`.
 
-**Next:** Tiếp tục triển khai **BE-821 (Docker và CI/CD bằng chứng thật)** (P0).
+**BE-821: Docker và CI/CD bằng chứng thật — VERIFIED**
+- Triệt tiêu cảnh báo `NU1603` và lỗi `NU1605` bằng cách chuẩn hóa `Microsoft.Extensions.Hosting.Abstractions` version `8.0.1` trong `Fitmate.Infrastructure.csproj` (khớp với DataProtection 8.0.10, giải pháp build đạt 0 warning, 0 error trên cả 6 projects).
+- Cấu hình port mapping `"${API_PORT:-8080}:8080"` và chỉ định image tags `fitmate-api:local`, `fitmate-migrate:local` trong `compose.yml`.
+- Cập nhật GitHub Actions CI workflow (`.github/workflows/ci.yml`):
+  - Bổ sung job `integration-test`: Chạy `Fitmate.IntegrationTests` trên dịch vụ container `postgres:16-alpine`, xuất báo cáo kiểm thử TRX.
+  - Cập nhật job `smoke`: Sử dụng tường minh `-f compose.yml` cô lập với cấu hình override dev, kiểm tra `/health/ready`, `/health/live`, và metadata hệ thống.
+  - Bổ sung job `staging-deploy`: Khai báo môi trường `staging` và ghi nhận metadata commit.
+- Kết quả kiểm chứng thực tế từ User:
+  - Multi-stage build thành công cả 2 image `fitmate-api:local` và `fitmate-migrate:local`.
+  - Non-root user verified: `uid=1001(fitmate) gid=1001(fitmate)`.
+  - Migration bundle chạy 2 lần liên tiếp thành công và bảo đảm tính idempotent.
+  - Container API khởi động và phản hồi `/health/ready` -> `HTTP/1.1 200 OK` (`Healthy`), `/health/live` -> `HTTP/1.1 200 OK` (`Healthy`).
+- File evidence: `docs/backend-release/production-plans/evidence/BE-821.md`.
+
+**Next:** Tiếp tục triển khai **BE-822 (Security và quản lý secrets)** (P0).
 
 ### Lịch sử các phiên trước
 

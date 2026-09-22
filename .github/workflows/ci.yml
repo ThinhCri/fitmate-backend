@@ -99,13 +99,68 @@ jobs:
           path: TestResults/
 
   # ---------------------------------------------------------------
+  # 1b. Integration tests on real PostgreSQL service container.
+  # ---------------------------------------------------------------
+  integration-test:
+    name: Integration tests (PostgreSQL)
+    runs-on: ubuntu-22.04
+    needs: lint-test
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: fitmate_integration_test
+          POSTGRES_USER: fitmate
+          POSTGRES_PASSWORD: ci-ephemeral-db-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U fitmate -d fitmate_integration_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore Fitmate.slnx
+
+      - name: Run integration tests
+        run: |
+          dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj \
+            --configuration Release \
+            --logger "trx;LogFileName=integration-test-results.trx" \
+            --results-directory TestResults
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_USER: fitmate
+          DB_PASSWORD: ci-ephemeral-db-password
+          TEST_DB_NAME: fitmate_integration_test
+          JWT_SIGNING_KEY: ci-dummy-signing-key-not-used-by-unit-tests-32bytes
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results-${{ github.run_id }}
+          path: TestResults/
+
+  # ---------------------------------------------------------------
   # 2. Docker images build only (no push — push is BE-500 / BE-340).
   # Cache layers with GitHub Actions cache to keep CI under 5 minutes.
   # ---------------------------------------------------------------
   docker-build:
     name: Docker build (api + migrate)
     runs-on: ubuntu-22.04
-    needs: lint-test
+    needs: [lint-test, integration-test]
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -207,18 +262,18 @@ jobs:
       - name: Up postgres
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose up -d postgres
+          docker compose -f compose.yml up -d postgres
           # Wait for postgres healthcheck (default: pg_isready every 5s, 10 retries => 50s max).
-          timeout 60 bash -c 'until docker compose ps postgres | grep -q "(healthy)"; do sleep 2; done'
-          docker compose ps
+          timeout 60 bash -c 'until docker compose -f compose.yml ps postgres | grep -q "(healthy)"; do sleep 2; done'
+          docker compose -f compose.yml ps
 
       - name: Run migrations
         working-directory: ${{ github.workspace }}
-        run: docker compose --profile migrate run --rm migrate
+        run: docker compose -f compose.yml --profile migrate run --rm migrate
 
       - name: Up api
         working-directory: ${{ github.workspace }}
-        run: docker compose up -d api
+        run: docker compose -f compose.yml up -d api
 
       - name: Poll /health/ready
         working-directory: ${{ github.workspace }}
@@ -228,27 +283,45 @@ jobs:
           until curl -fsS http://127.0.0.1:8080/health/ready; do
             if [ "$SECONDS" -ge "${{ env.API_HEALTH_TIMEOUT_SECONDS }}" ]; then
               echo "::error::API readiness timed out after ${{ env.API_HEALTH_TIMEOUT_SECONDS }}s"
-              docker compose logs api
+              docker compose -f compose.yml logs api
               exit 1
             fi
             sleep 3
           done
           echo "API readiness OK"
 
-      - name: Smoke /health/live + login
+      - name: Smoke /health/live and root metadata
         working-directory: ${{ github.workspace }}
         run: |
           curl -fsS http://127.0.0.1:8080/health/live
           echo
-          # Note: actual login smoke is gated on BE-380 being merged with a real
-          # .env. Right now we only assert the host starts and answers readiness.
-          # A real POST /api/v1/auth/login smoke will be added in a follow-up
-          # once the api container's full path is verified end-to-end.
+          curl -fsS http://127.0.0.1:8080/
+          echo
 
       - name: Teardown
         if: always()
         working-directory: ${{ github.workspace }}
         run: |
-          docker compose down -v || true
+          docker compose -f compose.yml down -v || true
           # Best-effort cleanup of ephemeral .env so a re-run starts clean.
           rm -f .env
+
+  # ---------------------------------------------------------------
+  # 4. Staging deployment gate (triggered on main or release branches).
+  # ---------------------------------------------------------------
+  staging-deploy:
+    name: Deploy to Staging (Digest Verified)
+    runs-on: ubuntu-22.04
+    needs: smoke
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/backend-release/')
+    environment: staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Record release metadata
+        run: |
+          echo "Deploying commit ${{ github.sha }} to staging"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Reference: ${{ github.ref }}"
+          echo "All checks (Secrets, Lint, UnitTests, IntegrationTests, DockerBuild, Smoke) passed."

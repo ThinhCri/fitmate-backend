@@ -30,6 +30,7 @@ services:
     build:
       context: .
       dockerfile: src/Fitmate.Api/Dockerfile
+    image: fitmate-api:local
     restart: unless-stopped
     env_file:
       - .env
@@ -51,7 +52,8 @@ services:
     volumes:
       # Persist DataProtection key ring across container recreates. See BE-300 plan rev 3 §3.6.
       - fitmate-dpkeys:/home/fitmate/.aspnet/DataProtection-Keys
-    # Default port binding removed; verify override (compose.verify300.yml) sets 18080.
+    ports:
+      - "${API_PORT:-8080}:8080"
 
   # One-shot migration job. Uses bundle image ENTRYPOINT directly (no command override).
   # Run with: docker compose --profile migrate up migrate
@@ -59,6 +61,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.migrate
+    image: fitmate-migrate:local
     profiles: ["migrate"]
     env_file:
       - .env

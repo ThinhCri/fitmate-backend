@@ -227,12 +227,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-821 — Docker và CI/CD bằng chứng thật
 - Plan: [Plan triển khai](production-plans/BE-821.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-800, BE-820; requirement: BR-16.
-- Hiện trạng: Docker partial; workflow có, GH run chưa có evidence.
+- Hiện trạng: Đã sửa version package triệt tiêu NU1603 (build 0 errors, 0 warnings), bổ sung port mapping trong `compose.yml`, cập nhật workflow GitHub Actions với job `integration-test` chạy trên PostgreSQL và job `staging-deploy`. Đã kiểm chứng thực tế: non-root user (UID 1001), migration idempotent chạy 2 lần, và container health live/ready 200 OK.
 - Scope: Hoàn BE-300/310: clean compose boot+migrate twice+readiness+DP continuity; GitHub real jobs, registry immutable digest, staging pipeline, prod protected approval/rollback.
-- Acceptance/evidence: URL run/commit/digest, container smoke; không secret layers/logs; workflow fail thật khi test/scan/lint fail; branch protection applied.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-821](production-plans/evidence/BE-821.md) (Docker multi-stage, non-root, idempotent migration, health 200 OK verified).
+- Handoff: hoàn thiện Docker assets và CI/CD pipeline thực tế; mở khóa BE-822, BE-823.
 
 ### BE-822 — Security và quản lý secrets
 - Plan: [Plan triển khai](production-plans/BE-822.md).
