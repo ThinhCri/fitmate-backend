@@ -153,15 +153,28 @@
 - Bổ sung và cập nhật unit tests trong `DeviceServiceTests.cs`, `NotificationPushHandlerTests.cs`, `PushDeliveryDispatcherTests.cs`.
 - Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-815.md`.
 
-**BE-816: Storage access và durability — IMPLEMENTED (PENDING USER VERIFICATION)**
+**BE-816: Storage access và durability — VERIFIED**
 - Bổ sung kiểm tra chữ ký Magic bytes cho các file ảnh (JPEG, PNG, WEBP) trong `UploadsController` chống tấn công giả danh định dạng file.
 - Định danh file lưu trữ không đoán được (`unguessable key`), làm sạch tên file và chống Path Traversal trong `LocalStorageService`.
 - Tăng cường kiểm chứng HMAC-SHA256 Signed URL: so sánh chữ ký bằng thời gian hằng số `FixedTimeEquals`, kẹp trần thời gian sống TTL và chống giả mạo chữ ký chéo giữa các tài nguyên.
 - Chặn toàn bộ truy cập trực tiếp file tĩnh không có chữ ký hợp lệ thông qua `SignedUrlMiddleware`.
 - Bổ sung các unit tests mới trong `HmacSignedUrlServiceTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-816.md`.
+- Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-816.md`.
 
-**Next:** Chờ user chạy `dotnet build` và `dotnet test` xác nhận BE-816; sau đó chuyển sang **BE-817** (Tích hợp artifact AI thật - P1-CAPABILITY) hoặc **BE-818** (Hoàn thiện 7 module admin).
+**BE-818: Hoàn thiện 7 module admin — VERIFIED**
+- Hoàn thiện và tích hợp toàn bộ 7 module quản trị cho Admin Web:
+  1. User Management (`/api/v1/admin/users`, lock/unlock, last admin guard).
+  2. Trainer & Certificates Moderation (`/api/v1/admin/certificates`, approve/reject).
+  3. Violation Reports & Moderation (`/api/v1/admin/reports`, resolve/dismiss).
+  4. Finance & Reconciliation (`/api/v1/admin/finance`, refunds, settlements, ledger).
+  5. Booking Management (`/api/v1/admin/bookings`, tra cứu và lọc theo status, PT, member).
+  6. Metrics & Action-Required (`/api/v1/admin/action-required`).
+  7. Policy & MFA Security (`/api/v1/admin/platform-policy`, `/api/v1/admin/auth/mfa`).
+- Bổ sung `AdminBookingsController` và mở rộng `IAppointmentStore`/`BookingService` với `ListAdminAsync`.
+- Bổ sung unit tests trong `BookingServiceTests.cs`.
+- Kết quả test thực tế từ User: Build 0 error, Tests 490/490 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-818.md`.
+
+**Next:** Tiếp tục thực hiện **BE-819** (Support, settings và capabilities) hoặc **BE-817** (AI artifact capability).
 
 ### Lịch sử các phiên trước
 

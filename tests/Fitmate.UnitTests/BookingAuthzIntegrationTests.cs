@@ -22,6 +22,8 @@ public class BookingAuthzIntegrationTests
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid p, BookingStatus? s, int page, int pageSize, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(BookingStatus? s, Guid? p, Guid? m, int page, int pageSize, CancellationToken ct)
+            => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task AddAsync(Appointment a, CancellationToken ct) { Items[a.Id] = a; return Task.CompletedTask; }
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }

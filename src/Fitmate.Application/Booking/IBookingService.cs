@@ -40,6 +40,9 @@ public interface IBookingService
     /// <summary>List booking mà PT nhận (phân trang).</summary>
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtAsync(Guid ptUserId, BookingStatus? status, int page, int pageSize, CancellationToken ct);
 
+    /// <summary>List booking cho Admin (phân trang, filter theo status, PT, member).</summary>
+    Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminAsync(BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct);
+
     /// <summary>Lookup appointment theo id (cho internal use).</summary>
     Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct);
 }

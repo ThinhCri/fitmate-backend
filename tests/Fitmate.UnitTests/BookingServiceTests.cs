@@ -42,6 +42,16 @@ public class BookingServiceTests
             return Task.FromResult(((IReadOnlyList<Appointment>)filtered, filtered.Count));
         }
 
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(
+            BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
+        {
+            var filtered = Items.Values.Where(a =>
+                (!status.HasValue || a.Status == status.Value) &&
+                (!ptUserId.HasValue || a.PtUserId == ptUserId.Value) &&
+                (!memberId.HasValue || a.MemberId == memberId.Value)).ToList();
+            return Task.FromResult(((IReadOnlyList<Appointment>)filtered, filtered.Count));
+        }
+
         public Task AddAsync(Appointment a, CancellationToken ct)
         {
             Items[a.Id] = a;
@@ -516,5 +526,37 @@ public class BookingServiceTests
 
         done.Status.Should().Be(BookingStatus.Completed);
         outbox.Messages.Should().Contain(m => m.Type == "booking.completed");
+    }
+
+    [Fact]
+    public async Task ListAdmin_WithFilters_ReturnsFilteredAppointments()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var pt = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var otherMember = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddHours(2);
+
+        var a1 = Appointment.CreateHold(member, pt, Guid.NewGuid(), slot, slot, 60, 100_000);
+        a1.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        a1.ConfirmByPt();
+
+        var a2 = Appointment.CreateHold(otherMember, pt, Guid.NewGuid(), slot.AddHours(1), slot.AddHours(1), 60, 100_000);
+
+        apptStore.Items[a1.Id] = a1;
+        apptStore.Items[a2.Id] = a2;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+
+        var (all, totalAll) = await svc.ListAdminAsync(null, null, null, 1, 25, CancellationToken.None);
+        totalAll.Should().Be(2);
+
+        var (filteredMember, totalMember) = await svc.ListAdminAsync(null, null, member, 1, 25, CancellationToken.None);
+        totalMember.Should().Be(1);
+        filteredMember[0].MemberId.Should().Be(member);
+
+        var (filteredStatus, totalStatus) = await svc.ListAdminAsync(BookingStatus.Confirmed, null, null, 1, 25, CancellationToken.None);
+        totalStatus.Should().Be(1);
+        filteredStatus[0].Status.Should().Be(BookingStatus.Confirmed);
     }
 }

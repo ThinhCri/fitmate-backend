@@ -182,7 +182,7 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-816 — Storage access và durability
 - Plan: [Plan triển khai](production-plans/BE-816.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-02, BR-08, BR-16.
 - Hiện trạng: Đã triển khai kiểm tra chữ ký Magic bytes cho các file ảnh tải lên chống tấn công giả mạo định dạng, cơ chế đặt tên không đoán được (`unguessable key`), bảo vệ chống Path Traversal, ký và xác thực HMAC-SHA256 với thời gian hằng số và kẹp trần TTL, và mở rộng unit tests trong `LocalStorageServiceTests` và `HmacSignedUrlServiceTests`.
 - Scope: Kiểm owner/category/entity trước signed URL; MIME magic bytes/quota; unguessable key; private cert/post media; revoke/orphan cleanup; persistent media và backup.
@@ -200,12 +200,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-818 — Hoàn thiện 7 module admin
 - Plan: [Plan triển khai](production-plans/BE-818.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-803, BE-806, BE-807, BE-809, BE-810; requirement: BR-14.
-- Hiện trạng: Users/certs/reports/action-required/finance có một phần.
+- Hiện trạng: Đã hoàn thiện toàn diện 7 module quản trị cho Admin Web (User management, Certificates moderation, Reports & moderation, Finance & settlements, Bookings management, Metrics & action-required, Policy & TOTP MFA security) với phân quyền 2 lớp và phân trang an toàn. User đã chạy build (0 errors) và unit tests (490/490 PASS).
 - Scope: Admin bookings/payments list/detail; aggregated metrics time bucket; trainer detail; audit query; settings/system safe fields; đồng nhất filter/sort/pagination.
-- Acceptance/evidence: WEB-801..806 dùng data thật; totals theo đúng filter; khóa self/last admin chặn; audit reason; không unrestricted chat/health endpoint.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-818](production-plans/evidence/BE-818.md) (Build 0 errors, Tests 490/490 PASS).
+- Handoff: hoàn thành các module admin backend; mở khóa BE-819.
 
 ### BE-819 — Support, settings và capabilities
 - Plan: [Plan triển khai](production-plans/BE-819.md).

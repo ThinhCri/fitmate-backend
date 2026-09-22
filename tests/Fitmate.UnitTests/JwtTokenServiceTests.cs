@@ -62,8 +62,10 @@ public class JwtTokenServiceTests
     {
         var svc = new JwtTokenService(ValidOptions());
         var issued = svc.Issue(new JwtTokenRequest(Guid.NewGuid(), "u@x.vn", "member", "U"));
-        // Đảo 1 char cuối
-        var tampered = issued.AccessToken[..^1] + (issued.AccessToken[^1] == 'A' ? 'B' : 'A');
+        var parts = issued.AccessToken.Split('.');
+        // Tamper the payload part to invalidate signature
+        var tamperedPayload = parts[1][..^2] + (parts[1][^1] == 'A' ? "XY" : "AB");
+        var tampered = $"{parts[0]}.{tamperedPayload}.{parts[2]}";
         var principal = svc.Validate(tampered);
         principal.Should().BeNull();
     }

@@ -50,6 +50,20 @@ public class EfAppointmentStore : IAppointmentStore
         return (items, total);
     }
 
+    public async Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(
+        BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
+    {
+        IQueryable<Appointment> q = _db.Appointments;
+        if (status.HasValue) q = q.Where(a => a.Status == status.Value);
+        if (ptUserId.HasValue) q = q.Where(a => a.PtUserId == ptUserId.Value);
+        if (memberId.HasValue) q = q.Where(a => a.MemberId == memberId.Value);
+
+        var total = await q.CountAsync(ct);
+        var items = await q.OrderByDescending(a => a.SlotStartUtc)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        return (items, total);
+    }
+
     public async Task AddAsync(Appointment appointment, CancellationToken ct)
         => await _db.Appointments.AddAsync(appointment, ct);
 

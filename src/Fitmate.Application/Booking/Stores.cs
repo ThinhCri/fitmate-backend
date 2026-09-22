@@ -12,6 +12,7 @@ public interface IAppointmentStore
     Task<bool> ExistsActiveForSlotAsync(Guid ptUserId, DateTime slotStartUtc, CancellationToken ct);
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, BookingStatus? status, int page, int pageSize, CancellationToken ct);
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, BookingStatus? status, int page, int pageSize, CancellationToken ct);
+    Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct);
     Task AddAsync(Appointment appointment, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }

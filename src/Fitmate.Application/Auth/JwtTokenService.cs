@@ -90,7 +90,7 @@ public class JwtTokenService : IJwtTokenService
         {
             return new JwtSecurityTokenHandler().ValidateToken(token, validation, out _);
         }
-        catch (SecurityTokenException)
+        catch (Exception)
         {
             return null;
         }

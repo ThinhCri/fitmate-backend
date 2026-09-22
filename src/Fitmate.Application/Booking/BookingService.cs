@@ -173,6 +173,14 @@ public class BookingService : IBookingService
     public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtAsync(Guid ptUserId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
         => _appointments.ListByPtPagedAsync(ptUserId, status, page, pageSize, ct);
 
+    public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminAsync(
+        BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
+    {
+        page = page < 1 ? 1 : page;
+        pageSize = pageSize < 1 ? 25 : (pageSize > 100 ? 100 : pageSize);
+        return _appointments.ListAdminPagedAsync(status, ptUserId, memberId, page, pageSize, ct);
+    }
+
     public Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct)
         => _appointments.FindByIdAsync(appointmentId, ct);
 }
