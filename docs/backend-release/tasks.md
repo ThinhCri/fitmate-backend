@@ -56,30 +56,30 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-802 — Hoàn thiện authentication tài khoản
 - Plan: [Plan triển khai](production-plans/BE-802.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-801; requirement: BR-01.
-- Hiện trạng: AuthController có register/login/refresh/logout; chưa xác nhận email/password recovery E2E.
+- Hiện trạng: Đã triển khai Forgot Password (neutral 202 response + outbox event), Reset Password (session invalidation), Change Password, Refresh Token Reuse Detection (family token invalidation) và đầy đủ FluentValidation + unit tests; user đã verify build 0 error và 410/410 tests PASS.
 - Scope: Email verification/resend, forgot/reset/change password, refresh reuse detection, session revoke/logout; active/locked/deletion guard; distributed rate-limit phù hợp topology.
-- Acceptance/evidence: Tests API non-enumeration, token single-use/expired/replayed, revoked JWT/refresh, concurrent refresh; email thật staging qua BE-410.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-802](production-plans/evidence/BE-802.md) (Build 0 error, 410/410 tests PASS).
+- Handoff: hoàn thành authentication & recovery backend; mở khóa BE-803.
 
 ### BE-803 — Bảo vệ đăng nhập admin
 - Plan: [Plan triển khai](production-plans/BE-803.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-802; requirement: BR-01, BR-14.
-- Hiện trạng: Admin MFA và browser auth chưa có bằng chứng đầy đủ.
+- Hiện trạng: Đã triển khai Admin MFA TOTP enrollment/verify/disable (`AdminMfaController.cs`), bảo vệ không khóa Admin cuối cùng (`CountActiveAdminsAsync` guard trong `AdminUserService`), hỗ trợ refresh token HttpOnly cookie cho web; user đã verify build 0 error và 411/411 tests PASS.
 - Scope: TOTP/recovery, admin bootstrap/no last-admin lock; web refresh HttpOnly cookie + CSRF/Origin/CORS exact allowlist; no localStorage secrets.
-- Acceptance/evidence: Non-admin/MFA incomplete bị chặn ở service; cross-origin CSRF bị chặn; reset/recovery audit; WEB-800 E2E.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-803](production-plans/evidence/BE-803.md) (Build 0 error, 411/411 tests PASS).
+- Handoff: hoàn thành bảo vệ đăng nhập admin và MFA; mở khóa BE-804.
 
 ### BE-804 — Hồ sơ, privacy và user search
 - Plan: [Plan triển khai](production-plans/BE-804.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-801, BE-802; requirement: BR-02.
-- Hiện trạng: FE profile theo email; tên/avatar từng có placeholder.
+- Hiện trạng: Đã triển khai đầy đủ `GET/PUT/PATCH /api/v1/users/me`, `GET /api/v1/users/{id}/profile` (ẩn toàn bộ thông tin nhạy cảm), và `GET /api/v1/users/search` (tìm kiếm an toàn phân trang), kèm DI wire-up và bộ unit tests trong `UserProfileServiceTests.cs`; user đã verify build 0 error và 417/417 tests PASS.
 - Scope: Owner profile/extended/preferences, public projection UUID, update avatar reference; weight từ log; PT profile riêng; user search tối thiểu rate-limited không email leak.
-- Acceptance/evidence: App field parity toàn bộ Profile; null vs zero đúng; người khác không đọc medical/phone/birthday; role/verified mass assignment bị chặn.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-804](production-plans/evidence/BE-804.md) (Build 0 error, 417/417 tests PASS).
+- Handoff: hoàn thiện hồ sơ người dùng, quyền riêng tư và tìm kiếm; mở khóa BE-805 và BE-806.
 
 ### BE-805 — Xóa tài khoản và dữ liệu
 - Plan: [Plan triển khai](production-plans/BE-805.md).

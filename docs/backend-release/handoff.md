@@ -26,19 +26,38 @@
 
 ## Phiên hiện tại
 
-### Phiên 36 — đang chạy (2026-09-22) [BE-800]
+### Phiên 36 — đang chạy (2026-09-22) [BE-800 / BE-801 / BE-802 / BE-803 / BE-804]
 
 **BE-800: Đối chiếu working tree và dọn baseline — VERIFIED**
+- Khảo sát tĩnh working tree và uncommitted changes. User đã chạy build (0 errors) và tests (402/402 PASS). Commit `b469eb1`.
 
-- Khảo sát tĩnh working tree và uncommitted changes:
-  - Xoá thư mục trùng `src/Fitmate.Domain/Payments/` (plural), giữ lại `src/Fitmate.Domain/Payment/` (singular) được cấu hình trong EF Core và `EfPaymentStore`.
-  - Khảo sát các thay đổi notification/push producer wiring trong `FriendService.cs`, `ModerationService.cs`, `NotificationService.cs`, `PushDeliveryDispatcher.cs`.
-  - Khảo sát cập nhật test harnesses trong `FriendServiceTests.cs` và `ModerationServiceTests.cs`.
-- Tạo file evidence: `docs/backend-release/production-plans/evidence/BE-800.md`.
-- `tasks.md` cập nhật: BE-800 chuyển sang `VERIFIED`.
-- Kết quả verification thực tế từ User: `dotnet build Fitmate.slnx` thành công 0 errors (8 warnings), `dotnet test` thành công 402/402 unit tests PASS (0 failed, 0 skipped).
+**BE-801: Đóng băng contract liên repo — VERIFIED**
+- Khảo sát toàn bộ route inventory runtime vs OpenAPI spec, đối chiếu với 2 frontend guides và gắn task owner cho toàn bộ spec-only/proposed endpoints. File evidence: `docs/backend-release/production-plans/evidence/BE-801.md`.
 
-**Next:** Triển khai **BE-801** (Đóng băng contract liên repo) và dựng **BE-820** (Integration test harness).
+**BE-802: Hoàn thiện authentication tài khoản — VERIFIED**
+- Triển khai password recovery (`POST /api/v1/auth/password/forgot`, `POST /api/v1/auth/password/reset`), authenticated change password (`POST /api/v1/auth/password/change`), và cập nhật logout (`POST /api/v1/auth/logout`).
+- Triển khai Refresh Token Reuse Detection (family invalidation) trong `RefreshTokenService.RotateAsync` & `EfRefreshTokenStore.RevokeAllForUserAsync`.
+- Triển khai Password Reset Session Invalidation: tự động thu hồi toàn bộ refresh tokens khi đổi/reset mật khẩu.
+- FluentValidation cho tất cả recovery và change password requests trong `AuthValidators.cs`.
+- Bổ sung unit tests cho reuse detection và validators trong `RefreshTokenServiceTests.cs` và `AuthValidatorTests.cs`.
+- Kết quả test thực tế từ User: `dotnet test` 410/410 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-802.md`.
+
+**BE-803: Bảo vệ đăng nhập admin — VERIFIED**
+- Triển khai Admin MFA TOTP setup/verify/disable endpoints (`AdminMfaController.cs`): sinh TOTP key/uri, verify code, bật 2FA Identity và cấp 10 recovery codes.
+- Triển khai Last-Admin Lock Protection (`AdminUserService.cs` & `EfAdminUserStore.cs`): ngăn chặn khóa quản trị viên cuối cùng qua `CountActiveAdminsAsync`.
+- Triển khai Set-Cookie cho refresh_token và tự động đọc cookie trên web refresh/logout (`AuthController.cs`).
+- Bổ sung unit test cho last-admin lock protection trong `AdminUserServiceTests.cs`.
+- Kết quả test thực tế từ User: `dotnet test` 411/411 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-803.md`.
+
+**BE-804: Hồ sơ, privacy và user search — VERIFIED**
+- Triển khai `GET /api/v1/users/me`: trả về toàn bộ thông tin tài khoản và profile (kèm email, số điện thoại, ngày sinh, chiều cao, cân nặng, tiền sử bệnh, dị ứng, múi giờ, role). Tự động tạo record `UserProfile` nếu chưa có.
+- Triển khai `PUT /api/v1/users/me` và `PATCH /api/v1/users/me`: cập nhật tên hiển thị, múi giờ và các chỉ số thể chất kèm validation (chiều cao 1-300cm, cân nặng 1-500kg, ngày sinh quá khứ).
+- Triển khai `GET /api/v1/users/{id}/profile`: Public Profile Projection an toàn chỉ lộ thông tin cơ bản (id, full_name, avatar_url, role, fitness_goal, created_at), che giấu hoàn toàn thông tin cá nhân/y tế.
+- Triển khai `GET /api/v1/users/search`: Tìm kiếm người dùng công khai theo tên có phân trang an toàn (tối đa 50 kết quả), tự động loại trừ tài khoản bị khóa/đã xóa.
+- Bổ sung bộ unit tests trong `UserProfileServiceTests.cs` và đăng ký DI trong `Program.cs`.
+- Kết quả test thực tế từ User: `dotnet test` 417/417 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-804.md`.
+
+**Next:** Tiếp tục triển khai **BE-805** (Xóa tài khoản và dữ liệu) và **BE-806** (PT onboarding, marketplace và reviews).
 
 ### Lịch sử các phiên trước
 

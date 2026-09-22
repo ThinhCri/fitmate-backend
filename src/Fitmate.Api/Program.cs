@@ -132,11 +132,14 @@ builder.Services.AddScoped<Fitmate.Application.Auth.IRefreshTokenStore, Fitmate.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<Fitmate.Api.Auth.ICurrentUserAccessor, Fitmate.Api.Auth.HttpContextCurrentUserAccessor>();
 
-// BE-030: FluentValidation auto-validate cho Controller.
+// BE-030 & BE-802: FluentValidation auto-validate cho Controller.
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 builder.Services.AddScoped<IValidator<RegisterRequest>, RegisterRequestValidator>();
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 builder.Services.AddScoped<IValidator<RefreshRequest>, RefreshRequestValidator>();
+builder.Services.AddScoped<IValidator<ForgotPasswordRequest>, ForgotPasswordRequestValidator>();
+builder.Services.AddScoped<IValidator<ResetPasswordRequest>, ResetPasswordRequestValidator>();
+builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequestValidator>();
 
 // BE-040: Trainer + Certificate services.
 builder.Services.AddScoped<IPtProfileStore, Fitmate.Infrastructure.Trainers.EfPtProfileStore>();
@@ -168,6 +171,10 @@ builder.Services.AddScoped<IAuthorizationGuard, Fitmate.Application.Auth.Authori
 // BE-110: Admin user management.
 builder.Services.AddScoped<IAdminUserStore, Fitmate.Infrastructure.Identity.EfAdminUserStore>();
 builder.Services.AddScoped<IAdminUserService, Fitmate.Application.Identity.AdminUserService>();
+
+// BE-804: User profile and search.
+builder.Services.AddScoped<IUserProfileStore, Fitmate.Infrastructure.Identity.EfUserProfileStore>();
+builder.Services.AddScoped<IUserProfileService, Fitmate.Application.Identity.UserProfileService>();
 
 // BE-150: Admin finance.
 builder.Services.AddScoped<IAdminFinanceStore, Fitmate.Infrastructure.Finance.EfAdminFinanceStore>();
