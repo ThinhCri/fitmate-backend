@@ -21,9 +21,11 @@ public interface IFriendStore
 
     Task SaveChangesAsync(CancellationToken ct);
 
-    /// <summary>BE-181: pagination friends list — trả cùng pattern như BE-180 social feed.</summary>
     Task<(IReadOnlyList<Guid> FriendIds, string? NextCursor)> ListFriendIdsAsync(
         Guid userId, DateTime? cursorCreatedAt, Guid? cursorFriendId, int limit, CancellationToken ct);
+
+    Task<IReadOnlyList<FriendRequest>> ListPendingRequestsAsync(
+        Guid userId, string type, CancellationToken ct);
 }
 
 public interface IBlockStore

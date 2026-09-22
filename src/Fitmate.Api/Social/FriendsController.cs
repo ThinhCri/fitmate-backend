@@ -20,6 +20,14 @@ public class FriendsController : ControllerBase
 
     public FriendsController(IFriendService svc) { _svc = svc; }
 
+    [HttpGet("requests")]
+    public async Task<IActionResult> ListPendingRequests([FromQuery] string type = "incoming", CancellationToken ct = default)
+    {
+        var userId = GetUserId();
+        var items = await _svc.ListPendingRequestsAsync(userId, type, ct);
+        return Ok(new { items });
+    }
+
     [HttpPost("requests")]
     public async Task<IActionResult> SendRequest([FromBody] SendFriendRequestBody body, CancellationToken ct)
     {

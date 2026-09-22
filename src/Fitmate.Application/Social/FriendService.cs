@@ -270,6 +270,22 @@ public class FriendService : IFriendService
         return new FriendRequestStatusView("none", null, null);
     }
 
+    public async Task<IReadOnlyList<FriendRequestDetailedView>> ListPendingRequestsAsync(Guid userId, string type, CancellationToken ct)
+    {
+        EnsureAuthenticated(userId);
+        var requests = await _store.ListPendingRequestsAsync(userId, type, ct);
+        var results = new List<FriendRequestDetailedView>(requests.Count);
+        foreach (var r in requests)
+        {
+            var senderAuthor = await LookupAuthorAsync(r.SenderId, ct);
+            var recipAuthor = await LookupAuthorAsync(r.RecipientId, ct);
+            var senderSummary = new FriendSummary(r.SenderId, senderAuthor?.DisplayName ?? "Unknown", senderAuthor?.AvatarUrl, r.CreatedAt);
+            var recipSummary = new FriendSummary(r.RecipientId, recipAuthor?.DisplayName ?? "Unknown", recipAuthor?.AvatarUrl, r.CreatedAt);
+            results.Add(new FriendRequestDetailedView(r.Id, r.SenderId, r.RecipientId, r.Status.ToString().ToLowerInvariant(), r.CreatedAt, senderSummary, recipSummary));
+        }
+        return results;
+    }
+
     private static void EnsureAuthenticated(Guid userId)
     {
         if (userId == Guid.Empty)

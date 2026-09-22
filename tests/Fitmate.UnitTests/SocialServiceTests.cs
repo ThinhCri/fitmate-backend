@@ -107,6 +107,16 @@ public class SocialServiceTests
             Reports.Add((reporterId, kind, targetId, reason, details, idempotencyKey));
             return Task.FromResult(Guid.NewGuid());
         }
+        public Task<(IReadOnlyList<SocialCommentRow> Items, string? NextCursor)> ListCommentsAsync(
+            Guid postId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
+        {
+            var q = Comments.Where(c => c.PostId == postId);
+            if (cursorCreatedAt.HasValue && cursorId.HasValue)
+                q = q.Where(c => c.CreatedAt > cursorCreatedAt.Value || (c.CreatedAt == cursorCreatedAt.Value && c.Id.CompareTo(cursorId.Value) > 0));
+            var page = q.OrderBy(c => c.CreatedAt).ThenBy(c => c.Id).Take(limit).ToList();
+            return Task.FromResult<(IReadOnlyList<SocialCommentRow>, string?)>((page, null));
+        }
+
         public Task<SocialCommentRow?> GetCommentAsync(Guid commentId, CancellationToken ct)
             => Task.FromResult<SocialCommentRow?>(Comments.FirstOrDefault(c => c.Id == commentId));
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
@@ -116,7 +126,19 @@ public class SocialServiceTests
             => Task.FromResult<SocialAuthorRow?>(Authors.GetValueOrDefault(userId));
     }
 
-    private static SocialService NewService(InMemorySocialStore store, InMemoryCertificateStore certStore) => new(store, certStore, new AllowAllAuthz(), new StubFriendService());
+    private sealed class StubBlockStore : IBlockStore
+    {
+        public HashSet<(Guid, Guid)> Blocks { get; } = new();
+        public Task<bool> IsBlockedEitherWayAsync(Guid a, Guid b, CancellationToken ct) => Task.FromResult(Blocks.Contains((a, b)) || Blocks.Contains((b, a)));
+        public Task<bool> BlockExistsAsync(Guid b, Guid d, CancellationToken ct) => Task.FromResult(Blocks.Contains((b, d)));
+        public Task AddBlockAsync(BlockedUser x, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> RemoveBlockAsync(Guid b, Guid d, CancellationToken ct) => Task.FromResult(Blocks.Remove((b, d)));
+        public Task<(IReadOnlyList<Guid>, string?)> ListBlockedIdsAsync(Guid b, DateTime? c, Guid? i, int l, CancellationToken ct) => throw new NotImplementedException();
+        public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+    }
+
+    private static SocialService NewService(InMemorySocialStore store, InMemoryCertificateStore certStore, StubBlockStore? blockStore = null)
+        => new(store, certStore, new AllowAllAuthz(), new StubFriendService(), blockStore ?? new StubBlockStore());
 
     /// <summary>BE-181: minimal stub cho FriendService — IsFriendAsync trả false (giống stub cũ) để SocialService test không phụ thuộc friend state.</summary>
     private sealed class StubFriendService : IFriendService
@@ -129,6 +151,7 @@ public class SocialServiceTests
         public Task<FriendPage> ListFriendsAsync(Guid u, string? c, int l, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> IsFriendAsync(Guid a, Guid b, CancellationToken ct) => Task.FromResult(false);
         public Task<FriendRequestStatusView> GetRelationStatusAsync(Guid v, Guid o, CancellationToken ct) => throw new NotImplementedException();
+        public Task<IReadOnlyList<FriendRequestDetailedView>> ListPendingRequestsAsync(Guid u, string t, CancellationToken ct) => throw new NotImplementedException();
     }
 
     private static SocialPostRow NewPost(Guid author, PostVisibility vis, string content = "hi", DateTime? at = null, int reactions = 0, int comments = 0)
@@ -388,5 +411,88 @@ public class SocialServiceTests
         var id = await s.CreateReportAsync(Guid.NewGuid(),
             new ReportInputDto(ReportTargetType.Certificate, cert.Id, "fake cert", null, null), null, CancellationToken.None);
         id.Should().NotBe(Guid.Empty);
+    }
+
+    [Fact]
+    public async Task ListComments_ReturnsComments_WithAuthor()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        var commenter = Guid.NewGuid();
+        store.Authors[commenter] = new SocialAuthorRow(commenter, "Commenter", null);
+        var post = NewPost(author, PostVisibility.Public);
+        store.Posts.Add(post);
+        store.Comments.Add(new SocialCommentRow(Guid.NewGuid(), post.Id, commenter, "great post", DateTime.UtcNow));
+
+        var s = NewService(store, new InMemoryCertificateStore());
+        var page = await s.ListCommentsAsync(viewerId: null, post.Id, cursor: null, limit: 10, CancellationToken.None);
+
+        page.Items.Should().HaveCount(1);
+        page.Items[0].Text.Should().Be("great post");
+        page.Items[0].Author.DisplayName.Should().Be("Commenter");
+    }
+
+    [Fact]
+    public async Task ListComments_WhenAuthorBlocked_ThrowsNotFound()
+    {
+        var store = new InMemorySocialStore();
+        var blockStore = new StubBlockStore();
+        var author = Guid.NewGuid();
+        var viewer = Guid.NewGuid();
+        blockStore.Blocks.Add((viewer, author));
+        var post = NewPost(author, PostVisibility.Public);
+        store.Posts.Add(post);
+
+        var s = NewService(store, new InMemoryCertificateStore(), blockStore);
+        var act = () => s.ListCommentsAsync(viewer, post.Id, cursor: null, limit: 10, CancellationToken.None);
+        await act.Should().ThrowAsync<NotFoundException>().Where(e => e.Code == ErrorCodes.Social.PostNotFound);
+    }
+
+    [Fact]
+    public async Task GetPost_WhenAuthorBlocked_ThrowsNotFound()
+    {
+        var store = new InMemorySocialStore();
+        var blockStore = new StubBlockStore();
+        var author = Guid.NewGuid();
+        var viewer = Guid.NewGuid();
+        blockStore.Blocks.Add((author, viewer)); // author blocked viewer
+        var post = NewPost(author, PostVisibility.Public);
+        store.Posts.Add(post);
+
+        var s = NewService(store, new InMemoryCertificateStore(), blockStore);
+        var act = () => s.GetPostAsync(viewer, post.Id, CancellationToken.None);
+        await act.Should().ThrowAsync<NotFoundException>().Where(e => e.Code == ErrorCodes.Social.PostNotFound);
+    }
+
+    [Fact]
+    public async Task AddComment_WhenAuthorBlocked_ThrowsForbidden()
+    {
+        var store = new InMemorySocialStore();
+        var blockStore = new StubBlockStore();
+        var author = Guid.NewGuid();
+        var commenter = Guid.NewGuid();
+        blockStore.Blocks.Add((author, commenter));
+        var post = NewPost(author, PostVisibility.Public);
+        store.Posts.Add(post);
+
+        var s = NewService(store, new InMemoryCertificateStore(), blockStore);
+        var act = () => s.AddCommentAsync(commenter, post.Id, "hello", CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>().Where(e => e.Code == ErrorCodes.Social.RecipientBlocked);
+    }
+
+    [Fact]
+    public async Task ToggleReaction_WhenAuthorBlocked_ThrowsForbidden()
+    {
+        var store = new InMemorySocialStore();
+        var blockStore = new StubBlockStore();
+        var author = Guid.NewGuid();
+        var reactor = Guid.NewGuid();
+        blockStore.Blocks.Add((reactor, author));
+        var post = NewPost(author, PostVisibility.Public);
+        store.Posts.Add(post);
+
+        var s = NewService(store, new InMemoryCertificateStore(), blockStore);
+        var act = () => s.ToggleReactionAsync(reactor, post.Id, ReactionType.Heart, CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>().Where(e => e.Code == ErrorCodes.Social.RecipientBlocked);
     }
 }

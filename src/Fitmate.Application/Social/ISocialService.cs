@@ -39,6 +39,8 @@ public sealed record CommentView(
     string Text,
     DateTime CreatedAt);
 
+public sealed record CommentPage(IReadOnlyList<CommentView> Items, string? NextCursor);
+
 /// <summary>BE-211: đổi từ ReportTargetKind (3 value) sang ReportTargetType (4 value theo DEC-028).
 /// Controller parse string → enum tương ứng.</summary>
 public sealed record ReportInputDto(
@@ -55,6 +57,7 @@ public interface ISocialService
     Task<PostView> CreatePostAsync(Guid authorId, PostInput input, CancellationToken ct);
     Task DeletePostAsync(Guid actorId, bool isAdmin, Guid postId, CancellationToken ct);
     Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, CancellationToken ct);
+    Task<CommentPage> ListCommentsAsync(Guid? viewerId, Guid postId, string? cursor, int limit, CancellationToken ct);
     Task ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct);
 
     /// <summary>BE-211: tạo report với idempotency key (optional). Throw ConflictException nếu đã có Open report trùng (DEC-028).</summary>

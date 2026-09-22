@@ -133,6 +133,7 @@ public class ChatServiceTests
         public Task UnfriendAsync(Guid a, Guid o, CancellationToken ct) { Friends.Remove((a.CompareTo(o) < 0 ? (a, o) : (o, a))); return Task.CompletedTask; }
         public Task<FriendPage> ListFriendsAsync(Guid u, string? c, int l, CancellationToken ct) => throw new NotImplementedException();
         public Task<FriendRequestStatusView> GetRelationStatusAsync(Guid v, Guid o, CancellationToken ct) => throw new NotImplementedException();
+        public Task<IReadOnlyList<FriendRequestDetailedView>> ListPendingRequestsAsync(Guid u, string t, CancellationToken ct) => throw new NotImplementedException();
     }
 
     private sealed class InMemoryBlockStore : IBlockStore

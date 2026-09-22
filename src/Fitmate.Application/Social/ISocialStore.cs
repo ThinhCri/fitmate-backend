@@ -17,6 +17,8 @@ public interface ISocialStore
 
     Task<bool> PostExistsAsync(Guid postId, CancellationToken ct);
     Task AddCommentAsync(SocialCommentRow row, CancellationToken ct);
+    Task<(IReadOnlyList<SocialCommentRow> Items, string? NextCursor)> ListCommentsAsync(
+        Guid postId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct);
 
     Task<bool> HasReactionAsync(Guid postId, Guid userId, CancellationToken ct);
     Task AddReactionAsync(SocialReactionRow row, CancellationToken ct);

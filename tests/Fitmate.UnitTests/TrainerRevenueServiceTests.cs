@@ -214,3 +214,4 @@ public class TrainerRevenueServiceTests
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
 }
+

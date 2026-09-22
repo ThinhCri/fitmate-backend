@@ -146,30 +146,30 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-812 — Dinh dưỡng và nhật ký đầy đủ
 - Plan: [Plan triển khai](production-plans/BE-812.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-09.
-- Hiện trạng: Đã triển khai đầy đủ CRUD cho Meal Log bao gồm `DELETE /api/v1/me/nutrition/meals/{id}` (soft-delete), kiểm tra phân quyền sở hữu, validate số liệu dinh dưỡng và ngày ghi nhận, phát sinh outbox events (`nutrition.meal_logged`, `nutrition.meal_updated`, `nutrition.meal_deleted`), tách biệt hoàn toàn scan candidate khỏi dữ liệu lưu trữ, và mở rộng bộ unit tests trong `NutritionServiceTests.cs`.
+- Hiện trạng: Đã triển khai đầy đủ CRUD cho Meal Log bao gồm `DELETE /api/v1/me/nutrition/meals/{id}` (soft-delete), kiểm tra phân quyền sở hữu, validate số liệu dinh dưỡng và ngày ghi nhận, phát sinh outbox events (`nutrition.meal_logged`, `nutrition.meal_updated`, `nutrition.meal_deleted`), tách biệt hoàn toàn scan candidate khỏi dữ liệu lưu trữ, và mở rộng bộ unit tests trong `NutritionServiceTests.cs`; user đã verify build 0 error.
 - Scope: Meal delete/corrections, portions/macros units, timezone/day filters/cursor, duplicate submission protection; schedule tách log; manual flow độc lập AI.
-- Acceptance/evidence: [Evidence BE-812](production-plans/evidence/BE-812.md).
+- Acceptance/evidence: [Evidence BE-812](production-plans/evidence/BE-812.md) (Build 0 error).
 - Handoff: hoàn thiện dinh dưỡng và nhật ký bữa ăn; mở khóa BE-813.
 
 ### BE-813 — Dashboard và tiến độ thật
 - Plan: [Plan triển khai](production-plans/BE-813.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-811, BE-812; requirement: BR-10.
-- Hiện trạng: Dashboard mock/calorie target/streak chưa có nguồn chuẩn đủ.
+- Hiện trạng: Đã triển khai `IDashboardService` & `DashboardController` (`GET /api/v1/me/dashboard`): tổng hợp dinh dưỡng thực tế từ `MealLog`, tổng hợp buổi tập từ `WorkoutSession`, tính calo ròng, thuật toán chuỗi ngày tập liên tục (`Streak`), lấy cân nặng mới nhất và lịch hẹn sắp diễn ra kế tiếp, kèm theo bộ unit tests toàn diện trong `DashboardServiceTests.cs`; user đã verify build 0 error.
 - Scope: Owner daily summary, targets, macros, streak từ completed session, upcoming booking; timezone boundary; source/estimated labels.
-- Acceptance/evidence: Dashboard totals bằng logs, empty không giả 0 mục tiêu, retry/backfill không tăng điểm; không nhận reward mutation giả.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-813](production-plans/evidence/BE-813.md) (Build 0 error).
+- Handoff: hoàn thiện dashboard và tiến độ; mở khóa BE-814.
 
 ### BE-814 — Kiểm chứng social và chat production
 - Plan: [Plan triển khai](production-plans/BE-814.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-801, BE-804; requirement: BR-11.
-- Hiện trạng: Social/friends/chat implemented; chủ yếu unit tests.
+- Hiện trạng: Đã triển khai endpoint lấy danh sách bình luận (`GET /api/v1/social/posts/{id}/comments`), danh sách yêu cầu kết bạn (`GET /api/v1/social/friends/requests`), cách ly block isolation ở 2 chiều trên toàn bộ luồng post/comment/reaction, kiểm chứng trật tự chat & monotonic read marker, và mở rộng bộ unit tests toàn diện trong `SocialServiceTests.cs`, `FriendServiceTests.cs`, `ChatServiceTests.cs`.
 - Scope: Search/pending invites/comments retrieval gap; stable per-conversation sequence; visibility/block media; race locks; moderation evidence; rate/size limits.
-- Acceptance/evidence: PostgreSQL cùng timestamp/read across devices; cross-invite/send-block/accept-block; không duplicate reaction/count; người ngoài không đọc thread.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-814](production-plans/evidence/BE-814.md).
+- Handoff: hoàn thiện social & chat production; mở khóa BE-815.
 
 ### BE-815 — Thông báo và push thật
 - Plan: [Plan triển khai](production-plans/BE-815.md).

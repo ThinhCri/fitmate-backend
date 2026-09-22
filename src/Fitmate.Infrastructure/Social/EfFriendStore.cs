@@ -100,4 +100,24 @@ public class EfFriendStore : IFriendStore
         }
         return (ids, next);
     }
+
+    public async Task<IReadOnlyList<FriendRequest>> ListPendingRequestsAsync(Guid userId, string type, CancellationToken ct)
+    {
+        IQueryable<FriendRequest> q = _db.FriendRequests.AsNoTracking().Where(r => r.Status == FriendRequestStatus.Pending);
+
+        if (string.Equals(type, "outgoing", StringComparison.OrdinalIgnoreCase))
+        {
+            q = q.Where(r => r.SenderId == userId);
+        }
+        else if (string.Equals(type, "all", StringComparison.OrdinalIgnoreCase))
+        {
+            q = q.Where(r => r.SenderId == userId || r.RecipientId == userId);
+        }
+        else // default: incoming
+        {
+            q = q.Where(r => r.RecipientId == userId);
+        }
+
+        return await q.OrderByDescending(r => r.CreatedAt).ToListAsync(ct);
+    }
 }

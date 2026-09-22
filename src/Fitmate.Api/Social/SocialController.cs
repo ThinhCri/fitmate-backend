@@ -69,6 +69,18 @@ public class SocialController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("posts/{id:guid}/comments")]
+    public async Task<IActionResult> ListComments(
+        Guid id,
+        [FromQuery] string? cursor,
+        [FromQuery] int limit = 20,
+        CancellationToken ct = default)
+    {
+        var viewerId = TryGetUserId();
+        var page = await _svc.ListCommentsAsync(viewerId, id, cursor, limit, ct);
+        return Ok(new { items = page.Items, nextCursor = page.NextCursor });
+    }
+
     [HttpPost("posts/{id:guid}/comments")]
     public async Task<IActionResult> AddComment(Guid id, [FromBody] CreateCommentBody body, CancellationToken ct)
     {

@@ -112,15 +112,30 @@
 - Bổ sung các test cases toàn diện trong `WorkoutServiceTests.cs` và `WeightServiceTests.cs`.
 - Kết quả test thực tế từ User: `dotnet test` 470/470 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-811.md`.
 
-**BE-812: Dinh dưỡng và nhật ký đầy đủ — IMPLEMENTED — PENDING USER VERIFICATION**
+**BE-812: Dinh dưỡng và nhật ký đầy đủ — VERIFIED**
 - Triển khai trọn bộ CRUD cho Meal Log bao gồm `DELETE /api/v1/me/nutrition/meals/{id}` (soft-delete).
 - Kiểm tra phân quyền sở hữu, validate toàn diện thông số calo/macros và ngày ghi nhận.
 - Phát sinh Outbox events (`nutrition.meal_logged`, `nutrition.meal_updated`, `nutrition.meal_deleted`).
 - Tách biệt scan candidate khỏi luồng lưu trữ thực tế.
 - Bổ sung bộ test cases trong `NutritionServiceTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-812.md`.
+- Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-812.md`.
 
-**Next:** Chờ User chạy build và test nghiệm thu BE-812; sau đó chuyển sang **BE-813** (Dashboard và tiến độ thật).
+**BE-813: Dashboard và tiến độ thật — VERIFIED**
+- Triển khai `IDashboardService`, `EfDashboardStore` và `DashboardController` (`GET /api/v1/me/dashboard`).
+- Tổng hợp dinh dưỡng thực tế, buổi tập thực tế, calo ròng, chuỗi ngày tập liên tục (`Streak`), cân nặng gần nhất và lịch hẹn kế tiếp.
+- Bổ sung bộ unit tests trong `DashboardServiceTests.cs`.
+- Kết quả test thực tế từ User: Build 0 error. File evidence: `docs/backend-release/production-plans/evidence/BE-813.md`.
+
+**BE-814: Kiểm chứng social và chat production — IMPLEMENTED — PENDING USER VERIFICATION**
+- Triển khai `GET /api/v1/social/posts/{id}/comments` (kèm phân trang cursor, kiểm tra quyền xem bài viết và block isolation).
+- Triển khai `GET /api/v1/social/friends/requests?type=incoming|outgoing|all` (lấy danh sách yêu cầu kết bạn chờ xử lý kèm thông tin người gửi/nhận).
+- Thực thi cách ly quan hệ chặn (`Block Isolation`) 2 chiều: lọc feed, chặn xem post, chặn bình luận và thả cảm xúc đối với tài khoản bị block hoặc đã block mình.
+- Kiểm chứng Chat Friend: bảo đảm trật tự tin nhắn, cơ chế đánh dấu đã đọc tiến dần (`Monotonic Read Marker`), bảo toàn lịch sử chat sau khi unfriend/block, xử lý idempotency 409 khi khác payload.
+- Chuẩn hóa mã lỗi xác thực trong `ChatController.cs` về 403 `FITMATE.IDENTITY.NOT_AUTHENTICATED`.
+- Bổ sung các unit tests toàn diện trong `SocialServiceTests.cs`, `FriendServiceTests.cs`, `ChatServiceTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-814.md`.
+
+**Next:** Chờ User chạy build và test nghiệm thu BE-814; sau đó chuyển sang **BE-815** (Thông báo và push thật).
 
 ### Lịch sử các phiên trước
 

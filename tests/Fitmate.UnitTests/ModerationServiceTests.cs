@@ -127,6 +127,7 @@ public class ModerationServiceTests
         public Task<bool> RemovePostAsync(Guid postId, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> PostExistsAsync(Guid postId, CancellationToken ct) => Task.FromResult(Posts.ContainsKey(postId));
         public Task AddCommentAsync(SocialCommentRow row, CancellationToken ct) => throw new NotImplementedException();
+        public Task<(IReadOnlyList<SocialCommentRow> Items, string? NextCursor)> ListCommentsAsync(Guid postId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> HasReactionAsync(Guid postId, Guid userId, CancellationToken ct) => throw new NotImplementedException();
         public Task AddReactionAsync(SocialReactionRow row, CancellationToken ct) => throw new NotImplementedException();
         public Task<int> ChangePostReactionsAsync(Guid postId, int delta, CancellationToken ct) => throw new NotImplementedException();

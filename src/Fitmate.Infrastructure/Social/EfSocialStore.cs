@@ -58,6 +58,15 @@ public class EfSocialStore : ISocialStore
                           || (viewerId.HasValue && friendIds.Contains(p.AuthorId)));
         }
 
+        if (viewerId.HasValue)
+        {
+            var v = viewerId.Value;
+            var blockedUserIds = _db.BlockedUsers
+                .Where(b => b.BlockerId == v || b.BlockedId == v)
+                .Select(b => b.BlockerId == v ? b.BlockedId : b.BlockerId);
+            q = q.Where(p => !blockedUserIds.Contains(p.AuthorId));
+        }
+
         if (cursorCreatedAt.HasValue && cursorId.HasValue)
             q = q.Where(p => p.CreatedAt < cursorCreatedAt.Value
                           || (p.CreatedAt == cursorCreatedAt.Value && p.Id.CompareTo(cursorId.Value) < 0));
@@ -125,6 +134,35 @@ public class EfSocialStore : ISocialStore
     {
         _db.Comments.Add(Comment.Create(row.PostId, row.AuthorId, row.Text));
         await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<(IReadOnlyList<SocialCommentRow> Items, string? NextCursor)> ListCommentsAsync(
+        Guid postId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
+    {
+        var q = _db.Comments.Where(c => c.PostId == postId && c.DeletedAt == null);
+
+        if (cursorCreatedAt.HasValue && cursorId.HasValue)
+        {
+            var ca = cursorCreatedAt.Value;
+            var cid = cursorId.Value;
+            q = q.Where(c => c.CreatedAt > ca || (c.CreatedAt == ca && c.Id.CompareTo(cid) > 0));
+        }
+
+        var entities = await q.OrderBy(c => c.CreatedAt)
+                              .ThenBy(c => c.Id)
+                              .Take(limit)
+                              .ToListAsync(ct);
+
+        var rows = entities.Select(c => new SocialCommentRow(c.Id, c.PostId, c.AuthorId, c.Text, c.CreatedAt)).ToList();
+
+        string? next = null;
+        if (rows.Count == limit)
+        {
+            var last = rows[^1];
+            next = CursorEncoder.Encode(last.CreatedAt, last.Id);
+        }
+
+        return (rows, next);
     }
 
     public Task<bool> HasReactionAsync(Guid postId, Guid userId, CancellationToken ct)

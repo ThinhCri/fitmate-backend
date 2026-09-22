@@ -34,6 +34,9 @@ public interface IFriendService
     /// <summary>BE-181: status cho client — khi A gửi B, B send lại, trả trạng thái đang có pending
     /// request ngược chiều để B dùng accept thay vì tạo mới.</summary>
     Task<FriendRequestStatusView> GetRelationStatusAsync(Guid viewerId, Guid otherUserId, CancellationToken ct);
+
+    /// <summary>List pending friend requests (incoming, outgoing, all).</summary>
+    Task<IReadOnlyList<FriendRequestDetailedView>> ListPendingRequestsAsync(Guid userId, string type, CancellationToken ct);
 }
 
 public interface IBlockService
@@ -49,6 +52,15 @@ public sealed record FriendRequestView(
     Guid RecipientId,
     string Status,
     DateTime CreatedAt);
+
+public sealed record FriendRequestDetailedView(
+    Guid Id,
+    Guid SenderId,
+    Guid RecipientId,
+    string Status,
+    DateTime CreatedAt,
+    FriendSummary? Sender,
+    FriendSummary? Recipient);
 
 public sealed record FriendSummary(
     Guid Id,

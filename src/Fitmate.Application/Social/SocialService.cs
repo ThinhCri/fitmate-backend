@@ -19,6 +19,7 @@ public class SocialService : ISocialService
     private readonly ICertificateStore _certStore;
     private readonly IAuthorizationGuard _authz;
     private readonly IFriendService _friend;
+    private readonly IBlockStore _blockStore;
 
     private const int DefaultLimit = 20;
     private const int MaxLimit = 100;
@@ -29,12 +30,18 @@ public class SocialService : ISocialService
     private const int MaxTags = 10;
     private const int MaxTagLength = 32;
 
-    public SocialService(ISocialStore store, ICertificateStore certStore, IAuthorizationGuard authz, IFriendService friend)
+    public SocialService(
+        ISocialStore store,
+        ICertificateStore certStore,
+        IAuthorizationGuard authz,
+        IFriendService friend,
+        IBlockStore blockStore)
     {
         _store = store;
         _certStore = certStore;
         _authz = authz;
         _friend = friend;
+        _blockStore = blockStore;
     }
 
     public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct)
@@ -76,6 +83,9 @@ public class SocialService : ISocialService
 
         var row = await _store.GetPostWithAuthorAsync(postId, ct)
             ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+
+        if (await _blockStore.IsBlockedEitherWayAsync(viewerId, row.AuthorId, ct))
+            throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
 
         // Visibility: private chỉ author xem được; friends cần là friend.
         if (row.Visibility == PostVisibility.Private && row.AuthorId != viewerId)
@@ -142,8 +152,11 @@ public class SocialService : ISocialService
         if (text.Length > MaxCommentLength)
             throw new ValidationException(ErrorCodes.Validation.TooLong, $"text > {MaxCommentLength} chars.", new Dictionary<string, string[]> { ["text"] = new[] { $"max {MaxCommentLength}" } });
 
-        if (!await _store.PostExistsAsync(postId, ct))
-            throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        var post = await _store.GetPostByIdAsync(postId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+
+        if (await _blockStore.IsBlockedEitherWayAsync(authorId, post.AuthorId, ct))
+            throw new ForbiddenException(ErrorCodes.Social.RecipientBlocked, "Cannot comment on post of a blocked user.");
 
         var row = new SocialCommentRow(
             Id: Guid.NewGuid(),
@@ -158,12 +171,45 @@ public class SocialService : ISocialService
         return new CommentView(row.Id, row.PostId, row.AuthorId, new PostAuthor(author.Id, author.DisplayName, author.AvatarUrl), row.Text, row.CreatedAt);
     }
 
+    public async Task<CommentPage> ListCommentsAsync(Guid? viewerId, Guid postId, string? cursor, int limit, CancellationToken ct)
+    {
+        if (limit < 1) limit = DefaultLimit;
+        if (limit > MaxLimit) limit = MaxLimit;
+
+        var post = await _store.GetPostWithAuthorAsync(postId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+
+        if (post.Visibility == PostVisibility.Private && (!viewerId.HasValue || post.AuthorId != viewerId.Value))
+            throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+
+        if (post.Visibility == PostVisibility.Friends && (!viewerId.HasValue || (post.AuthorId != viewerId.Value && !await IsFriendAsync(viewerId.Value, post.AuthorId, ct))))
+            throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+
+        if (viewerId.HasValue && await _blockStore.IsBlockedEitherWayAsync(viewerId.Value, post.AuthorId, ct))
+            throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+
+        var (createdAt, id) = ParseCursor(cursor);
+        var (rows, next) = await _store.ListCommentsAsync(postId, createdAt, id, limit, ct);
+
+        var views = new List<CommentView>(rows.Count);
+        foreach (var r in rows)
+        {
+            var author = await _store.GetAuthorAsync(r.AuthorId, ct);
+            views.Add(new CommentView(r.Id, r.PostId, r.AuthorId, new PostAuthor(author?.Id ?? r.AuthorId, author?.DisplayName ?? "Unknown", author?.AvatarUrl), r.Text, r.CreatedAt));
+        }
+
+        return new CommentPage(views, next);
+    }
+
     public async Task ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct)
     {
         EnsureAuthenticated(userId);
 
-        if (!await _store.PostExistsAsync(postId, ct))
-            throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        var post = await _store.GetPostByIdAsync(postId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+
+        if (await _blockStore.IsBlockedEitherWayAsync(userId, post.AuthorId, ct))
+            throw new ForbiddenException(ErrorCodes.Social.RecipientBlocked, "Cannot react to post of a blocked user.");
 
         // 1 user chỉ 1 reaction per post → ConflictException 409 nếu đã có.
         if (await _store.HasReactionAsync(postId, userId, ct))

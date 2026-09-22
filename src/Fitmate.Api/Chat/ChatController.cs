@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Fitmate.Application.Chat;
+using Fitmate.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -72,7 +73,7 @@ public class ChatController : ControllerBase
     {
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
         if (!Guid.TryParse(sub, out var id) || id == Guid.Empty)
-            throw new UnauthorizedAccessException();
+            throw new ForbiddenException(ErrorCodes.Identity.NotAuthenticated, "Authentication required.");
         return id;
     }
 }

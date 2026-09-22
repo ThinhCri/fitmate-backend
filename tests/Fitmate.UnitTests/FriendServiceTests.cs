@@ -46,6 +46,17 @@ public class FriendServiceTests
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
         public Task<(IReadOnlyList<Guid>, string?)> ListFriendIdsAsync(Guid u, DateTime? c, Guid? id, int limit, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Guid>)new List<Guid>(), (string?)null));
+        public Task<IReadOnlyList<FriendRequest>> ListPendingRequestsAsync(Guid userId, string type, CancellationToken ct)
+        {
+            IEnumerable<FriendRequest> q = Requests.Where(r => r.Status == FriendRequestStatus.Pending);
+            if (string.Equals(type, "outgoing", StringComparison.OrdinalIgnoreCase))
+                q = q.Where(r => r.SenderId == userId);
+            else if (string.Equals(type, "all", StringComparison.OrdinalIgnoreCase))
+                q = q.Where(r => r.SenderId == userId || r.RecipientId == userId);
+            else
+                q = q.Where(r => r.RecipientId == userId);
+            return Task.FromResult<IReadOnlyList<FriendRequest>>(q.OrderByDescending(r => r.CreatedAt).ToList());
+        }
     }
 
     private sealed class InMemoryBlockStore : IBlockStore
@@ -107,6 +118,7 @@ public class FriendServiceTests
         public Task<bool> RemovePostAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> PostExistsAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
         public Task AddCommentAsync(SocialCommentRow r, CancellationToken ct) => throw new NotImplementedException();
+        public Task<(IReadOnlyList<SocialCommentRow> Items, string? NextCursor)> ListCommentsAsync(Guid p, DateTime? c, Guid? i, int l, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> HasReactionAsync(Guid p, Guid u, CancellationToken ct) => throw new NotImplementedException();
         public Task AddReactionAsync(SocialReactionRow r, CancellationToken ct) => throw new NotImplementedException();
         public Task<int> ChangePostReactionsAsync(Guid id, int d, CancellationToken ct) => throw new NotImplementedException();
@@ -346,6 +358,27 @@ public class FriendServiceTests
         var v = await svc.GetRelationStatusAsync(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
         v.Relation.Should().Be("none");
     }
+
+    [Fact]
+    public async Task ListPendingRequests_Incoming_ReturnsOnlyIncoming()
+    {
+        var f = new InMemoryFriendStore(); var b = new InMemoryBlockStore(); var u = new InMemoryUserLookup(); var ob = new CapturingOutbox(); var s = new InMemorySocialStore();
+        var user = Guid.NewGuid(); var sender1 = Guid.NewGuid(); var recipient1 = Guid.NewGuid();
+        f.Requests.Add(FriendRequest.Create(sender1, user)); // incoming
+        f.Requests.Add(FriendRequest.Create(user, recipient1)); // outgoing
+
+        var svc = NewService(f, b, u, ob, s);
+        var incoming = await svc.ListPendingRequestsAsync(user, "incoming", CancellationToken.None);
+        incoming.Should().HaveCount(1);
+        incoming[0].SenderId.Should().Be(sender1);
+
+        var outgoing = await svc.ListPendingRequestsAsync(user, "outgoing", CancellationToken.None);
+        outgoing.Should().HaveCount(1);
+        outgoing[0].RecipientId.Should().Be(recipient1);
+
+        var all = await svc.ListPendingRequestsAsync(user, "all", CancellationToken.None);
+        all.Should().HaveCount(2);
+    }
 }
 
 /// <summary>BE-181 Block policy.</summary>
@@ -390,6 +423,8 @@ public class BlockServiceTests
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
         public Task<(IReadOnlyList<Guid>, string?)> ListFriendIdsAsync(Guid u, DateTime? c, Guid? id, int l, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Guid>)new List<Guid>(), (string?)null));
+        public Task<IReadOnlyList<FriendRequest>> ListPendingRequestsAsync(Guid u, string t, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<FriendRequest>>(new List<FriendRequest>());
     }
 
     private sealed class InMemoryUserLookup : IUserRoleLookup

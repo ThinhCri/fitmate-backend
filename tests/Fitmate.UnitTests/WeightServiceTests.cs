@@ -104,3 +104,4 @@ public class WeightServiceTests
         await act.Should().ThrowAsync<ValidationException>();
     }
 }
+
