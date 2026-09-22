@@ -1,5 +1,13 @@
 # AGENTS.md — Fitmate Backend (.NET 8)
 
+## Production baseline — đọc trước mọi task mới
+Đọc docs/backend-release/README.md và business-requirements.md trước danh sách đọc bên dưới.
+Baseline PROD-2026-09-22-v1 / DEC-051 thay các chỉ dẫn cũ mâu thuẫn. tasks.md BE-800..829 là backlog production; DONE lịch sử không là release approval.
+Solution hiện dùng Fitmate.slnx; project build có thể nhắm csproj trực tiếp. Không giả SDK hỗ trợ định dạng solution nếu chưa kiểm.
+Docker named volume giữ dữ liệu qua container recreation; không “reset bằng xóa container”, không xóa volume user để chữa test.
+Mỗi endpoint test các status có ý nghĩa; không tạo403/409 giả chỉ để đủ checklist.
+Task tài liệu không tự commit; tuân thủ rule duyệt message. Không đổi code đang dở của user.
+
 > Quy tắc cho AI agents và developers khi làm việc trên repo FitmateAI_BE.
 
 ## Vai trò của repo

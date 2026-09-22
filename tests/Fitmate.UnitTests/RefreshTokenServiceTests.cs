@@ -72,6 +72,41 @@ public class RefreshTokenServiceTests
         await svc.RevokeAsync(issued.RawToken, CancellationToken.None); // 2 lần không lỗi
     }
 
+    [Fact]
+    public async Task RotateAsync_RevokesAllTokensForUser_WhenTokenReused()
+    {
+        var store = new InMemoryRefreshTokenStore();
+        var svc = NewService(store);
+        var userId = Guid.NewGuid();
+
+        var first = await svc.IssueAsync(userId, "device-1", CancellationToken.None);
+        var second = await svc.IssueAsync(userId, "device-2", CancellationToken.None);
+
+        // Rotate first token -> first token is now revoked
+        var rotatedFirst = await svc.RotateAsync(first.RawToken, CancellationToken.None);
+        rotatedFirst.Should().NotBeNull();
+
+        // Attacker attempts to reuse the already-revoked first token
+        var replayAttempt = await svc.RotateAsync(first.RawToken, CancellationToken.None);
+        replayAttempt.Should().BeNull();
+
+        // Reuse detection must invalidate all other active tokens for that user
+        store.RevokedUserTokens.Should().Contain(userId);
+    }
+
+    [Fact]
+    public async Task RevokeAllForUserAsync_RevokesAllTokens()
+    {
+        var store = new InMemoryRefreshTokenStore();
+        var svc = NewService(store);
+        var userId = Guid.NewGuid();
+
+        await svc.IssueAsync(userId, "d1", CancellationToken.None);
+        await svc.RevokeAllForUserAsync(userId, CancellationToken.None);
+
+        store.RevokedUserTokens.Should().Contain(userId);
+    }
+
     private static RefreshTokenService NewService(InMemoryRefreshTokenStore store)
     {
         var opts = new JwtOptions
@@ -86,6 +121,7 @@ public class RefreshTokenServiceTests
 internal class InMemoryRefreshTokenStore : IRefreshTokenStore
 {
     public List<RefreshToken> Added { get; } = new();
+    public List<Guid> RevokedUserTokens { get; } = new();
     private readonly Dictionary<string, RefreshToken> _byHash = new();
 
     public Task AddAsync(RefreshToken token, CancellationToken ct)
@@ -98,6 +134,16 @@ internal class InMemoryRefreshTokenStore : IRefreshTokenStore
     public Task<RefreshToken?> FindByHashAsync(string tokenHash, CancellationToken ct)
     {
         return Task.FromResult(_byHash.TryGetValue(tokenHash, out var t) ? t : null);
+    }
+
+    public Task RevokeAllForUserAsync(Guid userId, CancellationToken ct)
+    {
+        RevokedUserTokens.Add(userId);
+        foreach (var token in Added.Where(t => t.UserId == userId && t.RevokedAt == null))
+        {
+            token.Revoke();
+        }
+        return Task.CompletedTask;
     }
 
     public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;

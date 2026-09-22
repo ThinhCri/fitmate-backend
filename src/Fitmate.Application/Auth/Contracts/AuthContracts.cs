@@ -24,6 +24,16 @@ public record LoginRequest(string Email, string Password, string? DeviceLabel);
 
 public record RefreshRequest(string RefreshToken);
 
+public record ForgotPasswordRequest(string Email);
+
+public record ResetPasswordRequest(string Token, string NewPassword, string? Email = null);
+
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+public record LogoutRequest(string? RefreshToken = null);
+
+public record PasswordResetPayload(Guid UserId, string Email, string Token, string FullName);
+
 public record UserSummaryDto(
     Guid Id,
     string Email,

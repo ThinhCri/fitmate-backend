@@ -134,15 +134,31 @@ public class AuthController : ControllerBase
 
     [HttpPost("refresh")]
     [AllowAnonymous]
-    public async Task<IActionResult> Refresh([FromBody] RefreshRequest request, CancellationToken ct)
+    public async Task<IActionResult> Refresh([FromBody] RefreshRequest? request, CancellationToken ct)
     {
-        var validation = await _refreshValidator.ValidateAsync(request, ct);
-        if (!validation.IsValid)
-            return BadRequest(ValidationProblem(validation));
+        var rawToken = request?.RefreshToken;
+        if (string.IsNullOrWhiteSpace(rawToken))
+        {
+            rawToken = Request.Cookies["refresh_token"];
+        }
 
-        var rotated = await _refresh.RotateAsync(request.RefreshToken, ct);
+        if (string.IsNullOrWhiteSpace(rawToken))
+        {
+            if (request is not null)
+            {
+                var validation = await _refreshValidator.ValidateAsync(request, ct);
+                if (!validation.IsValid)
+                    return BadRequest(ValidationProblem(validation));
+            }
+            return MakeUnauthorized("Missing refresh token.");
+        }
+
+        var rotated = await _refresh.RotateAsync(rawToken, ct);
         if (rotated is null)
+        {
+            ClearRefreshTokenCookie();
             return MakeUnauthorized("Invalid or expired refresh token.");
+        }
 
         // Resolve userId from the Authorization header claims (caller sends access token too).
         var userId = ResolveUserIdFromToken();
@@ -156,6 +172,8 @@ public class AuthController : ControllerBase
         var role = (await _users.GetRolesAsync(user)).FirstOrDefault() ?? "member";
         var access = _jwt.Issue(new JwtTokenRequest(user.Id, user.Email ?? "", role, user.FullName));
 
+        SetRefreshTokenCookie(rotated.RawToken, (int)(rotated.ExpiresAt - DateTime.UtcNow).TotalSeconds);
+
         return Ok(new AuthResponse(
             access.AccessToken,
             rotated.RawToken,
@@ -165,22 +183,156 @@ public class AuthController : ControllerBase
 
     [HttpPost("logout")]
     [Authorize]
-    public Task<IActionResult> Logout(CancellationToken ct)
+    public async Task<IActionResult> Logout([FromBody] LogoutRequest? request, CancellationToken ct)
     {
-        // Revoke refresh token via body optional; MVP trả 204 ngay.
-        // BE-070: parse body + revoke cụ thể.
-        return Task.FromResult<IActionResult>(NoContent());
+        var rawToken = request?.RefreshToken ?? Request.Cookies["refresh_token"];
+        if (!string.IsNullOrWhiteSpace(rawToken))
+        {
+            await _refresh.RevokeAsync(rawToken, ct);
+        }
+        else
+        {
+            var userId = ResolveUserIdFromToken();
+            if (userId is not null)
+            {
+                await _refresh.RevokeAllForUserAsync(userId.Value, ct);
+            }
+        }
+        ClearRefreshTokenCookie();
+        return NoContent();
+    }
+
+    [HttpPost("password/forgot")]
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword(
+        [FromBody] ForgotPasswordRequest request,
+        [FromServices] IValidator<ForgotPasswordRequest> validator,
+        [FromServices] Fitmate.Application.Outbox.IOutboxDispatcher outbox,
+        CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return BadRequest(ValidationProblem(validation));
+
+        var user = await _users.FindByEmailAsync(request.Email);
+        if (user is not null && !user.IsDeleted && user.Status != Domain.Common.UserStatus.Locked)
+        {
+            var token = await _users.GeneratePasswordResetTokenAsync(user);
+            outbox.Enqueue("auth.password_reset_requested", new PasswordResetPayload(user.Id, user.Email!, token, user.FullName));
+        }
+
+        // Return 202 Accepted neutrally to prevent email enumeration attacks
+        return Accepted(new { message = "If the email address is registered, instructions to reset your password have been sent." });
+    }
+
+    [HttpPost("password/reset")]
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword(
+        [FromBody] ResetPasswordRequest request,
+        [FromServices] IValidator<ResetPasswordRequest> validator,
+        CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return BadRequest(ValidationProblem(validation));
+
+        ApplicationUser? user = null;
+        if (!string.IsNullOrWhiteSpace(request.Email))
+        {
+            user = await _users.FindByEmailAsync(request.Email);
+        }
+
+        if (user is null || user.IsDeleted || user.Status == Domain.Common.UserStatus.Locked)
+        {
+            var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
+            var prob = FitmateProblemDetails.Create(400, "Invalid or expired token",
+                ErrorCodes.ValidationFailed, "invalid-reset-token", "The password reset token is invalid or expired.", trace);
+            return StatusCode(400, prob);
+        }
+
+        var result = await _users.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        if (!result.Succeeded)
+        {
+            var detail = string.Join("; ", result.Errors.Select(e => e.Description));
+            var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
+            var prob = FitmateProblemDetails.Create(400, "Could not reset password",
+                ErrorCodes.ValidationFailed, "reset-password-failed", detail, trace);
+            return StatusCode(400, prob);
+        }
+
+        // Revoke all existing sessions / refresh tokens on password reset for security
+        await _refresh.RevokeAllForUserAsync(user.Id, ct);
+
+        return NoContent();
+    }
+
+    [HttpPost("password/change")]
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword(
+        [FromBody] ChangePasswordRequest request,
+        [FromServices] IValidator<ChangePasswordRequest> validator,
+        CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid)
+            return BadRequest(ValidationProblem(validation));
+
+        var userId = ResolveUserIdFromToken();
+        if (userId is null)
+            return MakeUnauthorized("User not found.");
+
+        var user = await _users.FindByIdAsync(userId.Value.ToString());
+        if (user is null || user.IsDeleted || user.Status == Domain.Common.UserStatus.Locked)
+            return MakeUnauthorized("User not found or inactive.");
+
+        var result = await _users.ChangePasswordAsync(user, request.CurrentPassword, request.NewPassword);
+        if (!result.Succeeded)
+        {
+            var detail = string.Join("; ", result.Errors.Select(e => e.Description));
+            var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
+            var prob = FitmateProblemDetails.Create(400, "Could not change password",
+                ErrorCodes.ValidationFailed, "change-password-failed", detail, trace);
+            return StatusCode(400, prob);
+        }
+
+        return NoContent();
     }
 
     private async Task<AuthResponse> IssueTokensAsync(ApplicationUser user, string role, string? deviceLabel, CancellationToken ct)
     {
         var access = _jwt.Issue(new JwtTokenRequest(user.Id, user.Email ?? "", role, user.FullName));
         var refresh = await _refresh.IssueAsync(user.Id, deviceLabel, ct);
+        SetRefreshTokenCookie(refresh.RawToken, (int)(refresh.ExpiresAt - DateTime.UtcNow).TotalSeconds);
         return new AuthResponse(
             access.AccessToken,
             refresh.RawToken,
             access.ExpiresInSeconds,
             ToUserSummary(user, role));
+    }
+
+    private void SetRefreshTokenCookie(string refreshToken, int expiresInSeconds)
+    {
+        var isDev = string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !isDev,
+            SameSite = SameSiteMode.Lax,
+            Path = "/api/v1/auth",
+            Expires = DateTimeOffset.UtcNow.AddSeconds(expiresInSeconds)
+        };
+        Response.Cookies.Append("refresh_token", refreshToken, cookieOptions);
+    }
+
+    private void ClearRefreshTokenCookie()
+    {
+        Response.Cookies.Delete("refresh_token", new CookieOptions
+        {
+            Path = "/api/v1/auth"
+        });
     }
 
     private static UserSummaryDto ToUserSummary(ApplicationUser user, string role) =>

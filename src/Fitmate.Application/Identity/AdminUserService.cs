@@ -56,6 +56,17 @@ public class AdminUserService : IAdminUserService
         var existing = await _store.FindSummaryAsync(targetUserId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {targetUserId} not found.");
 
+        if (locked && string.Equals(existing.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            var activeAdmins = await _store.CountActiveAdminsAsync(ct);
+            if (activeAdmins <= 1)
+            {
+                throw new ConflictException(
+                    ErrorCodes.Identity.CannotLockLastAdmin,
+                    "Không thể khóa quản trị viên cuối cùng đang hoạt động.");
+            }
+        }
+
         DateTimeOffset? until = locked ? DateTimeOffset.UtcNow.AddYears(100) : null;
         var ok = await _store.SetLockAsync(targetUserId, until, ct);
         if (!ok)

@@ -78,4 +78,55 @@ public class AuthValidatorTests
         var r = await _refresh.ValidateAsync(new RefreshRequest(""));
         r.IsValid.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ForgotPasswordRequest_ValidEmail_Passes()
+    {
+        var validator = new ForgotPasswordRequestValidator();
+        var result = await validator.ValidateAsync(new ForgotPasswordRequest("user@fitmate.vn"));
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ForgotPasswordRequest_InvalidEmail_Fails()
+    {
+        var validator = new ForgotPasswordRequestValidator();
+        var result = await validator.ValidateAsync(new ForgotPasswordRequest("invalid-email"));
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Email");
+    }
+
+    [Fact]
+    public async Task ResetPasswordRequest_Valid_Passes()
+    {
+        var validator = new ResetPasswordRequestValidator();
+        var result = await validator.ValidateAsync(new ResetPasswordRequest("valid-token-123", "NewPassword123", "user@fitmate.vn"));
+        result.IsValid.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ResetPasswordRequest_ShortPassword_Fails()
+    {
+        var validator = new ResetPasswordRequestValidator();
+        var result = await validator.ValidateAsync(new ResetPasswordRequest("valid-token-123", "short", "user@fitmate.vn"));
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "NewPassword");
+    }
+
+    [Fact]
+    public async Task ChangePasswordRequest_SamePassword_Fails()
+    {
+        var validator = new ChangePasswordRequestValidator();
+        var result = await validator.ValidateAsync(new ChangePasswordRequest("Password123", "Password123"));
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "NewPassword");
+    }
+
+    [Fact]
+    public async Task ChangePasswordRequest_DifferentPassword_Passes()
+    {
+        var validator = new ChangePasswordRequestValidator();
+        var result = await validator.ValidateAsync(new ChangePasswordRequest("OldPassword123", "NewPassword456"));
+        result.IsValid.Should().BeTrue();
+    }
 }

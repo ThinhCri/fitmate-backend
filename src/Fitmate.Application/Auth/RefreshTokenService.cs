@@ -15,11 +15,15 @@ public interface IRefreshTokenService
     /// <summary>
     /// Xoay vòng: validate token raw, revoke token cũ + tạo token mới (rotation).
     /// Trả null nếu token không hợp lệ / hết hạn / đã revoke.
+    /// Nếu phát hiện token đã bị revoke trước đó (reuse attack), tự động thu hồi toàn bộ token của user.
     /// </summary>
     Task<IssuedRefreshToken?> RotateAsync(string rawToken, CancellationToken ct);
 
     /// <summary>Thu hồi token (dùng cho logout). Không throw nếu token không tồn tại.</summary>
     Task RevokeAsync(string rawToken, CancellationToken ct);
+
+    /// <summary>Thu hồi toàn bộ token của một user (dùng khi đổi mật khẩu, reset mật khẩu, xóa tài khoản hoặc phát hiện token reuse).</summary>
+    Task RevokeAllForUserAsync(Guid userId, CancellationToken ct);
 }
 
 public record IssuedRefreshToken(string RawToken, DateTime ExpiresAt);
@@ -28,6 +32,7 @@ public interface IRefreshTokenStore
 {
     Task AddAsync(RefreshToken token, CancellationToken ct);
     Task<RefreshToken?> FindByHashAsync(string tokenHash, CancellationToken ct);
+    Task RevokeAllForUserAsync(Guid userId, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }
 
@@ -67,8 +72,15 @@ public class RefreshTokenService : IRefreshTokenService
         var existing = await _store.FindByHashAsync(hash, ct);
         if (existing is null) return null;
 
-        // Replay detection: nếu token đã revoke → coi như replay attack.
-        if (existing.RevokedAt is not null) return null;
+        // Replay/Reuse detection: nếu token đã bị revoke trước đó → phát hiện replay attack.
+        // Thu hồi toàn bộ refresh tokens đang hoạt động của user này để bảo vệ tài khoản (Family Invalidation).
+        if (existing.RevokedAt is not null)
+        {
+            await _store.RevokeAllForUserAsync(existing.UserId, ct);
+            await _store.SaveChangesAsync(ct);
+            return null;
+        }
+
         if (Clock.UtcNow >= existing.ExpiresAt) return null;
 
         // Rotate: revoke token cũ (lưu replacedByHash) + tạo token mới.
@@ -92,6 +104,12 @@ public class RefreshTokenService : IRefreshTokenService
         if (existing is null) return;
         if (existing.RevokedAt is not null) return;
         existing.Revoke();
+        await _store.SaveChangesAsync(ct);
+    }
+
+    public async Task RevokeAllForUserAsync(Guid userId, CancellationToken ct)
+    {
+        await _store.RevokeAllForUserAsync(userId, ct);
         await _store.SaveChangesAsync(ct);
     }
 

@@ -97,6 +97,12 @@ public class EfAdminUserStore : IAdminUserStore
         return GetPrimaryRoleInternalAsync(userId, ct);
     }
 
+    public async Task<int> CountActiveAdminsAsync(CancellationToken ct)
+    {
+        var adminUsers = await _users.GetUsersInRoleAsync("Admin");
+        return adminUsers.Count(u => !u.IsDeleted && (u.LockoutEnd == null || u.LockoutEnd <= DateTimeOffset.UtcNow));
+    }
+
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
 
     private async Task<string?> GetPrimaryRoleInternalAsync(Guid userId, CancellationToken ct)

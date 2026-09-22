@@ -96,6 +96,7 @@ public class ModerationServiceTests
             return Task.CompletedTask;
         }
         public Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct) => Task.FromResult<string?>("Admin");
+        public Task<int> CountActiveAdminsAsync(CancellationToken ct) => Task.FromResult(1);
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
 

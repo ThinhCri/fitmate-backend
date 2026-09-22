@@ -55,6 +55,9 @@ public interface IAdminUserStore
     /// <summary>Get primary role cho summary.</summary>
     Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct);
 
+    /// <summary>Đếm số lượng Admin đang hoạt động (không bị khóa / chưa bị xóa) để bảo vệ last admin.</summary>
+    Task<int> CountActiveAdminsAsync(CancellationToken ct);
+
     /// <summary>Lưu thay đổi (đôi khi cần flush).</summary>
     Task SaveChangesAsync(CancellationToken ct);
 }

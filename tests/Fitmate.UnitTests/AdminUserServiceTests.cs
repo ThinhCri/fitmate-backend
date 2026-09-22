@@ -63,6 +63,9 @@ public class AdminUserServiceTests
         public Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct)
             => Task.FromResult(Items.GetValueOrDefault(userId)?.Role);
 
+        public Task<int> CountActiveAdminsAsync(CancellationToken ct)
+            => Task.FromResult(Items.Values.Count(u => string.Equals(u.Role, "Admin", StringComparison.OrdinalIgnoreCase) && !u.IsLocked));
+
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
@@ -211,5 +214,18 @@ public class AdminUserServiceTests
             new AdminUserListQuery(null, null, null, 1, 25, "name:desc"),
             CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task SetLock_WhenLockingLastAdmin_ThrowsConflict()
+    {
+        var store = new InMemoryAdminUserStore();
+        var admin1 = Guid.NewGuid();
+        var callerAdmin = Guid.NewGuid();
+        store.Items[admin1] = new AdminUserSummary(admin1, "admin1@fitmate.vn", "Admin 1", "Admin", false, true, DateTime.UtcNow);
+
+        var svc = NewService(store, new FakeAudit(), new AllowAdmin());
+        var act = () => svc.SetLockAsync(admin1, callerAdmin, locked: true, reason: "Locking admin", CancellationToken.None);
+        await act.Should().ThrowAsync<ConflictException>();
     }
 }

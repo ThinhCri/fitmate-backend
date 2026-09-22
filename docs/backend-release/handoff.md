@@ -88,14 +88,23 @@
 - Bổ sung các unit test mới trong `PaymentServiceTests.cs`.
 - Kết quả test thực tế từ User: `dotnet test` 441/441 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-808.md`.
 
-**BE-809: Refund, dispute và reconciliation — IMPLEMENTED (PENDING USER VERIFICATION)**
+**BE-809: Refund, dispute và reconciliation — VERIFIED**
 - Triển khai `ProcessRefundAsync` trong `AdminFinanceService`: kiểm tra role Admin, lý do (>= 5 chars), số tiền > 0, bảo vệ invariant số tiền hoàn không vượt quá số tiền đã thanh toán, cập nhật trạng thái `Payment` & `Appointment`, enqueue Outbox event `finance.refund_processed`.
 - Triển khai `GetReconciliationAsync` trong `AdminFinanceService`: tổng hợp số liệu thanh toán, hoàn tiền và phát hiện bất đồng bộ.
 - Expose các endpoint trong `AdminFinanceController`: `POST /api/v1/admin/finance/refunds`, `GET /api/v1/admin/finance/reconciliation`.
 - Mở rộng `EfAdminFinanceStore` và bổ sung 9 unit tests mới trong `AdminFinanceServiceTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-809.md`.
+- Kết quả test thực tế từ User: `dotnet test` 450/450 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-809.md`.
 
-**Next:** Sau khi User verify BE-809 (450/450 tests PASS), chuyển sang **BE-810** (Doanh thu PT và settlement).
+**BE-810: Doanh thu PT và settlement — IMPLEMENTED (PENDING USER VERIFICATION)**
+- Triển khai `ITrainerRevenueService` & `TrainerRevenueService`:
+  - `GET /api/v1/me/revenue`: Thống kê tổng quan doanh thu PT, phí nền tảng 10%, net share 90%, khấu trừ hoàn tiền và biểu đồ theo ngày.
+  - `GET /api/v1/me/revenue/history`: Lịch sử doanh thu từng booking có phân trang.
+  - `POST /api/v1/admin/finance/settlements`: Quyết toán Admin cho PT có mã đối soát và outbox event `finance.trainer_settled`.
+- Triển khai `EfTrainerRevenueStore` và controller `TrainerRevenueController`.
+- Bổ sung 8 unit tests mới trong `TrainerRevenueServiceTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-810.md`.
+
+**Next:** Sau khi User verify BE-810 (458/458 tests PASS), chuyển sang **BE-811** (Workout plan, session và weight hoàn chỉnh).
 
 ### Lịch sử các phiên trước
 

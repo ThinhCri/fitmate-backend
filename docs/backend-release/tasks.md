@@ -119,21 +119,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-809 — Refund, dispute và reconciliation
 - Plan: [Plan triển khai](production-plans/BE-809.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-807, BE-808, BE-400; requirement: BR-06.
-- Hiện trạng: Đã triển khai luồng hoàn tiền Admin (`POST /api/v1/admin/finance/refunds`) với bảo vệ số tiền hoàn tích lũy không vượt quá tổng thanh toán (`RefundCapExceeded`), cập nhật trạng thái `Payment` & `Appointment`, enqueue Outbox `finance.refund_processed`, triển khai đối soát thanh toán và hoàn tiền (`GET /api/v1/admin/finance/reconciliation`), và mở rộng bộ unit tests trong `AdminFinanceServiceTests.cs`.
+- Hiện trạng: Đã triển khai luồng hoàn tiền Admin (`POST /api/v1/admin/finance/refunds`) với bảo vệ số tiền hoàn tích lũy không vượt quá tổng thanh toán (`RefundCapExceeded`), cập nhật trạng thái `Payment` & `Appointment`, enqueue Outbox `finance.refund_processed`, triển khai đối soát thanh toán và hoàn tiền (`GET /api/v1/admin/finance/reconciliation`), và mở rộng bộ unit tests trong `AdminFinanceServiceTests.cs`; user đã verify build 0 error và 450/450 tests PASS.
 - Scope: Refund pending reservation + cumulative rounding + retry; admin dispute evidence/reason; reconciliation job/report; late/duplicate callback recovery.
-- Acceptance/evidence: [Evidence BE-809](production-plans/evidence/BE-809.md) (Chờ user chạy build & test verification).
+- Acceptance/evidence: [Evidence BE-809](production-plans/evidence/BE-809.md) (Build 0 error, 450/450 tests PASS).
 - Handoff: hoàn thiện hoàn tiền và đối soát; mở khóa BE-810.
 
 ### BE-810 — Doanh thu PT và settlement
 - Plan: [Plan triển khai](production-plans/BE-810.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-807, BE-809; requirement: BR-07.
-- Hiện trạng: Admin read-side có; chưa thấy PT revenue/payout đủ.
+- Hiện trạng: Đã triển khai `ITrainerRevenueService` và `TrainerRevenueController`: xem tổng quan doanh thu PT (`GET /api/v1/me/revenue`), lịch sử phân trang (`GET /api/v1/me/revenue/history`), quyết toán Admin (`POST /api/v1/admin/finance/settlements`), bảo đảm tỷ lệ chia 90/10 và trừ hoàn tiền chuẩn xác, enqueue outbox `finance.trainer_settled`, và bộ unit tests trong `TrainerRevenueServiceTests.cs`.
 - Scope: Owner revenue overview/chart/detail, ledger immutable recognized/adjustment; manual payout batch approved reference và khóa chống chi trùng; admin finance cùng projection.
-- Acceptance/evidence: 100k/10k/90k + partial/full refund + refund sau payout khớp 3 UI; Pending không tính earned; chứng cứ bank không lưu public; OPS-03.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-810](production-plans/evidence/BE-810.md) (Chờ user chạy build & test verification).
+- Handoff: hoàn thiện doanh thu PT và settlement; mở khóa BE-811.
 
 ### BE-811 — Workout plan, session và weight hoàn chỉnh
 - Plan: [Plan triển khai](production-plans/BE-811.md).

@@ -183,9 +183,13 @@ builder.Services.AddSingleton<IDeletionTokenProtector, Fitmate.Infrastructure.Id
 builder.Services.AddScoped<IAccountDeletionStore, Fitmate.Infrastructure.Identity.EfAccountDeletionStore>();
 builder.Services.AddScoped<IAccountDeletionService, Fitmate.Application.Identity.AccountDeletionService>();
 
-// BE-150: Admin finance.
+// BE-150 & BE-809: Admin finance.
 builder.Services.AddScoped<IAdminFinanceStore, Fitmate.Infrastructure.Finance.EfAdminFinanceStore>();
 builder.Services.AddScoped<IAdminFinanceService, Fitmate.Application.Finance.AdminFinanceService>();
+
+// BE-810: Trainer revenue and settlements.
+builder.Services.AddScoped<ITrainerRevenueStore, Fitmate.Infrastructure.Finance.EfTrainerRevenueStore>();
+builder.Services.AddScoped<ITrainerRevenueService, Fitmate.Application.Finance.TrainerRevenueService>();
 
 // BE-151: Platform policy (read-only).
 builder.Services.AddScoped<IPlatformPolicyService, Fitmate.Application.Finance.PlatformPolicyService>();
