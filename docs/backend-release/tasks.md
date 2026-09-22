@@ -110,21 +110,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-808 — Loại payment giả khỏi production
 - Plan: [Plan triển khai](production-plans/BE-808.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-801; requirement: BR-06.
-- Hiện trạng: Đã triển khai gating `PaymentOptions.AllowMockProvider` và `MissingPaymentProvider` fail-closed (503 `FITMATE.PAYMENT.PROVIDER_UNAVAILABLE`) trong production khi chưa cấu hình gateway; sửa `PaymentService.CreateAsync` giữ trạng thái `Pending` (không tự ý đánh dấu `Paid` khi chỉ mới sinh URL); bổ sung kiểm tra số tiền > 0; xác thực chữ ký callback; và mở rộng bộ unit tests trong `PaymentServiceTests.cs`.
+- Hiện trạng: Đã triển khai gating `PaymentOptions.AllowMockProvider` và `MissingPaymentProvider` fail-closed (503 `FITMATE.PAYMENT.PROVIDER_UNAVAILABLE`) trong production khi chưa cấu hình gateway; sửa `PaymentService.CreateAsync` giữ trạng thái `Pending` (không tự ý đánh dấu `Paid` khi chỉ mới sinh URL); bổ sung kiểm tra số tiền > 0; xác thực chữ ký callback; và mở rộng bộ unit tests trong `PaymentServiceTests.cs`; user đã verify build 0 error và 441/441 tests PASS.
 - Scope: Gate mock chỉ tests/dev explicit; enabled production thiếu cấu hình fail; reject sai amount/owner; provider attempt/retry/idempotency durable; BE-400 cho adapter.
-- Acceptance/evidence: [Evidence BE-808](production-plans/evidence/BE-808.md) (Chờ user chạy build & test verification).
+- Acceptance/evidence: [Evidence BE-808](production-plans/evidence/BE-808.md) (Build 0 error, 441/441 tests PASS).
 - Handoff: hoàn thiện loại bỏ payment giả trong production; mở khóa BE-809.
 
 ### BE-809 — Refund, dispute và reconciliation
 - Plan: [Plan triển khai](production-plans/BE-809.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-807, BE-808, BE-400; requirement: BR-06.
-- Hiện trạng: Money helpers có, quy trình vận hành chưa đủ.
+- Hiện trạng: Đã triển khai luồng hoàn tiền Admin (`POST /api/v1/admin/finance/refunds`) với bảo vệ số tiền hoàn tích lũy không vượt quá tổng thanh toán (`RefundCapExceeded`), cập nhật trạng thái `Payment` & `Appointment`, enqueue Outbox `finance.refund_processed`, triển khai đối soát thanh toán và hoàn tiền (`GET /api/v1/admin/finance/reconciliation`), và mở rộng bộ unit tests trong `AdminFinanceServiceTests.cs`.
 - Scope: Refund pending reservation + cumulative rounding + retry; admin dispute evidence/reason; reconciliation job/report; late/duplicate callback recovery.
-- Acceptance/evidence: 2 refund đồng thời không vượt paid; provider timeout không tạo refund mới; local/provider totals đối soát; late payment được xử lý có audit.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-809](production-plans/evidence/BE-809.md) (Chờ user chạy build & test verification).
+- Handoff: hoàn thiện hoàn tiền và đối soát; mở khóa BE-810.
 
 ### BE-810 — Doanh thu PT và settlement
 - Plan: [Plan triển khai](production-plans/BE-810.md).

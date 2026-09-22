@@ -40,6 +40,24 @@ public class AdminFinanceController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("refunds")]
+    public async Task<IActionResult> ProcessRefund(
+        [FromBody] CreateRefundRequest body,
+        CancellationToken ct = default)
+    {
+        var adminId = GetUserId();
+        var result = await _svc.ProcessRefundAsync(adminId, body, ct);
+        return Ok(result);
+    }
+
+    [HttpGet("reconciliation")]
+    public async Task<IActionResult> Reconciliation(CancellationToken ct = default)
+    {
+        var adminId = GetUserId();
+        var result = await _svc.GetReconciliationAsync(adminId, ct);
+        return Ok(result);
+    }
+
     private Guid GetUserId()
     {
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");

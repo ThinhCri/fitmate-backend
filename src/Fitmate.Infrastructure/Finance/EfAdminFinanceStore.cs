@@ -135,4 +135,54 @@ public class EfAdminFinanceStore : IAdminFinanceStore
             _ => paidBookings * 2 + succeededRefunds
         };
     }
+
+    public Task<Payment?> FindPaymentByIdAsync(Guid paymentId, CancellationToken ct)
+        => _db.Payments.FirstOrDefaultAsync(p => p.Id == paymentId, ct);
+
+    public Task<Appointment?> FindAppointmentByIdAsync(Guid appointmentId, CancellationToken ct)
+        => _db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId, ct);
+
+    public Task AddRefundAsync(Refund refund, CancellationToken ct)
+    {
+        _db.Refunds.Add(refund);
+        return Task.CompletedTask;
+    }
+
+    public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
+
+    public async Task<ReconciliationData> GetReconciliationDataAsync(CancellationToken ct)
+    {
+        var payments = await _db.Payments.ToListAsync(ct);
+        var refunds = await _db.Refunds.ToListAsync(ct);
+
+        var paidPayments = payments.Where(p => p.Status is PaymentStatus.Paid or PaymentStatus.Refunded or PaymentStatus.PartialRefunded).ToList();
+        var succeededRefunds = refunds.Where(r => r.Status == RefundStatus.Succeeded).ToList();
+
+        var totalPaidVnd = paidPayments.Sum(p => p.AmountVnd);
+        var totalRefundedVnd = succeededRefunds.Sum(r => r.AmountVnd);
+
+        var discrepancies = new List<DiscrepancyItem>();
+
+        foreach (var p in paidPayments)
+        {
+            var pRefunds = succeededRefunds.Where(r => r.PaymentId == p.Id).Sum(r => r.AmountVnd);
+            if (p.RefundedSoFarVnd != pRefunds)
+            {
+                discrepancies.Add(new DiscrepancyItem(
+                    PaymentId: p.Id,
+                    AppointmentId: p.AppointmentId,
+                    Issue: "Payment.RefundedSoFarVnd differs from sum of succeeded Refunds",
+                    ExpectedVnd: pRefunds,
+                    ActualVnd: p.RefundedSoFarVnd));
+            }
+        }
+
+        return new ReconciliationData(
+            TotalPaymentsCount: paidPayments.Count,
+            TotalPaidVnd: totalPaidVnd,
+            TotalRefundsCount: succeededRefunds.Count,
+            TotalRefundedVnd: totalRefundedVnd,
+            DiscrepanciesCount: discrepancies.Count,
+            Discrepancies: discrepancies);
+    }
 }

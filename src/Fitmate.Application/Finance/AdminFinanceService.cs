@@ -1,9 +1,14 @@
 using Fitmate.Application.Auth;
+using Fitmate.Application.Common;
+using Fitmate.Application.Outbox;
+using Fitmate.Application.Payments;
+using Fitmate.Domain.Common;
+using Fitmate.Domain.Payment;
 
 namespace Fitmate.Application.Finance;
 
 /// <summary>
-/// BE-150: Admin finance read-side.
+/// BE-150 & BE-809: Admin finance read-side, refunds and reconciliation.
 /// Aggregate GMV, phí 10% Fitmate, payout 90% PT, refund theo kỳ; ledger entries phân trang.
 /// Money invariants: GMV = Σ ActualPaid của booking Paid + Completed; phí và PT share lấy từ snapshot
 /// đã lưu trên Appointment (DEC-029). KHÔNG tính lại từ rate runtime để tránh lệch lũy kế.
@@ -12,14 +17,19 @@ public class AdminFinanceService : IAdminFinanceService
 {
     private readonly IAdminFinanceStore _store;
     private readonly IAuthorizationGuard _authz;
+    private readonly IOutboxDispatcher _outbox;
 
     private const int MaxPageSize = 100;
     private const int DefaultPageSize = 50;
 
-    public AdminFinanceService(IAdminFinanceStore store, IAuthorizationGuard authz)
+    public AdminFinanceService(
+        IAdminFinanceStore store,
+        IAuthorizationGuard authz,
+        IOutboxDispatcher outbox)
     {
         _store = store;
         _authz = authz;
+        _outbox = outbox;
     }
 
     public async Task<FinanceOverview> GetOverviewAsync(Guid adminUserId, FinanceRange range, CancellationToken ct)
@@ -113,4 +123,65 @@ public class AdminFinanceService : IAdminFinanceService
         "payout" => LedgerEntryType.Payout,
         _ => throw new InvalidOperationException($"Unknown ledger type '{t}'.")
     };
+
+    public async Task<RefundView> ProcessRefundAsync(Guid adminUserId, CreateRefundRequest request, CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Reason phải có ít nhất 5 ký tự.",
+                new Dictionary<string, string[]> { ["reason"] = new[] { "min 5 chars" } });
+
+        if (request.AmountVnd <= 0)
+            throw new ValidationException(PaymentErrorCodes.InvalidAmount, "Refund amount must be positive.",
+                new Dictionary<string, string[]> { ["amount"] = new[] { "must be positive" } });
+
+        var payment = await _store.FindPaymentByIdAsync(request.PaymentId, ct)
+            ?? throw new NotFoundException(PaymentErrorCodes.PaymentNotFound, $"Payment {request.PaymentId} not found.");
+
+        if (payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded))
+            throw new ConflictException(ErrorCodes.Payment.AlreadyProcessed, $"Cannot refund payment in status {payment.Status}.");
+
+        // Concurrent & cumulative cap check: ApplyRefund encapsulates cap and updates Status
+        payment.ApplyRefund(request.AmountVnd);
+
+        var appt = await _store.FindAppointmentByIdAsync(payment.AppointmentId, ct);
+        if (appt != null && payment.Status == PaymentStatus.Refunded)
+        {
+            appt.MarkRefunded();
+        }
+
+        var refund = Refund.Create(payment.Id, payment.AppointmentId, request.AmountVnd, request.Reason, adminUserId);
+        refund.MarkSucceeded(null);
+
+        await _store.AddRefundAsync(refund, ct);
+        await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("finance.refund_processed", new
+        {
+            refundId = refund.Id,
+            paymentId = payment.Id,
+            appointmentId = payment.AppointmentId,
+            amountVnd = request.AmountVnd,
+            refundedSoFar = payment.RefundedSoFarVnd,
+            totalPaid = payment.AmountVnd,
+            status = payment.Status.ToString(),
+            adminUserId
+        });
+
+        return new RefundView(
+            refund.Id,
+            refund.PaymentId,
+            refund.AppointmentId,
+            refund.AmountVnd,
+            refund.Reason,
+            refund.Status,
+            refund.CreatedAt);
+    }
+
+    public async Task<ReconciliationData> GetReconciliationAsync(Guid adminUserId, CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+        return await _store.GetReconciliationDataAsync(ct);
+    }
 }

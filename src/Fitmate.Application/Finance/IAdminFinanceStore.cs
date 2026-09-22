@@ -10,6 +10,11 @@ public interface IAdminFinanceStore
     Task<int> CountActivePtsAsync(CancellationToken ct);
     Task<IReadOnlyList<FinanceLedgerRow>> ListLedgerAsync(LedgerEntryType? type, int skip, int take, CancellationToken ct);
     Task<int> CountLedgerAsync(LedgerEntryType? type, CancellationToken ct);
+    Task<Fitmate.Domain.Payment.Payment?> FindPaymentByIdAsync(Guid paymentId, CancellationToken ct);
+    Task<Fitmate.Domain.Booking.Appointment?> FindAppointmentByIdAsync(Guid appointmentId, CancellationToken ct);
+    Task AddRefundAsync(Fitmate.Domain.Payment.Refund refund, CancellationToken ct);
+    Task SaveChangesAsync(CancellationToken ct);
+    Task<ReconciliationData> GetReconciliationDataAsync(CancellationToken ct);
 }
 
 /// <summary>Snapshot booking nhỏ cho finance aggregation.</summary>

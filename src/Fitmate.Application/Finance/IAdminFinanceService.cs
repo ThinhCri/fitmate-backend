@@ -31,8 +31,36 @@ public sealed record LedgerPage(
     int Page,
     int PageSize);
 
+public sealed record CreateRefundRequest(Guid PaymentId, long AmountVnd, string Reason);
+
+public sealed record RefundView(
+    Guid Id,
+    Guid PaymentId,
+    Guid AppointmentId,
+    long AmountVnd,
+    string Reason,
+    Fitmate.Domain.Common.RefundStatus Status,
+    DateTime CreatedAt);
+
+public sealed record DiscrepancyItem(
+    Guid PaymentId,
+    Guid AppointmentId,
+    string Issue,
+    long ExpectedVnd,
+    long ActualVnd);
+
+public sealed record ReconciliationData(
+    int TotalPaymentsCount,
+    long TotalPaidVnd,
+    int TotalRefundsCount,
+    long TotalRefundedVnd,
+    int DiscrepanciesCount,
+    IReadOnlyList<DiscrepancyItem> Discrepancies);
+
 public interface IAdminFinanceService
 {
     Task<FinanceOverview> GetOverviewAsync(Guid adminUserId, FinanceRange range, CancellationToken ct);
     Task<LedgerPage> GetLedgerAsync(Guid adminUserId, LedgerEntryType? type, int page, int pageSize, CancellationToken ct);
+    Task<RefundView> ProcessRefundAsync(Guid adminUserId, CreateRefundRequest request, CancellationToken ct);
+    Task<ReconciliationData> GetReconciliationAsync(Guid adminUserId, CancellationToken ct);
 }

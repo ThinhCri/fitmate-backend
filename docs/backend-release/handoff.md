@@ -80,15 +80,22 @@
 - Bổ sung 7 unit tests trong `BookingServiceTests.cs` (kiểm tra đầy đủ happy path và exception guards).
 - Kết quả test thực tế từ User: `dotnet test` 436/436 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-807.md`.
 
-**BE-808: Loại payment giả khỏi production — IMPLEMENTED (PENDING USER VERIFICATION)**
+**BE-808: Loại payment giả khỏi production — VERIFIED**
 - Triển khai `PaymentOptions` và `MissingPaymentProvider` ném 503 `FITMATE.PAYMENT.PROVIDER_UNAVAILABLE` fail-closed khi production chưa có cấu hình gateway.
 - Cập nhật `Program.cs` gating `StubPaymentProvider` chỉ chạy trong Dev hoặc khi `Payment:AllowMockProvider = true`.
 - Sửa `PaymentService.CreateAsync` giữ trạng thái `PaymentStatus.Pending` (loại bỏ việc tự động `MarkPaid`), kiểm tra số tiền `PriceListedVnd > 0`.
 - Bổ sung kiểm tra chữ ký callback return/IPN (`VnpSecureHash`).
 - Bổ sung các unit test mới trong `PaymentServiceTests.cs`.
-- File evidence: `docs/backend-release/production-plans/evidence/BE-808.md`.
+- Kết quả test thực tế từ User: `dotnet test` 441/441 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-808.md`.
 
-**Next:** Sau khi User verify BE-808 (441/441 tests PASS), chuyển sang **BE-809** (Refund, dispute và reconciliation).
+**BE-809: Refund, dispute và reconciliation — IMPLEMENTED (PENDING USER VERIFICATION)**
+- Triển khai `ProcessRefundAsync` trong `AdminFinanceService`: kiểm tra role Admin, lý do (>= 5 chars), số tiền > 0, bảo vệ invariant số tiền hoàn không vượt quá số tiền đã thanh toán, cập nhật trạng thái `Payment` & `Appointment`, enqueue Outbox event `finance.refund_processed`.
+- Triển khai `GetReconciliationAsync` trong `AdminFinanceService`: tổng hợp số liệu thanh toán, hoàn tiền và phát hiện bất đồng bộ.
+- Expose các endpoint trong `AdminFinanceController`: `POST /api/v1/admin/finance/refunds`, `GET /api/v1/admin/finance/reconciliation`.
+- Mở rộng `EfAdminFinanceStore` và bổ sung 9 unit tests mới trong `AdminFinanceServiceTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-809.md`.
+
+**Next:** Sau khi User verify BE-809 (450/450 tests PASS), chuyển sang **BE-810** (Doanh thu PT và settlement).
 
 ### Lịch sử các phiên trước
 

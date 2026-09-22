@@ -1,5 +1,6 @@
 using Fitmate.Application.Auth;
 using Fitmate.Application.Finance;
+using Fitmate.Application.Payments;
 using Fitmate.Domain.Common;
 using FluentAssertions;
 
@@ -25,10 +26,19 @@ public class AdminFinanceServiceTests
         public Task<bool> HasRoleAsync(Guid userId, string role, CancellationToken ct) => Task.FromResult(RequiredRole != null);
     }
 
+    private sealed class CapturingOutbox : Fitmate.Application.Outbox.IOutboxDispatcher
+    {
+        public List<(string Type, object Payload)> Messages { get; } = new();
+        public void Enqueue(string type, object payload) => Messages.Add((type, payload));
+    }
+
     private sealed class InMemoryFinanceStore : IAdminFinanceStore
     {
         public List<FinanceBookingRow> Bookings { get; } = new();
         public List<FinanceLedgerRow> Ledger { get; } = new();
+        public Dictionary<Guid, Fitmate.Domain.Payment.Payment> Payments { get; } = new();
+        public Dictionary<Guid, Fitmate.Domain.Booking.Appointment> Appointments { get; } = new();
+        public List<Fitmate.Domain.Payment.Refund> Refunds { get; } = new();
         public int MemberCount { get; set; }
         public int ActivePtCount { get; set; }
 
@@ -47,6 +57,44 @@ public class AdminFinanceServiceTests
         public Task<int> CountLedgerAsync(LedgerEntryType? type, CancellationToken ct)
             => Task.FromResult(Ledger.Count(r => type == null || TypeMatches(r.Type, type.Value)));
 
+        public Task<Fitmate.Domain.Payment.Payment?> FindPaymentByIdAsync(Guid paymentId, CancellationToken ct)
+            => Task.FromResult(Payments.GetValueOrDefault(paymentId));
+
+        public Task<Fitmate.Domain.Booking.Appointment?> FindAppointmentByIdAsync(Guid appointmentId, CancellationToken ct)
+            => Task.FromResult(Appointments.GetValueOrDefault(appointmentId));
+
+        public Task AddRefundAsync(Fitmate.Domain.Payment.Refund refund, CancellationToken ct)
+        {
+            Refunds.Add(refund);
+            return Task.CompletedTask;
+        }
+
+        public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<ReconciliationData> GetReconciliationDataAsync(CancellationToken ct)
+        {
+            var paidPayments = Payments.Values.Where(p => p.Status is Fitmate.Domain.Common.PaymentStatus.Paid or Fitmate.Domain.Common.PaymentStatus.Refunded or Fitmate.Domain.Common.PaymentStatus.PartialRefunded).ToList();
+            var succeededRefunds = Refunds.Where(r => r.Status == Fitmate.Domain.Common.RefundStatus.Succeeded).ToList();
+
+            var discrepancies = new List<DiscrepancyItem>();
+            foreach (var p in paidPayments)
+            {
+                var pRefunds = succeededRefunds.Where(r => r.PaymentId == p.Id).Sum(r => r.AmountVnd);
+                if (p.RefundedSoFarVnd != pRefunds)
+                {
+                    discrepancies.Add(new DiscrepancyItem(p.Id, p.AppointmentId, "Discrepancy", pRefunds, p.RefundedSoFarVnd));
+                }
+            }
+
+            return Task.FromResult(new ReconciliationData(
+                paidPayments.Count,
+                paidPayments.Sum(p => p.AmountVnd),
+                succeededRefunds.Count,
+                succeededRefunds.Sum(r => r.AmountVnd),
+                discrepancies.Count,
+                discrepancies));
+        }
+
         private static bool TypeMatches(string rowType, LedgerEntryType t) => rowType switch
         {
             "platform_fee" => t == LedgerEntryType.PlatformFee,
@@ -60,7 +108,8 @@ public class AdminFinanceServiceTests
     private static FinanceBookingRow PaidRow(long actual, long fee, long share, DateTime utc, bool completed = false, bool refunded = false, long refundedAmount = 0)
         => new(Guid.NewGuid(), utc, actual, fee, share, refundedAmount, IsPaid: !completed && !refunded, IsCompleted: completed, IsRefunded: refunded);
 
-    private static AdminFinanceService NewService(IAdminFinanceStore store, string? requiredRole = "Admin") => new(store, new RoleRequireAuthz { RequiredRole = requiredRole });
+    private static AdminFinanceService NewService(IAdminFinanceStore store, string? requiredRole = "Admin", CapturingOutbox? outbox = null)
+        => new(store, new RoleRequireAuthz { RequiredRole = requiredRole }, outbox ?? new CapturingOutbox());
 
     [Fact]
     public async Task Overview_AggregatesGmv_Fee_Share_Refunded()
@@ -88,7 +137,7 @@ public class AdminFinanceServiceTests
     public async Task Overview_NonAdmin_Forbidden()
     {
         var authz = new RoleRequireAuthz { RequiredRole = "Pt" }; // khác Admin
-        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz);
+        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz, new CapturingOutbox());
         var act = () => svc.GetOverviewAsync(Guid.NewGuid(), FinanceRange._30d, CancellationToken.None);
         await act.Should().ThrowAsync<ForbiddenException>();
     }
@@ -172,8 +221,160 @@ public class AdminFinanceServiceTests
     public async Task Ledger_NonAdmin_Forbidden()
     {
         var authz = new RoleRequireAuthz { RequiredRole = "Pt" };
-        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz);
+        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz, new CapturingOutbox());
         var act = () => svc.GetLedgerAsync(Guid.NewGuid(), null, 1, 50, CancellationToken.None);
         await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task ProcessRefund_PartialRefund_UpdatesPaymentStatus_AndOutbox()
+    {
+        var store = new InMemoryFinanceStore();
+        var outbox = new CapturingOutbox();
+        var apptId = Guid.NewGuid();
+        var payment = Fitmate.Domain.Payment.Payment.CreatePending(apptId, Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        payment.MarkPaid("txn_123");
+        store.Payments[payment.Id] = payment;
+
+        var svc = NewService(store, "Admin", outbox);
+        var req = new CreateRefundRequest(payment.Id, 200_000, "Customer requested partial refund");
+        var result = await svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        result.AmountVnd.Should().Be(200_000);
+        result.Status.Should().Be(Fitmate.Domain.Common.RefundStatus.Succeeded);
+        payment.Status.Should().Be(Fitmate.Domain.Common.PaymentStatus.PartialRefunded);
+        payment.RefundedSoFarVnd.Should().Be(200_000);
+        store.Refunds.Should().HaveCount(1);
+        outbox.Messages.Should().Contain(m => m.Type == "finance.refund_processed");
+    }
+
+    [Fact]
+    public async Task ProcessRefund_FullRefund_UpdatesPayment_AndAppointmentStatus()
+    {
+        var store = new InMemoryFinanceStore();
+        var outbox = new CapturingOutbox();
+        var appt = Fitmate.Domain.Booking.Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 500_000);
+        var payment = Fitmate.Domain.Payment.Payment.CreatePending(appt.Id, Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        payment.MarkPaid("txn_123");
+        appt.AttachPayment(payment.Id, 500_000, 0, 0.10m, 50_000, 450_000, "v1");
+
+        store.Payments[payment.Id] = payment;
+        store.Appointments[appt.Id] = appt;
+
+        var svc = NewService(store, "Admin", outbox);
+        var req = new CreateRefundRequest(payment.Id, 500_000, "Full refund processed by admin");
+        var result = await svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        result.AmountVnd.Should().Be(500_000);
+        payment.Status.Should().Be(Fitmate.Domain.Common.PaymentStatus.Refunded);
+        payment.RefundedSoFarVnd.Should().Be(500_000);
+        appt.Status.Should().Be(Fitmate.Domain.Common.BookingStatus.Refunded);
+    }
+
+    [Fact]
+    public async Task ProcessRefund_ExceedsPaidAmount_ThrowsConflictException()
+    {
+        var store = new InMemoryFinanceStore();
+        var payment = Fitmate.Domain.Payment.Payment.CreatePending(Guid.NewGuid(), Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        payment.MarkPaid("txn_123");
+        payment.ApplyRefund(400_000); // already refunded 400k
+        store.Payments[payment.Id] = payment;
+
+        var svc = NewService(store, "Admin");
+        var req = new CreateRefundRequest(payment.Id, 200_000, "Refund exceeds remaining balance");
+        var act = () => svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>()
+            .Where(e => e.Code == ErrorCodes.Payment.RefundCapExceeded);
+    }
+
+    [Fact]
+    public async Task ProcessRefund_ZeroOrNegativeAmount_ThrowsValidationException()
+    {
+        var store = new InMemoryFinanceStore();
+        var payment = Fitmate.Domain.Payment.Payment.CreatePending(Guid.NewGuid(), Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        payment.MarkPaid("txn_123");
+        store.Payments[payment.Id] = payment;
+
+        var svc = NewService(store, "Admin");
+        var req = new CreateRefundRequest(payment.Id, 0, "Zero amount refund");
+        var act = () => svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>()
+            .Where(e => e.Code == PaymentErrorCodes.InvalidAmount);
+    }
+
+    [Fact]
+    public async Task ProcessRefund_ReasonTooShort_ThrowsValidationException()
+    {
+        var store = new InMemoryFinanceStore();
+        var payment = Fitmate.Domain.Payment.Payment.CreatePending(Guid.NewGuid(), Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        payment.MarkPaid("txn_123");
+        store.Payments[payment.Id] = payment;
+
+        var svc = NewService(store, "Admin");
+        var req = new CreateRefundRequest(payment.Id, 100_000, "abc");
+        var act = () => svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task ProcessRefund_PaymentNotFound_ThrowsNotFoundException()
+    {
+        var store = new InMemoryFinanceStore();
+        var svc = NewService(store, "Admin");
+        var req = new CreateRefundRequest(Guid.NewGuid(), 100_000, "Payment missing");
+        var act = () => svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        await act.Should().ThrowAsync<NotFoundException>();
+    }
+
+    [Fact]
+    public async Task ProcessRefund_PaymentPending_ThrowsConflictException()
+    {
+        var store = new InMemoryFinanceStore();
+        var payment = Fitmate.Domain.Payment.Payment.CreatePending(Guid.NewGuid(), Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        store.Payments[payment.Id] = payment;
+
+        var svc = NewService(store, "Admin");
+        var req = new CreateRefundRequest(payment.Id, 100_000, "Cannot refund pending payment");
+        var act = () => svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>();
+    }
+
+    [Fact]
+    public async Task ProcessRefund_NonAdmin_ThrowsForbiddenException()
+    {
+        var store = new InMemoryFinanceStore();
+        var svc = NewService(store, "Pt");
+        var req = new CreateRefundRequest(Guid.NewGuid(), 100_000, "Unauthorized refund");
+        var act = () => svc.ProcessRefundAsync(Guid.NewGuid(), req, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task GetReconciliation_ReturnsTotalsAndDiscrepancies()
+    {
+        var store = new InMemoryFinanceStore();
+        var p1 = Fitmate.Domain.Payment.Payment.CreatePending(Guid.NewGuid(), Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        p1.MarkPaid("txn_1");
+        p1.ApplyRefund(100_000);
+        store.Payments[p1.Id] = p1;
+
+        var r1 = Fitmate.Domain.Payment.Refund.Create(p1.Id, p1.AppointmentId, 100_000, "Discrepancy test", Guid.NewGuid());
+        r1.MarkSucceeded("ref_1");
+        store.Refunds.Add(r1);
+
+        var svc = NewService(store, "Admin");
+        var result = await svc.GetReconciliationAsync(Guid.NewGuid(), CancellationToken.None);
+
+        result.TotalPaymentsCount.Should().Be(1);
+        result.TotalPaidVnd.Should().Be(500_000);
+        result.TotalRefundsCount.Should().Be(1);
+        result.TotalRefundedVnd.Should().Be(100_000);
+        result.DiscrepanciesCount.Should().Be(0);
     }
 }
