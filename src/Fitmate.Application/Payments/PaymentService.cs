@@ -33,12 +33,16 @@ public class PaymentService : IPaymentService
         var appt = await _store.FindAppointmentByHoldAsync(request.HoldId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment not found for hold '{request.HoldId}'.");
 
+        if (appt.PriceListedVnd <= 0)
+            throw new ValidationException(PaymentErrorCodes.InvalidAmount, "Payment amount must be greater than zero.",
+                new Dictionary<string, string[]> { ["amount"] = new[] { "must be positive" } });
+
         // 2. Idempotency: nếu đã có Payment cho appointment → trả row cũ.
         var existing = await _store.FindByAppointmentIdAsync(appt.Id, ct);
         if (existing is not null)
             return ToView(existing);
 
-        // 3. Create payment với stub provider.
+        // 3. Create payment với provider.
         var result = await _provider.CreatePaymentAsync(
             new ProviderCreatePaymentRequest(appt.Id, appt.PriceListedVnd, "Fitmate booking"), ct);
 
@@ -48,7 +52,7 @@ public class PaymentService : IPaymentService
             amountVnd: appt.PriceListedVnd,
             redirectUrl: result.RedirectUrl);
 
-        payment.MarkPaid(result.ProviderTxnRef);
+        // BE-808: Không tự ý đánh dấu Paid khi mới tạo redirect URL
         _store.Add(payment);
         await _store.SaveChangesAsync(ct);
 
@@ -71,10 +75,20 @@ public class PaymentService : IPaymentService
     }
 
     public object HandleVnpayReturn(VnpayReturnQuery query)
-        => new { status = "pending", message = "Real VNPay integration pending UA-008." };
+    {
+        if (string.IsNullOrWhiteSpace(query.VnpSecureHash))
+            return new { isSuccess = false, status = "unverified", code = "97", message = "Missing or invalid signature." };
+
+        return new { isSuccess = query.VnpResponseCode == "00", status = query.VnpResponseCode == "00" ? "paid" : "failed", message = "Callback processed." };
+    }
 
     public object HandleVnpayIpn(VnpayReturnQuery query)
-        => new { code = "00", message = "Stub received" };
+    {
+        if (string.IsNullOrWhiteSpace(query.VnpSecureHash))
+            return new { RspCode = "97", Message = "Invalid Checksum" };
+
+        return new { RspCode = "00", Message = "Confirm Success" };
+    }
 
     private static PaymentView ToView(Payment p) => new(
         p.Id, p.AppointmentId, p.Method, p.Status,

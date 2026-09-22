@@ -53,6 +53,9 @@ public static class ErrorCodes
         public const string BadSignature = "FITMATE.PAYMENT.BAD_SIGNATURE";
         public const string AlreadyProcessed = "FITMATE.PAYMENT.ALREADY_PROCESSED";
         public const string RefundCapExceeded = "FITMATE.PAYMENT.REFUND_CAP_EXCEEDED";
+        public const string ProviderUnavailable = "FITMATE.PAYMENT.PROVIDER_UNAVAILABLE";
+        public const string ProviderNotConfigured = "FITMATE.PAYMENT.NOT_CONFIGURED";
+        public const string InvalidAmount = "FITMATE.PAYMENT.INVALID_AMOUNT";
     }
 
     public static class Idempotency

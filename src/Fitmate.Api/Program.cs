@@ -239,9 +239,19 @@ builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightSer
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
 builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
 builder.Services.AddScoped<INutritionService, NutritionService>();
-// BE-140: payment skeleton (stub provider, real VNPay ở BE-400).
+// BE-140 & BE-808: payment provider gating (StubPaymentProvider in dev/test explicit, MissingPaymentProvider in production).
+var paymentOptions = builder.Configuration.GetSection(PaymentOptions.SectionName).Get<PaymentOptions>() ?? new PaymentOptions();
+builder.Services.Configure<PaymentOptions>(builder.Configuration.GetSection(PaymentOptions.SectionName));
 builder.Services.AddScoped<IPaymentStore, Fitmate.Infrastructure.Payments.EfPaymentStore>();
-builder.Services.AddScoped<IPaymentProvider, StubPaymentProvider>();
+if (builder.Environment.IsDevelopment() || paymentOptions.AllowMockProvider)
+{
+    builder.Services.AddScoped<IPaymentProvider, StubPaymentProvider>();
+}
+else
+{
+    builder.Services.AddScoped<IPaymentProvider>(sp =>
+        new MissingPaymentProvider("Payment provider is not configured. Production requires valid merchant credentials."));
+}
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher(
     sp.GetRequiredService<FitmateDbContext>(),

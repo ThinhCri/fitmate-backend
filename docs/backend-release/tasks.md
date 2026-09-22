@@ -101,21 +101,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-807 — Hoàn thiện lifecycle booking
 - Plan: [Plan triển khai](production-plans/BE-807.md).
-- Status: IMPLEMENTED — PENDING USER VERIFICATION
+- Status: VERIFIED
 - Priority: P0; depends: BE-801, BE-806; requirement: BR-05.
-- Hiện trạng: Đã bổ sung trạng thái `Confirmed` và `InProgress` vào `BookingStatus`, bổ sung các phương thức chuyển trạng thái được bảo vệ nghiêm ngặt (`ConfirmByPt`, `StartByPt`, `CompleteByPt`, `Reschedule`), mở rộng `IBookingService` và `BookingService` (`ConfirmAsync`, `StartAsync`, `FindByIdAsync`), expose các endpoints tương ứng trong `BookingsController`, và mở rộng bộ unit tests toàn diện trong `BookingServiceTests.cs`.
+- Hiện trạng: Đã bổ sung trạng thái `Confirmed` và `InProgress` vào `BookingStatus`, bổ sung các phương thức chuyển trạng thái được bảo vệ nghiêm ngặt (`ConfirmByPt`, `StartByPt`, `CompleteByPt`, `Reschedule`), mở rộng `IBookingService` và `BookingService` (`ConfirmAsync`, `StartAsync`, `FindByIdAsync`), expose các endpoints tương ứng trong `BookingsController`, và mở rộng bộ unit tests toàn diện trong `BookingServiceTests.cs`; user đã verify build 0 error và 436/436 tests PASS.
 - Scope: Phân tách rõ ràng trạng thái thanh toán và buổi tập; bảo vệ điều kiện bắt đầu buổi tập (không sớm hơn 5 phút); role/ownership authorization; outbox events cho từng transition; booking detail endpoint.
-- Acceptance/evidence: [Evidence BE-807](production-plans/evidence/BE-807.md) (Chờ user chạy build & test verification).
+- Acceptance/evidence: [Evidence BE-807](production-plans/evidence/BE-807.md) (Build 0 error, 436/436 tests PASS).
 - Handoff: hoàn thiện lifecycle booking có đầy đủ guard transitions; mở khóa BE-808, BE-809, BE-810.
 
 ### BE-808 — Loại payment giả khỏi production
 - Plan: [Plan triển khai](production-plans/BE-808.md).
-- Status: TODO
+- Status: IMPLEMENTED — PENDING USER VERIFICATION
 - Priority: P0; depends: BE-801; requirement: BR-06.
-- Hiện trạng: StubPaymentProvider đăng ký hiện tại; return/IPN stub.
+- Hiện trạng: Đã triển khai gating `PaymentOptions.AllowMockProvider` và `MissingPaymentProvider` fail-closed (503 `FITMATE.PAYMENT.PROVIDER_UNAVAILABLE`) trong production khi chưa cấu hình gateway; sửa `PaymentService.CreateAsync` giữ trạng thái `Pending` (không tự ý đánh dấu `Paid` khi chỉ mới sinh URL); bổ sung kiểm tra số tiền > 0; xác thực chữ ký callback; và mở rộng bộ unit tests trong `PaymentServiceTests.cs`.
 - Scope: Gate mock chỉ tests/dev explicit; enabled production thiếu cấu hình fail; reject sai amount/owner; provider attempt/retry/idempotency durable; BE-400 cho adapter.
-- Acceptance/evidence: Production profile không resolve fake provider, callback chưa verify không trả success nghiệp vụ; money/idempotency negative tests.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-808](production-plans/evidence/BE-808.md) (Chờ user chạy build & test verification).
+- Handoff: hoàn thiện loại bỏ payment giả trong production; mở khóa BE-809.
 
 ### BE-809 — Refund, dispute và reconciliation
 - Plan: [Plan triển khai](production-plans/BE-809.md).

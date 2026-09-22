@@ -72,15 +72,23 @@
 - Bổ sung bộ unit tests trong `TrainerReviewServiceTests.cs` và đăng ký DI trong `Program.cs`.
 - Kết quả test thực tế từ User: `dotnet test` 429/429 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-806.md`.
 
-**BE-807: Hoàn thiện lifecycle booking — IMPLEMENTED (PENDING USER VERIFICATION)**
+**BE-807: Hoàn thiện lifecycle booking — VERIFIED**
 - Mở rộng enum `BookingStatus` với `Confirmed` và `InProgress`.
 - Cập nhật entity `Appointment` với các transition method `ConfirmByPt`, `StartByPt` (time guard >= slot - 5 phút), `CompleteByPt`, `Reschedule`.
 - Mở rộng `IBookingService` & `BookingService`: `ConfirmAsync`, `StartAsync`, `FindByIdAsync`.
 - Expose các endpoint trong `BookingsController`: `POST /api/v1/me/bookings/{id}/confirm` (và `/bookings/{id}/confirm`), `POST /api/v1/me/bookings/{id}/start`, `GET /api/v1/me/bookings/{id}`.
 - Bổ sung 7 unit tests trong `BookingServiceTests.cs` (kiểm tra đầy đủ happy path và exception guards).
-- File evidence: `docs/backend-release/production-plans/evidence/BE-807.md`.
+- Kết quả test thực tế từ User: `dotnet test` 436/436 PASS. File evidence: `docs/backend-release/production-plans/evidence/BE-807.md`.
 
-**Next:** Sau khi User verify BE-807 (436/436 tests PASS), chuyển sang **BE-808** (Loại payment giả khỏi production).
+**BE-808: Loại payment giả khỏi production — IMPLEMENTED (PENDING USER VERIFICATION)**
+- Triển khai `PaymentOptions` và `MissingPaymentProvider` ném 503 `FITMATE.PAYMENT.PROVIDER_UNAVAILABLE` fail-closed khi production chưa có cấu hình gateway.
+- Cập nhật `Program.cs` gating `StubPaymentProvider` chỉ chạy trong Dev hoặc khi `Payment:AllowMockProvider = true`.
+- Sửa `PaymentService.CreateAsync` giữ trạng thái `PaymentStatus.Pending` (loại bỏ việc tự động `MarkPaid`), kiểm tra số tiền `PriceListedVnd > 0`.
+- Bổ sung kiểm tra chữ ký callback return/IPN (`VnpSecureHash`).
+- Bổ sung các unit test mới trong `PaymentServiceTests.cs`.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-808.md`.
+
+**Next:** Sau khi User verify BE-808 (441/441 tests PASS), chuyển sang **BE-809** (Refund, dispute và reconciliation).
 
 ### Lịch sử các phiên trước
 

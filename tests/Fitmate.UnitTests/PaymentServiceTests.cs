@@ -62,10 +62,46 @@ public class PaymentServiceTests
             Method = PaymentMethod.Vnpay
         }, CancellationToken.None);
 
-        result.Status.Should().Be(PaymentStatus.Paid);
+        result.Status.Should().Be(PaymentStatus.Pending);
         result.RedirectUrl.Should().StartWith("https://mock.fitmate.local/payments/");
-        result.ProviderTxnRef.Should().StartWith("mock-");
+        result.ProviderTxnRef.Should().BeNull();
         store.Payments.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task CreateAsync_when_missing_provider_throws_ServiceUnavailable_503()
+    {
+        var (store, holdId, _) = Setup();
+        var missingProvider = new MissingPaymentProvider("Payment provider is not configured.");
+        var service = new PaymentService(store, missingProvider);
+
+        var act = () => service.CreateAsync(MemberId, new CreatePaymentRequest
+        {
+            HoldId = holdId,
+            Method = PaymentMethod.Vnpay
+        }, CancellationToken.None);
+
+        var ex = await act.Should().ThrowAsync<DomainException>();
+        ex.Which.Code.Should().Be(ErrorCodes.Payment.ProviderUnavailable);
+        ex.Which.HttpStatus.Should().Be(503);
+    }
+
+    [Fact]
+    public async Task CreateAsync_zero_or_negative_amount_throws_ValidationException()
+    {
+        var (store, holdId, apptId) = Setup();
+        // Replace appt with zero amount
+        var zeroAppt = Appointment.CreateHold(MemberId, PtId, ServiceId, SlotStartUtc, SlotStartUtc, 60, 0L);
+        store.Appt = zeroAppt;
+
+        var act = () => Sut(store).CreateAsync(MemberId, new CreatePaymentRequest
+        {
+            HoldId = holdId,
+            Method = PaymentMethod.Vnpay
+        }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>()
+            .Where(e => e.Code == PaymentErrorCodes.InvalidAmount);
     }
 
     [Fact]
@@ -126,18 +162,43 @@ public class PaymentServiceTests
     }
 
     [Fact]
-    public void VnpayReturn_returns_pending_status_stub()
+    public void VnpayReturn_missing_signature_returns_unverified()
     {
         var result = Sut(new InMemoryPaymentStore()).HandleVnpayReturn(
-            new VnpayReturnQuery(null, null, null));
+            new VnpayReturnQuery(null, "txn123", "00"));
         result.Should().NotBeNull();
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        json.Should().Contain("unverified");
+        json.Should().Contain("97");
     }
 
     [Fact]
-    public void VnpayIpn_returns_00_code_stub()
+    public void VnpayReturn_valid_signature_success_code_returns_paid()
+    {
+        var result = Sut(new InMemoryPaymentStore()).HandleVnpayReturn(
+            new VnpayReturnQuery("valid_sig", "txn123", "00"));
+        result.Should().NotBeNull();
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        json.Should().Contain("paid");
+    }
+
+    [Fact]
+    public void VnpayIpn_missing_signature_returns_97_checksum()
     {
         var result = Sut(new InMemoryPaymentStore()).HandleVnpayIpn(
-            new VnpayReturnQuery(null, null, null));
+            new VnpayReturnQuery(null, "txn123", "00"));
         result.Should().NotBeNull();
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        json.Should().Contain("97");
+    }
+
+    [Fact]
+    public void VnpayIpn_valid_signature_returns_00_success()
+    {
+        var result = Sut(new InMemoryPaymentStore()).HandleVnpayIpn(
+            new VnpayReturnQuery("valid_sig", "txn123", "00"));
+        result.Should().NotBeNull();
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        json.Should().Contain("00");
     }
 }
