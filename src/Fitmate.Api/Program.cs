@@ -115,10 +115,14 @@ builder.Services.AddDbContext<FitmateDbContext>(opt =>
 // Dung AddIdentityCore thay vi AddIdentity de khong ep cookie auth; API chi dung JWT bearer.
 // AddDataProtection cung cap IDataProtectionProvider cho AddDefaultTokenProviders
 // (reset password + email confirm token).
-// BE-300: persist key ring to a named volume so push-token encryption survives container recreates.
-// Production should swap to secret manager / certificate-backed keys (BE-340).
+// BE-300 & BE-825: persist key ring to a named volume / path so push-token encryption survives container recreates.
+// DATA_PROTECTION_KEYS_PATH allows overriding for local test, isolated DR drills, or container volumes.
+var dpKeysPath = builder.Configuration["DATA_PROTECTION_KEYS_PATH"]
+    ?? Environment.GetEnvironmentVariable("DATA_PROTECTION_KEYS_PATH")
+    ?? "/home/fitmate/.aspnet/DataProtection-Keys";
+
 builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo("/home/fitmate/.aspnet/DataProtection-Keys"))
+    .PersistKeysToFileSystem(new DirectoryInfo(dpKeysPath))
     .SetApplicationName("Fitmate.Api");
 builder.Services.AddIdentityCore<ApplicationUser>(opt =>
 {
@@ -244,11 +248,7 @@ builder.Services.AddScoped<IModerationService, Fitmate.Application.Moderation.Mo
 // the same SaveChanges as the originating FriendService.SaveChangesAsync / ModerationService.WarnAsync.
 // On startup the worker and sweep background service check `PushProviderConfig.Enabled` —
 // when disabled they no-op cleanly so no deferred backlog accumulates.
-// DataProtection: .NET 8 sets the application discriminator from the hosting
-// content root so the same key ring can be shared across multiple instances of
-// the same app. Production deployments should override the key ring path via
-// PersistKeysToFileSystem / secret manager (see UA-DP-001).
-builder.Services.AddDataProtection();
+// DataProtection key ring is persisted above via PersistKeysToFileSystem.
 builder.Services.AddScoped<IPushDeliveryTokens, Fitmate.Infrastructure.Notifications.DataProtectionTokenCipher>();
 builder.Services.AddScoped<INotificationStore, Fitmate.Infrastructure.Notifications.EfNotificationStore>();
 builder.Services.AddScoped<IDeviceStore, Fitmate.Infrastructure.Notifications.EfDeviceStore>();
