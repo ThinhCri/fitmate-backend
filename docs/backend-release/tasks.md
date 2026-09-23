@@ -290,12 +290,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-828 — Runtime còn được hỗ trợ
 - Plan: [Plan triển khai](production-plans/BE-828.md).
-- Status: TODO
+- Status: IN_PROGRESS (Preparation Completed; Upgrade Pending Verification)
 - Priority: P0; depends: BE-800; requirement: BR-16.
-- Hiện trạng: Stack .NET8; gần cuối vòng hỗ trợ theo nguồn Microsoft.
+- Hiện trạng: Đã phân tích chính xác vòng đời Microsoft (.NET 8 LTS và .NET 9 STS cùng EOL ngày 10/11/2026; mục tiêu của dự án là nâng cấp trực tiếp lên .NET 10 LTS phát hành 11/11/2025 hỗ trợ đến 14/11/2028); lập ma trận dải phiên bản ứng viên cần kiểm chứng; giữ nguyên động cơ PostgreSQL 16; đề xuất cấu hình `global.json` và `.config/dotnet-tools.json` (chưa áp dụng trực tiếp để tránh ảnh hưởng build `Fitmate.slnx`); hoàn thành chính sách hỗ trợ runtime `runtime-support-policy.md` kèm Owner đề xuất (Backend Lead) và Deadline đề xuất (30/10/2026); xây dựng bộ test kiểm chứng tương thích baseline `RuntimeCompatibilityTests.cs` (DataProtection decrypt/fail-closed, BCrypt/PBKDF2 password verification, JWT/JSON contract). Giữ nguyên TFM `net8.0` trong giai đoạn tài liệu; việc chuyển TFM, build container image và chạy migration drill trên DB cô lập được theo dõi ở trạng thái Pending Verification.
 - Scope: Lập kế hoạch upgrade LTS được hỗ trợ; thử SDK/EF/Npgsql/tooling/images/CI và regression; không đổi stack trong docs task.
-- Acceptance/evidence: Release runtime còn support; nếu giữ .NET8 trước EOL có owner/deadline upgrade trước EOL. Không launch trên runtime hết hỗ trợ.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-828](production-plans/evidence/BE-828.md) (Preparation Completed; Upgrade Pending Verification).
+- Handoff: hoàn thành chuẩn bị chính sách runtime, ma trận ứng viên và test tương thích baseline; mở khóa triển khai nhánh upgrade riêng.
 
 ### BE-829 — Bảo toàn backlog VIP và rewards
 - Plan: [Plan triển khai](production-plans/BE-829.md).

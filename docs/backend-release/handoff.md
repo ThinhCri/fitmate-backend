@@ -298,7 +298,19 @@
   - Integration tests trên PostgreSQL thật: 3/3 PASS (`DisasterRecoveryAndRetentionTests`).
 - File evidence: `docs/backend-release/production-plans/evidence/BE-825.md`.
 
-**Next:** Tiếp tục task tiếp theo theo lộ trình: **BE-826 — UAT ba repo và staging** và **BE-827 — Chốt production và Play release**.
+**BE-828: Runtime còn được hỗ trợ — PREPARATION COMPLETED (Upgrade Pending Verification)**
+- Phân tích chính xác vòng đời Microsoft: .NET 8 LTS và .NET 9 STS cùng chạm mốc EOL vào ngày 10/11/2026 (~48 ngày còn lại). Xác định mục tiêu của dự án là nâng cấp trực tiếp lên .NET 10 LTS (phát hành 11/11/2025, hỗ trợ dài hạn đến 14/11/2028).
+- Lập ma trận dải phiên bản ứng viên cần kiểm chứng (Candidate ranges) cho SDK, Runtime, EF Core, Npgsql, OpenTelemetry, Docker base images. Giữ nguyên động cơ cơ sở dữ liệu PostgreSQL 16.
+- Đề xuất nội dung cho `global.json` và `.config/dotnet-tools.json` (chưa nạp file trực tiếp vào working tree trong giai đoạn docs-only để tránh ảnh hưởng build của giải pháp `Fitmate.slnx`).
+- Soạn thảo chính sách vận hành và quản trị runtime `docs/backend-release/runtime-support-policy.md`: phân công Owner đề xuất (Backend Lead) và Deadline đề xuất (30/10/2026, trước ngày EOL), kèm tiêu chí go/no-go và kế hoạch rollback.
+- Xây dựng bộ test kiểm chứng tương thích baseline `tests/Fitmate.UnitTests/RuntimeCompatibilityTests.cs`:
+  - DataProtection: giải mã token hợp lệ và từ chối an toàn fail-closed khi sai key/purpose.
+  - Password Hasher: xác thực đúng mật khẩu băm cũ qua BCrypt và ASP.NET Identity PBKDF2, từ chối mật khẩu sai.
+  - Token & Contract: JWT claims parsing, expired token 401, và bảo toàn quy ước JSON serialization từ response fixtures thực tế hiện hành.
+- Giữ nguyên `TargetFramework` `net8.0` trong các file `.csproj`. Kế hoạch build container image và chạy migration drill trên database cô lập `fitmate_upgrade_drill` được theo dõi ở trạng thái Pending Verification.
+- File evidence: `docs/backend-release/production-plans/evidence/BE-828.md`.
+
+**Next:** Chạy kiểm thử baseline BE-828, sau đó chuyển tiếp sang **BE-826 — UAT ba repo và staging** và **BE-827 — Chốt production và Play release**.
 
 ### Lịch sử các phiên trước
 
