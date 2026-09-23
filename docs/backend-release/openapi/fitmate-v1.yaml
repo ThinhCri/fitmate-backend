@@ -2379,17 +2379,22 @@ paths:
         '200':
           description: OK
 
-  /health/ready:
+  /system/capabilities:
     get:
-      tags: [Admin]
-      summary: Readiness probe (DB + critical deps)
-      operationId: readiness
+      tags: [System]
+      summary: Khảo sát capabilities hệ thống và chính sách công khai (BE-819, BE-829)
+      description: |
+        Công bố trung thực trạng thái tính năng: AI disabled (BE-817), VIP purchase disabled (BR-17),
+        Reward cashout disabled (BR-17), và PT automatic payout disabled (BR-17).
+      operationId: getSystemCapabilities
       security: []
       responses:
         '200':
           description: OK
-        '503':
-          description: Not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemCapabilitiesResponse'
 
 components:
   parameters:
@@ -3932,6 +3937,69 @@ components:
         reason:
           type: string
           nullable: true
+
+    FeatureCapabilityStatus:
+      type: object
+      required: [enabled, status_reason]
+      properties:
+        enabled:
+          type: boolean
+        status_reason:
+          type: string
+
+    SystemCapabilitiesResponse:
+      type: object
+      required:
+        - api_version
+        - environment
+        - ai
+        - vip_purchase
+        - reward_cashout
+        - pt_automatic_payout
+        - push_notifications_enabled
+        - payments_enabled
+        - storage_provider
+        - policies
+        - contact
+      properties:
+        api_version:
+          type: string
+        environment:
+          type: string
+        ai:
+          type: object
+          properties:
+            enabled: { type: boolean }
+            food_scan: { type: boolean }
+            companion_chat: { type: boolean }
+            workout_adjust: { type: boolean }
+            status_reason: { type: string }
+        vip_purchase:
+          $ref: '#/components/schemas/FeatureCapabilityStatus'
+        reward_cashout:
+          $ref: '#/components/schemas/FeatureCapabilityStatus'
+        pt_automatic_payout:
+          $ref: '#/components/schemas/FeatureCapabilityStatus'
+        push_notifications_enabled:
+          type: boolean
+        payments_enabled:
+          type: boolean
+        storage_provider:
+          type: string
+        policies:
+          type: object
+          properties:
+            platform_fee_bps: { type: integer }
+            min_cancel_hours: { type: integer }
+            refund_window_days: { type: integer }
+        contact:
+          type: object
+          properties:
+            support_email: { type: string }
+            hotline: { type: string }
+            terms_url: { type: string }
+            privacy_url: { type: string }
+            deletion_policy_url: { type: string }
 
 security:
   - bearerAuth: []

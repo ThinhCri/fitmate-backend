@@ -299,12 +299,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-829 — Bảo toàn backlog VIP và rewards
 - Plan: [Plan triển khai](production-plans/BE-829.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P1-CAPABILITY; depends: BE-801; requirement: BR-17.
-- Hiện trạng: Có VIP/withdraw/reward mock, chưa tiền thật.
+- Hiện trạng: Đã khảo sát và phân tách 3 capability độc lập (VipPurchase = false, RewardCashout = false, PtAutomaticPayout = false) trong `SystemCapabilitiesDto` và `SystemCapabilitiesController`; đặt rào chắn miền `BacklogFeatureGuard` trực tiếp tại Application layer; bảo toàn quy trình tính toán doanh thu PT và quyết toán thủ công có đối soát theo BE-810; cập nhật OpenAPI schema và route `/system/capabilities`; bổ sung inventory cho hai FE (MOB-807 & WEB-806); mở rộng unit tests và integration tests. Đã kiểm chứng thực nghiệm 100% thành công: Build solution 0 error, 586/586 Unit Tests PASS, 4/4 Integration Tests Capabilities PASS trên PostgreSQL 16 thật.
 - Scope: Inventory mọi field/flow; disabled capability rõ. Trước khi bật cần entitlement/billing/verification/refunds và anti-abuse/reward ledger riêng.
-- Acceptance/evidence: Không xóa chức năng âm thầm; không bán digital qua PT checkout; reward không vào PT payout; bật chỉ sau policy/product approval.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-829](production-plans/evidence/BE-829.md) (VERIFIED).
+- Handoff: hoàn thành bảo toàn backlog VIP, rewards và rút tiền; mở khóa BE-826 và BE-827.
 
 ## Providers và release legacy còn mở
 ### BE-099 — Rotation và history cleanup

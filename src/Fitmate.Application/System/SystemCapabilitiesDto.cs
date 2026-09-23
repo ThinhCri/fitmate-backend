@@ -7,10 +7,17 @@ public record AiCapabilitiesStatus(
     bool WorkoutAdjust,
     string StatusReason);
 
+public record FeatureCapabilityStatus(
+    bool Enabled,
+    string StatusReason);
+
 public record SystemCapabilitiesDto(
     string ApiVersion,
     string Environment,
     AiCapabilitiesStatus Ai,
+    FeatureCapabilityStatus VipPurchase,
+    FeatureCapabilityStatus RewardCashout,
+    FeatureCapabilityStatus PtAutomaticPayout,
     bool PushNotificationsEnabled,
     bool PaymentsEnabled,
     string StorageProvider,

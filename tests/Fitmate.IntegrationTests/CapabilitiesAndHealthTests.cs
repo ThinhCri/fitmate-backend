@@ -69,6 +69,18 @@ public class CapabilitiesAndHealthTests : IClassFixture<FitmateTestAppFactory>
         dto.Policies.MinCancelHours.Should().Be(24);
         dto.Policies.RefundWindowDays.Should().Be(7);
 
+        dto.VipPurchase.Should().NotBeNull();
+        dto.VipPurchase.Enabled.Should().BeFalse();
+        dto.VipPurchase.StatusReason.Should().NotBeNullOrWhiteSpace();
+
+        dto.RewardCashout.Should().NotBeNull();
+        dto.RewardCashout.Enabled.Should().BeFalse();
+        dto.RewardCashout.StatusReason.Should().NotBeNullOrWhiteSpace();
+
+        dto.PtAutomaticPayout.Should().NotBeNull();
+        dto.PtAutomaticPayout.Enabled.Should().BeFalse();
+        dto.PtAutomaticPayout.StatusReason.Should().NotBeNullOrWhiteSpace();
+
         dto.Contact.SupportEmail.Should().Be("support@fitmate.vn");
         dto.Contact.Hotline.Should().NotBeNullOrWhiteSpace();
 

@@ -8,8 +8,9 @@ using Microsoft.Extensions.Options;
 namespace Fitmate.Api.Capabilities;
 
 /// <summary>
-/// BE-819 / BE-817 / BR-15 / ai-contract.md: Public system capabilities and contact information.
-/// Truthfully reflects module readiness (AI disabled until BE-817 artifact handoff),
+/// BE-819 / BE-817 / BE-829 / BR-15 / BR-17: Public system capabilities and contact information.
+/// Truthfully reflects module readiness (AI disabled until BE-817 artifact handoff;
+/// VIP purchase, Reward cashout, and Automated PT payout gated until separate verified releases),
 /// platform policy constants, and contact links without exposing infrastructure secrets.
 /// </summary>
 [ApiController]
@@ -41,6 +42,15 @@ public class SystemCapabilitiesController : ControllerBase
                 StatusReason: ai.Enabled
                     ? "AI capabilities are active."
                     : "AI capabilities are awaiting artifact delivery and validation (BE-817). Manual workout, nutrition, and chat features are fully operational."),
+            VipPurchase: new FeatureCapabilityStatus(
+                Enabled: false,
+                StatusReason: "VIP membership purchases are not available in current release. Dedicated in-app purchase flow will be provided in a future update."),
+            RewardCashout: new FeatureCapabilityStatus(
+                Enabled: false,
+                StatusReason: "Reward points are strictly for in-app achievements and gamification, isolated from financial ledgers and non-redeemable for cash."),
+            PtAutomaticPayout: new FeatureCapabilityStatus(
+                Enabled: false,
+                StatusReason: "Automated direct payouts are not active. Trainer earnings are settled periodically through verified manual accounting transfers."),
             PushNotificationsEnabled: true,
             PaymentsEnabled: true,
             StorageProvider: "local",
