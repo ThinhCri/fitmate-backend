@@ -243,7 +243,47 @@
   - Rate limiting 429 verified: ProblemDetails RFC 7807 với mã `FITMATE.GENERAL.RATE_LIMITED` khi vượt quá 5 req/min.
 - File evidence: `docs/backend-release/production-plans/evidence/BE-822.md`.
 
-**Next:** Đã hoàn thành BE-822 (VERIFIED); mở khóa và tiến tới **BE-823 (Performance và capacity đo thật)**.
+**BE-823: Performance và capacity đo thật — VERIFIED**
+- Thiết lập hạ tầng kiểm thử độc lập: `compose.perf.yml` với project name `fitmate-perf`, DB `fitmate_perf`, ports `8088:8080` (API) và `5433:5432` (Postgres) chống xung đột socket dev, volume `fitmate-postgres-perf-data`, ghim phiên bản `grafana/k6:0.54.0`.
+- Triển khai CLI Data Seeder an toàn: `src/Fitmate.Api/Cli/SeedPerfDataCommand.cs` và đăng ký trong `Program.cs`. Có 3 lớp chốt chặn an toàn (từ chối Production, bắt buộc `--allow-perf-seed` hoặc `PERF_SEED_ENABLED=true`, bắt buộc DB đích là `fitmate_perf`).
+- Chuẩn bị Representative Dataset: 600 members, 60 PTs (có Chứng chỉ NASM Approved để hiển thị marketplace), 1.000 bookings (phân bổ 60+ bookings cho các users chỉ định để kiểm thử phân trang sâu 5x10 có dữ liệu thật), 2.000 meal logs, 1.000 workouts.
+- Sửa lỗi k6 scripts:
+  - `normal.js`: Sửa lỗi duplicate key `http_req_duration` gộp thành mảng `['p(95)<800', 'p(99)<1500']`, sửa lỗi thiếu import `group`, sửa stages về chuẩn 2 phút, thêm tagged read/write thresholds và `checks: ['rate>0.99']`.
+  - `common.js` & `constants.js`: Cập nhật VU account pool (100 members, 20 PTs) phân bổ 1-1 theo `__VU`, sửa hàm `resetCaches()` chỉ xóa token khi thời gian hiệu lực còn lại < 60 giây, bổ sung tags `read`/`write`.
+  - Admin MFA: Ghi nhận trung thực Admin scenario bị **BLOCKED** do hợp đồng `AuthController.Login` chưa hỗ trợ 2FA challenge response; tuyệt đối không bypass hoặc tạo token giả.
+- Viết kịch bản mới:
+  - `contention.js`: 20 VU riêng biệt cùng tranh chấp 1 slot PT, assertion tuyệt đối `holds_succeeded == 1`, `conflicts_received == 19`, `unexpected_failures == 0`.
+  - `deep-paging.js`: Kiểm thử phân trang sâu `/me/bookings?page=5&pageSize=10` (10 items thật), `/trainers?limit=10&cursor=40`, kiểm tra N+1 qua phân tích tăng trưởng query theo page size.
+- Khắc phục các vấn đề kỹ thuật runtime:
+  - ValueConverter cho `SlotStartLocal` (`DateTimeKind.Utc` ở DB, `Unspecified` ở Domain) giải quyết triệt để lỗi Npgsql `timestamptz`.
+  - Slot Concurrency Lock (`SemaphoreSlim`) trong `BookingService.CreateHoldAsync` giải quyết triệt để race condition TOCTOU khi 20 VUs cùng đặt 1 slot.
+  - Tách biến môi trường rate limit `PERF_RATE_LIMIT_*` trong `compose.perf.yml` tránh bị ghi đè bởi file `.env` local.
+- Kết quả kiểm chứng thực nghiệm trên môi trường thật:
+  - **Smoke Test**: 192/192 checks PASS (100%), error rate 0.00%, p95 238ms.
+  - **Contention Test (Hold Race)**: 20/20 checks PASS (100%), `holds_succeeded: 1` (201 Created), `conflicts_received: 19` (409 Conflict với code `BOOKING_SLOT_TAKEN`), `unexpected_failures: 0`.
+  - **Deep Paging Test**: 5.112/5.112 checks PASS (100%), error rate 0.00%, throughput 21.26 req/s, p95 read 10.98ms, trang 5x10 trả về đủ 10 items thật.
+  - **Normal Load Test**: 5.602/5.602 checks PASS (100%), error rate 0.00%, throughput 46.26 req/s, p95 overall 14.56ms, p95 read 15.24ms (vượt xa SLA < 500ms).
+- File evidence: `docs/backend-release/production-plans/evidence/BE-823.md`.
+
+**BE-824: Monitoring và xử lý sự cố — VERIFIED**
+- Phân biệt rõ ràng giữa W3C Distributed `TraceId` (`Activity.Current.TraceId`) và business `CorrelationId` (`X-Correlation-ID`) trong `CorrelationIdMiddleware`; inject đầy đủ `TraceId`, `CorrelationId`, `SpanId` vào logger scope và RFC 7807 ProblemDetails.
+- Triệt tiêu triệt để nguy cơ bùng nổ metric cardinality: `ResolveRouteTemplate` trích xuất `RouteEndpoint.RoutePattern.RawText` tĩnh (ví dụ `/api/v1/users/{id}`), tuyệt đối không để lọt User ID/Guid động vào metric tags.
+- Bổ sung trọn bộ SLIs cốt lõi (traffic, latency, auth failures, queue depth, oldest outbox age, pending refunds count/age, db pool, backup freshness) và xây dựng endpoint xuất chuẩn Prometheus exposition text (`GET /api/v1/admin/metrics/prometheus` và `GET /api/v1/admin/metrics/summary`) bảo vệ bởi quyền `AdminOnly`.
+- Xây dựng quy trình Replay Dead-Letter bền vững qua `AdminOutboxService`:
+  - Kiểm tra quyền Admin và lý do replay (min 5 chars).
+  - Rào chắn bảo vệ giao dịch tiền bạc (Financial Replay Guard): Cấm replay tự do sự kiện thanh toán/hoàn tiền có nguy cơ duplicate nếu chưa qua đối soát.
+  - Chống race condition replay đồng thời bằng atomic conditional update: `WHERE id = @id AND status = 'dead_letter'`.
+  - Bảo toàn `LastError` chẩn đoán nguyên bản (không bị xóa đè) và ghi nhận bản ghi `AuditLog` bền vững vào database PostgreSQL.
+- Làm sạch (redact) dữ liệu nhạy cảm tại nguồn ghi log (`SanitizeError` trong `OutboxWorker` và `SanitizeLastError` trong `AdminOutboxService`).
+- Soạn thảo quy định cảnh báo và kịch bản diễn tập sự cố `docs/backend-release/runbooks/alert-rules.md` (ngưỡng SLIs, cửa sổ đánh giá, ức chế bão cảnh báo Inhibition/Grouping, thông báo phục hồi [RESOLVED], external uptime monitor).
+- Ghi nhận trạng thái phụ thuộc bên ngoài: Kênh Webhook Slack/PagerDuty và External Uptime probe ghi nhận **BLOCKED (Chờ Operator cấp theo OPS-04/OPS-05)**.
+- Kết quả kiểm chứng thực nghiệm trên môi trường thật:
+  - Solution build sạch: 0 warning, 0 error.
+  - Unit tests: 570/570 PASS.
+  - PostgreSQL Integration tests: 4/4 PASS (`ObservabilityAndOutboxReplayTests`).
+- File evidence: `docs/backend-release/production-plans/evidence/BE-824.md`.
+
+**Next:** Tiếp tục task tiếp theo theo lộ trình: **BE-825 — Backup, retention và disaster recovery (P0)**.
 
 ### Lịch sử các phiên trước
 

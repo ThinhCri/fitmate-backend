@@ -48,6 +48,7 @@ if (args.Length > 0 && !args[0].StartsWith("--"))
     int exitCode = args[0] switch
     {
         "seed-admin" => await SeedAdminCommand.RunAsync(args[1..], config),
+        "seed-perf-data" => await SeedPerfDataCommand.RunAsync(args[1..], config),
         _ => UnknownCommand(args[0])
     };
     Environment.Exit(exitCode);
@@ -55,7 +56,7 @@ if (args.Length > 0 && !args[0].StartsWith("--"))
 
 static int UnknownCommand(string cmd)
 {
-    Console.Error.WriteLine($"[fitmate-api] Unknown command: '{cmd}'. Supported: seed-admin");
+    Console.Error.WriteLine($"[fitmate-api] Unknown command: '{cmd}'. Supported: seed-admin, seed-perf-data");
     return 1;
 }
 
@@ -217,6 +218,7 @@ builder.Services.AddScoped<IPlatformPolicyService, Fitmate.Application.Finance.P
 // BE-220: Admin metrics + action-required.
 builder.Services.AddScoped<IAdminMetricsStore, Fitmate.Infrastructure.Admin.EfAdminMetricsStore>();
 builder.Services.AddScoped<IAdminMetricsService, Fitmate.Application.Admin.AdminMetricsService>();
+builder.Services.AddScoped<Fitmate.Application.Admin.IAdminOutboxService, Fitmate.Application.Admin.AdminOutboxService>();
 
 // BE-180: Social (post + comment + reaction + report).
 builder.Services.AddScoped<ISocialStore, Fitmate.Infrastructure.Social.EfSocialStore>();
@@ -350,7 +352,10 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ClockSkew = TimeSpan.FromSeconds(30)
         };
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(opt =>
+{
+    opt.AddPolicy("AdminOnly", policy => policy.RequireRole("Admin"));
+});
 
 // BE-822: Forwarded Headers for reverse proxy support.
 // Do NOT clear KnownNetworks/KnownProxies: loopback is trusted by default,
@@ -535,6 +540,9 @@ builder.Services.AddHealthChecks()
     .AddCheck<Fitmate.Infrastructure.Persistence.DatabaseHealthCheck>("database", tags: new[] { "ready" });
 
 var app = builder.Build();
+
+// BE-824: CorrelationIdMiddleware gắn CorrelationId và TraceIdentifier xuyên suốt pipeline
+app.UseMiddleware<Fitmate.Api.Observability.CorrelationIdMiddleware>();
 
 // BE-080: Global exception handler (RFC 7807) đặt đầu pipeline để bắt lỗi toàn diện.
 app.UseExceptionHandler(handler =>

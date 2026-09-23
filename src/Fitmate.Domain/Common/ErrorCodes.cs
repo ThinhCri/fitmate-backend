@@ -134,4 +134,12 @@ public static class ErrorCodes
         public const string EmptyText = "FITMATE.CHAT.EMPTY_TEXT";
         public const string TextTooLong = "FITMATE.CHAT.TEXT_TOO_LONG";
     }
+
+    public static class Outbox
+    {
+        public const string NotFound = "FITMATE.OUTBOX.NOT_FOUND";
+        public const string InvalidStatus = "FITMATE.OUTBOX.INVALID_STATUS";
+        public const string ConcurrentMutation = "FITMATE.OUTBOX.CONCURRENT_MUTATION";
+        public const string FinancialReplayBlocked = "FITMATE.OUTBOX.FINANCIAL_REPLAY_BLOCKED";
+    }
 }

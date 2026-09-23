@@ -26,6 +26,61 @@ public class OutboxWorkerTests
             return Task.FromResult(due);
         }
 
+        public Task<IReadOnlyList<OutboxMessage>> FetchDeadLettersAsync(int limit, CancellationToken ct)
+        {
+            IReadOnlyList<OutboxMessage> dead = Messages
+                .Where(m => m.Status == "dead_letter")
+                .OrderByDescending(m => m.CreatedAt)
+                .Take(limit)
+                .ToList();
+            return Task.FromResult(dead);
+        }
+
+        public Task<(IReadOnlyList<OutboxMessage> Items, int TotalCount)> FetchDeadLettersPagedAsync(int page, int pageSize, string? typeFilter, CancellationToken ct)
+        {
+            var query = Messages.Where(m => m.Status == "dead_letter");
+            if (!string.IsNullOrWhiteSpace(typeFilter))
+                query = query.Where(m => m.Type == typeFilter);
+            var total = query.Count();
+            var items = query.OrderByDescending(m => m.CreatedAt).Skip((page - 1) * pageSize).Take(pageSize).ToList();
+            return Task.FromResult(((IReadOnlyList<OutboxMessage>)items, total));
+        }
+
+        public Task<bool> TryReplayDeadLetterAsync(Guid id, Guid adminUserId, string reason, CancellationToken ct)
+        {
+            var msg = Messages.FirstOrDefault(m => m.Id == id);
+            if (msg == null || msg.Status != "dead_letter") return Task.FromResult(false);
+            msg.Replay();
+            return Task.FromResult(true);
+        }
+
+        public Task<OutboxMessage?> FindByIdAsync(Guid id, CancellationToken ct)
+        {
+            var msg = Messages.FirstOrDefault(m => m.Id == id);
+            return Task.FromResult(msg);
+        }
+
+        public Task<int> GetPendingCountAsync(CancellationToken ct)
+        {
+            return Task.FromResult(Messages.Count(m => m.Status == "pending"));
+        }
+
+        public Task<int> GetDeadLetterCountAsync(CancellationToken ct)
+        {
+            return Task.FromResult(Messages.Count(m => m.Status == "dead_letter"));
+        }
+
+        public Task<TimeSpan?> GetOldestPendingAgeAsync(DateTime nowUtc, CancellationToken ct)
+        {
+            var oldest = Messages
+                .Where(m => m.Status == "pending")
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => (DateTime?)m.CreatedAt)
+                .FirstOrDefault();
+
+            return Task.FromResult(oldest.HasValue ? nowUtc - oldest.Value : (TimeSpan?)null);
+        }
+
         public Task SaveChangesAsync(CancellationToken ct)
         {
             SaveCalls++;

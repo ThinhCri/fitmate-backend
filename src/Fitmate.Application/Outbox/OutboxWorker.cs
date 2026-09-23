@@ -76,8 +76,22 @@ public class OutboxWorker
         {
             var backoff = Backoff(msg.Attempts);
             _logger.LogWarning(ex, "Outbox: handler {Type} failed for {Id}, retry in {Backoff}", msg.Type, msg.Id, backoff);
-            msg.MarkFailed(Truncate(ex.Message, 1000), backoff);
+            msg.MarkFailed(Truncate(SanitizeError(ex.Message), 1000), backoff);
+            if (msg.Status == "dead_letter")
+            {
+                _logger.LogError("Outbox: message {Id} of type {Type} moved to DEAD_LETTER after {Attempts} attempts. Error: {Error}",
+                    msg.Id, msg.Type, msg.Attempts, msg.LastError);
+            }
         }
+    }
+
+    private static string SanitizeError(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error)) return string.Empty;
+        var s = error;
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"(?i)(password|token|secret|key)=\S+", "$1=[REDACTED]");
+        s = System.Text.RegularExpressions.Regex.Replace(s, @"(?i)Bearer\s+[A-Za-z0-9_\-\.]+", "Bearer [REDACTED]");
+        return s;
     }
 
     private static TimeSpan Backoff(int attempts) => attempts switch

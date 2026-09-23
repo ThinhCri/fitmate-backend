@@ -9,6 +9,20 @@ public interface IOutboxStore
 {
     Task<IReadOnlyList<OutboxMessage>> FetchDueAsync(int batchSize, DateTime nowUtc, CancellationToken ct);
 
+    Task<(IReadOnlyList<OutboxMessage> Items, int TotalCount)> FetchDeadLettersPagedAsync(int page, int pageSize, string? typeFilter, CancellationToken ct);
+
+    Task<IReadOnlyList<OutboxMessage>> FetchDeadLettersAsync(int limit, CancellationToken ct);
+
+    Task<OutboxMessage?> FindByIdAsync(Guid id, CancellationToken ct);
+
+    Task<int> GetPendingCountAsync(CancellationToken ct);
+
+    Task<int> GetDeadLetterCountAsync(CancellationToken ct);
+
+    Task<TimeSpan?> GetOldestPendingAgeAsync(DateTime nowUtc, CancellationToken ct);
+
+    Task<bool> TryReplayDeadLetterAsync(Guid id, Guid adminUserId, string reason, CancellationToken ct);
+
     Task SaveChangesAsync(CancellationToken ct);
 
     Task<int> PurgeDoneOlderThanAsync(DateTime cutoffUtc, CancellationToken ct);

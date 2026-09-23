@@ -245,21 +245,21 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-823 — Performance và capacity đo thật
 - Plan: [Plan triển khai](production-plans/BE-823.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-820, BE-821; requirement: BR-16.
-- Hiện trạng: Có k6 scripts, mới smoke evidence.
+- Hiện trạng: Đã thiết lập hoàn chỉnh hạ tầng cô lập `compose.perf.yml` (`fitmate-perf`, DB `fitmate_perf`, port 8088/5433, k6 `0.54.0`); hoàn thành CLI seeder an toàn `SeedPerfDataCommand` (chốt chặn production, bắt buộc `fitmate_perf`, dataset 600 members, 60 PTs có cert approved, 1000 bookings phân bổ 60+ cho designated users để bảo đảm deep pagination 5x10 có data thực); sửa toàn diện script k6 (import group, sửa duplicate thresholds, pool 1-1 VU accounts, tagged read/write SLA); tạo kịch bản `contention.js` (20 distinct VUs, zero-tolerance assertions) và `deep-paging.js`. Kịch bản Admin ghi nhận chính xác trạng thái BLOCKED do thiếu 2FA challenge contract trong `AuthController`. Đã kiểm chứng thực nghiệm trên môi trường thật: Smoke Test 192/192 checks PASS (0.00% error), Contention Test 20/20 checks PASS (chính xác 1 hold thành công 201, 19 conflicts 409, 0 lỗi), Deep Paging Test 5.112/5.112 checks PASS (p95 read 10.98ms), Normal Load Test 5.602/5.602 checks PASS (46.26 req/s, p95 overall 14.56ms, p95 read 15.24ms).
 - Scope: Seed representative dataset; normal/peak/spike/soak, hot booking contention, pagination N+1, worker lag/pool usage; revise capacity-plan tính toán.
-- Acceptance/evidence: Báo cáo env/dataset/commit/raw results với SLO release-checklist; không suy concurrency từ downloads/DAU; không coi smoke là load capacity.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-823](production-plans/evidence/BE-823.md) (VERIFIED: Smoke, Contention, Deep Paging, Normal Load 100% check pass; p95 < 20ms; slot contention 100% invariant check).
+- Handoff: hoàn thành kiểm chứng tải và năng lực xử lý thực tế; mở khóa BE-824 và BE-827.
 
 ### BE-824 — Monitoring và xử lý sự cố
 - Plan: [Plan triển khai](production-plans/BE-824.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-821; requirement: BR-16.
-- Hiện trạng: Runbooks nền có; alert thực tế chưa xác minh.
+- Hiện trạng: Đã phân biệt W3C Distributed `TraceId` (`Activity.Current.TraceId`) và business `CorrelationId` (`X-Correlation-ID`) trong `CorrelationIdMiddleware`; triệt tiêu nguy cơ bùng nổ cardinality bằng `RoutePattern.RawText` (`ResolveRouteTemplate`); hoàn thiện SLIs cốt lõi và endpoint xuất chuẩn Prometheus (`GET /api/v1/admin/metrics/prometheus`); xây dựng quy trình Replay Dead-Letter bền vững qua `AdminOutboxService` (kiểm tra quyền Admin, rào chắn bảo vệ tài chính, atomic update `WHERE id = @id AND status = 'dead_letter'` chống race condition, lưu `AuditLog` và bảo toàn `LastError`); làm sạch log tại nguồn (`SanitizeError`); bổ sung quy định cảnh báo và kịch bản diễn tập `alert-rules.md`. Đã kiểm chứng thực nghiệm trên môi trường thật: Unit tests 570/570 PASS, PostgreSQL Integration tests 4/4 PASS (Trace headers, Prometheus endpoint, Replay audit log, Concurrency conflict 409). Kênh Webhook Slack/PagerDuty và External Uptime probe ghi nhận trạng thái BLOCKED chờ Operator cấp theo OPS-04/OPS-05.
 - Scope: Metrics/log redaction/correlation, uptime external, error/latency/queue age/refund pending alerts; dead-letter replay gated; incident owner.
-- Acceptance/evidence: Inject provider/DB failure → alert đến operator, runbook restore/replay không duplicate tiền; không đưa health/chat vào log.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-824](production-plans/evidence/BE-824.md) (VERIFIED: Unit tests 570/570 PASS, Integration tests 4/4 PASS).
+- Handoff: hoàn thành kiểm chứng observability, log redaction, metrics Prometheus, atomic replay và PostgreSQL tests; mở khóa BE-825 và BE-827.
 
 ### BE-825 — Backup, retention và disaster recovery
 - Plan: [Plan triển khai](production-plans/BE-825.md).
