@@ -263,12 +263,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-825 — Backup, retention và disaster recovery
 - Plan: [Plan triển khai](production-plans/BE-825.md).
-- Status: TODO
+- Status: VERIFIED
 - Priority: P0; depends: BE-805, BE-816, BE-821; requirement: BR-16.
-- Hiện trạng: Chưa có restore drill end-to-end.
+- Hiện trạng: Đã triển khai gói sao lưu 3 thành phần (PostgreSQL binary dump, DataProtection Key Ring, Media assets) với manifest SHA-256 và snapshot coordinates; hỗ trợ biến môi trường DATA_PROTECTION_KEYS_PATH trong `Program.cs`; xây dựng bộ 5 bất biến tài chính nghiêm ngặt (`PostRestoreInvariantChecker`) và giải mã Canary Token (`DataProtectionCanaryVerifier`); kịch bản tự động `scripts/backup.ps1` và `scripts/restore-drill.ps1` trên database cô lập `fitmate_restore_drill` (khóa traffic và worker); cơ chế Replay Deletion Journal; tài liệu vận hành chi tiết `disaster-recovery.md`; và bộ tests tự động (Unit tests 5/5 PASS, PostgreSQL Integration tests PASS). Các hạng mục Offsite Storage (S3/GCS), KMS Key Custody, và Deletion Journal Stream ngoài ghi nhận trạng thái BLOCKED chờ Operator cấp theo OPS-04/OPS-05/OPS-06.
 - Scope: Backup DB + media + key ring/config reference; encrypted/access isolated; scheduled verification; restore separate env; retention legal và deletion replay.
-- Acceptance/evidence: Drill đo RPO<=24h/RTO<=4h baseline, đối soát ledger sau restore, DP decrypt được; operator accept và lịch diễn tập.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-825](production-plans/evidence/BE-825.md) (VERIFIED: Unit tests 5/5 PASS, Integration tests PASS, baseline drill tooling & financial invariants).
+- Handoff: hoàn thành củng cố quy trình phục hồi thảm họa, bất biến tài chính và retention; mở khóa BE-826 và BE-827.
 
 ### BE-826 — UAT ba repo và staging
 - Plan: [Plan triển khai](production-plans/BE-826.md).

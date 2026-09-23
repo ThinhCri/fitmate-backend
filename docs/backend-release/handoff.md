@@ -283,7 +283,22 @@
   - PostgreSQL Integration tests: 4/4 PASS (`ObservabilityAndOutboxReplayTests`).
 - File evidence: `docs/backend-release/production-plans/evidence/BE-824.md`.
 
-**Next:** Tiếp tục task tiếp theo theo lộ trình: **BE-825 — Backup, retention và disaster recovery (P0)**.
+**BE-825: Backup, retention và disaster recovery — VERIFIED**
+- Triển khai gói sao lưu 3 thành phần (PostgreSQL binary dump `pg_dump -Fc`, DataProtection Key Ring từ volume `fitmate-dpkeys`, Media assets) kèm manifest xác thực toàn vẹn SHA-256 (`BackupManifest.cs`).
+- Hỗ trợ biến môi trường `DATA_PROTECTION_KEYS_PATH` trong `src/Fitmate.Api/Program.cs` cho phép nạp key ring độc lập khi diễn tập.
+- Xây dựng bộ 5 bất biến tài chính nghiêm ngặt trong `PostRestoreInvariantChecker.cs` (Non-negative amounts, Refund cap, Cumulative refunds <= payment, Unique provider txn ref, Appointment-Payment referential integrity) sử dụng đúng schema PostgreSQL quoted.
+- Hiện thực hóa bộ kiểm chứng Canary Token (`DataProtectionCanaryVerifier.cs`): mã hóa token trước backup, giải mã sau restore để xác minh tính hợp lệ của key ring được khôi phục.
+- Viết kịch bản tự động hóa diễn tập:
+  - `scripts/backup.ps1`: Tạo canary token, snapshot DB, trích xuất key ring từ volume `fitmate-dpkeys`, nén media, tính SHA-256, sinh `manifest.json`.
+  - `scripts/restore-drill.ps1`: Kiểm tra SHA-256 fail-fast, phục hồi vào database cô lập `fitmate_restore_drill`, giải nén keys vào `temp_restore_keys/`, thực thi 5 câu lệnh SQL kiểm chứng bất biến, replay Deletion Journal, tính toán RTO (thời gian chạy) và RPO (khoảng cách snapshot).
+- Soạn thảo sổ tay vận hành phục hồi thảm họa `docs/backend-release/runbooks/disaster-recovery.md` (khóa traffic và worker trong khi restore, checklist đối soát Reconciliation Window với cổng thanh toán, chính sách retention 30d/12m/7y, và cảnh báo quá hạn P1 `BackupFreshnessCritical`).
+- Ghi nhận trạng thái phụ thuộc bên ngoài: Offsite Storage (S3/GCS), KMS Key Custody, và Independent Deletion Journal Stream ghi nhận **BLOCKED (Chờ Operator cấp theo OPS-04/OPS-05/OPS-06)**.
+- Kết quả kiểm chứng thực nghiệm:
+  - Unit tests: 5/5 PASS (`BackupAndRetentionTests`).
+  - Integration tests trên PostgreSQL thật: 3/3 PASS (`DisasterRecoveryAndRetentionTests`).
+- File evidence: `docs/backend-release/production-plans/evidence/BE-825.md`.
+
+**Next:** Tiếp tục task tiếp theo theo lộ trình: **BE-826 — UAT ba repo và staging** và **BE-827 — Chốt production và Play release**.
 
 ### Lịch sử các phiên trước
 
