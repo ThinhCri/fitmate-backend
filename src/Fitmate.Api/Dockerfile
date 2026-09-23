@@ -1,5 +1,5 @@
 # ===== Stage 1: Build =====
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 # Direct csproj restore — no solution file dependency (avoids Fitmate.sln/.slnx path assumptions).
@@ -19,7 +19,7 @@ RUN dotnet publish src/Fitmate.Api/Fitmate.Api.csproj \
     /p:UseAppHost=false
 
 # ===== Stage 2: Runtime =====
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
 # Install curl for HEALTHCHECK. MUST run before USER fitmate + clean apt cache to keep image small.

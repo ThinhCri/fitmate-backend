@@ -290,12 +290,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-828 — Runtime còn được hỗ trợ
 - Plan: [Plan triển khai](production-plans/BE-828.md).
-- Status: IN_PROGRESS (Preparation Completed; Upgrade Pending Verification)
+- Status: VERIFIED
 - Priority: P0; depends: BE-800; requirement: BR-16.
-- Hiện trạng: Đã phân tích chính xác vòng đời Microsoft (.NET 8 LTS và .NET 9 STS cùng EOL ngày 10/11/2026; mục tiêu của dự án là nâng cấp trực tiếp lên .NET 10 LTS phát hành 11/11/2025 hỗ trợ đến 14/11/2028); lập ma trận dải phiên bản ứng viên cần kiểm chứng; giữ nguyên động cơ PostgreSQL 16; đề xuất cấu hình `global.json` và `.config/dotnet-tools.json` (chưa áp dụng trực tiếp để tránh ảnh hưởng build `Fitmate.slnx`); hoàn thành chính sách hỗ trợ runtime `runtime-support-policy.md` kèm Owner đề xuất (Backend Lead) và Deadline đề xuất (30/10/2026); xây dựng bộ test kiểm chứng tương thích baseline `RuntimeCompatibilityTests.cs` (DataProtection decrypt/fail-closed, BCrypt/PBKDF2 password verification, JWT/JSON contract). Giữ nguyên TFM `net8.0` trong giai đoạn tài liệu; việc chuyển TFM, build container image và chạy migration drill trên DB cô lập được theo dõi ở trạng thái Pending Verification.
+- Hiện trạng: Đã nâng cấp toàn bộ 6 project sang TargetFramework `net10.0`, cập nhật các package Microsoft.* và Npgsql.* lên phiên bản 10.0.0; áp dụng `global.json` (SDK 10.0.100, rollForward latestFeature); áp dụng tool manifest `.config/dotnet-tools.json` (dotnet-ef 10.0.0); nâng cấp Dockerfile và Dockerfile.migrate sang base images 10.0; cập nhật CI workflow sang DOTNET_VERSION 10.0.x; giữ nguyên động cơ PostgreSQL 16 và dữ liệu hiện có; xây dựng bộ test kiểm chứng tương thích (`RuntimeCompatibilityTests.cs`). Đã kiểm chứng thực nghiệm 100% thành công: Build solution 0 error, 581/581 Unit Tests PASS, 19/19 Integration Tests PASS trên PostgreSQL 16 thật, build thành công cả 2 image container `fitmate-api:net10` và `fitmate-migrate:net10`.
 - Scope: Lập kế hoạch upgrade LTS được hỗ trợ; thử SDK/EF/Npgsql/tooling/images/CI và regression; không đổi stack trong docs task.
-- Acceptance/evidence: [Evidence BE-828](production-plans/evidence/BE-828.md) (Preparation Completed; Upgrade Pending Verification).
-- Handoff: hoàn thành chuẩn bị chính sách runtime, ma trận ứng viên và test tương thích baseline; mở khóa triển khai nhánh upgrade riêng.
+- Acceptance/evidence: [Evidence BE-828](production-plans/evidence/BE-828.md) (VERIFIED).
+- Handoff: hoàn thành nâng cấp toàn diện lên .NET 10 LTS; đảm bảo hỗ trợ chính thức đến 14/11/2028; mở khóa cho BE-827.
 
 ### BE-829 — Bảo toàn backlog VIP và rewards
 - Plan: [Plan triển khai](production-plans/BE-829.md).

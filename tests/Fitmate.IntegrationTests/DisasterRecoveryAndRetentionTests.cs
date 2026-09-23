@@ -35,15 +35,23 @@ public class DisasterRecoveryAndRetentionTests : IClassFixture<FitmateTestAppFac
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
 
+        // Dọn dẹp fixture từ các lần chạy test trước nếu có để đảm bảo test cô lập & idempotent
+        await db.Database.ExecuteSqlRawAsync(@"
+            DELETE FROM refunds WHERE ""ProviderRefundRef"" LIKE 'VNPAY-REFUND-%';
+            DELETE FROM payments WHERE ""ProviderTxnRef"" LIKE 'VNPAY-TEST-%';
+        ");
+
         // 1. Thêm fixture giao dịch hợp lệ vào PostgreSQL
         var appointmentId = Guid.NewGuid();
+        var txnRef = $"VNPAY-TEST-TXN-{Guid.NewGuid():N}";
+        var refundRef = $"VNPAY-REFUND-{Guid.NewGuid():N}";
         var payment = Payment.CreatePending(appointmentId, PaymentMethod.Vnpay, 500_000, "https://pay.fitmate.local");
-        payment.MarkPaid("VNPAY-TEST-TXN-825-001");
+        payment.MarkPaid(txnRef);
         payment.ApplyRefund(100_000);
 
         var adminId = Guid.NewGuid();
         var refund = Refund.Create(payment.Id, appointmentId, 100_000, "Customer cancellation within policy", adminId);
-        refund.MarkSucceeded("VNPAY-REFUND-825-001");
+        refund.MarkSucceeded(refundRef);
 
         await db.Payments.AddAsync(payment);
         await db.Refunds.AddAsync(refund);

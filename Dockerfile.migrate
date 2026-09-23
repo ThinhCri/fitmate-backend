@@ -1,12 +1,12 @@
 # ===== Stage 1: Build EF migrations bundle =====
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Pin dotnet-ef to match EF Core runtime version (8.0.10 in Fitmate.Infrastructure.csproj).
+# Pin dotnet-ef to match EF Core runtime version (10.0.0 in Fitmate.Infrastructure.csproj).
 ENV DOTNET_NOLOGO=1 \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
-RUN dotnet tool install --global dotnet-ef --version 8.0.10
+RUN dotnet tool install --global dotnet-ef --version 10.0.0
 ENV PATH="$PATH:/root/.dotnet/tools"
 
 # Source-only restore (no solution COPY). Tests dir is excluded by .dockerignore so not copied.
@@ -14,7 +14,7 @@ COPY src/Fitmate.Domain/Fitmate.Domain.csproj src/Fitmate.Domain/
 COPY src/Fitmate.Application/Fitmate.Application.csproj src/Fitmate.Application/
 COPY src/Fitmate.Infrastructure/Fitmate.Infrastructure.csproj src/Fitmate.Infrastructure/
 COPY src/Fitmate.Api/Fitmate.Api.csproj src/Fitmate.Api/
-RUN dotnet restore src/Fitmate.Api/Fitmate.Api.csproj
+RUN dotnet restore src/Fitmate.Api/Fitmate.Api.csproj -r linux-x64
 
 COPY src/ src/
 
@@ -27,8 +27,8 @@ RUN dotnet ef migrations bundle \
     --output /out/efbundle \
     --verbose
 
-# ===== Stage 2: Runtime — debian-slim runtime-deps only =====
-FROM mcr.microsoft.com/dotnet/runtime-deps:8.0-bookworm-slim AS runtime
+# ===== Stage 2: Runtime — runtime-deps only =====
+FROM mcr.microsoft.com/dotnet/runtime-deps:10.0 AS runtime
 WORKDIR /app
 
 # Non-root user matching api image UID for parity. Use /tmp for HOME and bundle extract dir.
