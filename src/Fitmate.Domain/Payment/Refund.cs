@@ -15,6 +15,8 @@ public class Refund : AuditableEntity
 
     private Refund() { }
 
+    public static readonly Guid SystemUserId = Guid.Parse("00000000-0000-0000-0000-000000000001");
+
     public static Refund Create(Guid paymentId, Guid appointmentId, long amountVnd, string reason, Guid adminId) => new()
     {
         Id = Guid.NewGuid(),
@@ -27,6 +29,9 @@ public class Refund : AuditableEntity
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
+
+    public static Refund CreateSystemRefund(Guid paymentId, Guid appointmentId, long amountVnd, string reason)
+        => Create(paymentId, appointmentId, amountVnd, reason, SystemUserId);
 
     public void MarkSucceeded(string? providerRefundRef)
     {

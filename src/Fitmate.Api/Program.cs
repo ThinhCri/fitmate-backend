@@ -279,16 +279,34 @@ builder.Services.AddScoped<Fitmate.Application.Support.ISupportTicketStore, Fitm
 builder.Services.AddScoped<Fitmate.Application.Support.ISupportService, Fitmate.Application.Support.SupportService>();
 builder.Services.AddScoped<Fitmate.Application.Preferences.IUserPreferenceStore, Fitmate.Infrastructure.Preferences.EfUserPreferenceStore>();
 builder.Services.AddScoped<Fitmate.Application.Preferences.IUserPreferenceService, Fitmate.Application.Preferences.UserPreferenceService>();
-// BE-140 & BE-808: payment provider gating (StubPaymentProvider in dev/test explicit, MissingPaymentProvider in production).
+// BE-140, BE-808 & BE-400: payment provider wiring & gating
 var paymentOptions = builder.Configuration.GetSection(PaymentOptions.SectionName).Get<PaymentOptions>() ?? new PaymentOptions();
 builder.Services.Configure<PaymentOptions>(builder.Configuration.GetSection(PaymentOptions.SectionName));
+
+// BE-400: VNPay configuration, security, client & adapter
+builder.Services.Configure<Fitmate.Application.Payments.VnpayOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Payments.VnpayOptions.SectionName));
+builder.Services.AddSingleton<Fitmate.Application.Payments.IVnpaySecurity, Fitmate.Infrastructure.Payments.Vnpay.VnpaySecurity>();
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Payments.Vnpay.IVnpayClient, Fitmate.Infrastructure.Payments.Vnpay.VnpayClient>((sp, client) =>
+{
+    var vnpayOpts = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Fitmate.Application.Payments.VnpayOptions>>().Value;
+    client.Timeout = TimeSpan.FromSeconds(vnpayOpts.TimeoutSeconds > 0 ? vnpayOpts.TimeoutSeconds : 30);
+});
+
 builder.Services.AddScoped<IPaymentStore, Fitmate.Infrastructure.Payments.EfPaymentStore>();
-if (builder.Environment.IsDevelopment() || paymentOptions.AllowMockProvider)
+
+var vnpayConfig = builder.Configuration.GetSection(Fitmate.Application.Payments.VnpayOptions.SectionName).Get<Fitmate.Application.Payments.VnpayOptions>();
+if (vnpayConfig != null && vnpayConfig.IsValid())
+{
+    builder.Services.AddScoped<IPaymentProvider, Fitmate.Infrastructure.Payments.Vnpay.VnpayPaymentAdapter>();
+}
+else if (builder.Environment.IsDevelopment() || paymentOptions.AllowMockProvider)
 {
     builder.Services.AddScoped<IPaymentProvider, StubPaymentProvider>();
 }
 else
 {
+    // Fail-closed in production when valid merchant credentials are not configured
     builder.Services.AddScoped<IPaymentProvider>(sp =>
         new MissingPaymentProvider("Payment provider is not configured. Production requires valid merchant credentials."));
 }

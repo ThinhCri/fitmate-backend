@@ -134,7 +134,12 @@ public class FitmateTestAppFactory : WebApplicationFactory<Program>
                 ["Ai:CompanionChatEnabled"] = "false",
                 ["Ai:WorkoutAdjustEnabled"] = "false",
                 ["Storage:BasePath"] = Path.Combine(Path.GetTempPath(), "fitmate-integration-uploads"),
-                ["Payment:AllowMockProvider"] = "true"
+                ["Payment:AllowMockProvider"] = "true",
+                ["Vnpay:TmnCode"] = "FITMATETEST",
+                ["Vnpay:HashSecret"] = "VNPAYINTEGRATIONTESTSECRETKEY1234567890ABCDEF1234567890ABCDEF",
+                ["Vnpay:PaymentUrl"] = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
+                ["Vnpay:ApiUrl"] = "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction",
+                ["Vnpay:ReturnUrl"] = "http://localhost:5000/api/v1/payments/vnpay/return"
             });
         });
 

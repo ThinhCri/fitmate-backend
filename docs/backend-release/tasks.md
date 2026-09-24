@@ -313,7 +313,8 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 - Owner: operator; theo OPS-01. Không coi allowlist secret cũ là giải quyết leak.
 ### BE-400 — VNPay adapter thật
 - Plan: [Plan triển khai](production-plans/BE-400.md).
-- Status: BLOCKED (sandbox E2E chờ merchant credentials); contract/signature unit tests vẫn làm được.
+- Evidence: [Bằng chứng nghiệm thu](production-plans/evidence/BE-400.md).
+- Status: IMPLEMENTED (Core adapter, query/refund, concurrency locking & PostgreSQL integration tests verified; Live sandbox BLOCKED pending OPS-03).
 - Depends: BE-808, OPS-03. Acceptance: provider docs/version, signatures/amount/order, retries, IPN và refund/query sandbox evidence.
 ### BE-410 — Email thật
 - Plan: [Plan triển khai](production-plans/BE-410.md).

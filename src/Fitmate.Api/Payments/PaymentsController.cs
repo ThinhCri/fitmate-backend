@@ -49,10 +49,37 @@ public class PaymentsController : ControllerBase
         return Ok(_payment.HandleVnpayReturn(query));
     }
 
+    [HttpGet("payments/vnpay/ipn")]
+    [AllowAnonymous]
+    public async Task<IActionResult> VnpayIpnGet(CancellationToken ct)
+    {
+        var dict = Request.Query.ToDictionary(k => k.Key, v => v.Value.ToString());
+        var result = await _payment.HandleVnpayIpnAsync(dict, ct);
+        return Ok(result);
+    }
+
     [HttpPost("payments/vnpay/ipn")]
     [AllowAnonymous]
-    public IActionResult VnpayIpn(VnpayReturnQuery query)
+    public async Task<IActionResult> VnpayIpnPost(CancellationToken ct)
     {
-        return Ok(_payment.HandleVnpayIpn(query));
+        var dict = new Dictionary<string, string>();
+        if (Request.HasFormContentType)
+        {
+            var form = await Request.ReadFormAsync(ct);
+            foreach (var key in form.Keys)
+            {
+                dict[key] = form[key].ToString();
+            }
+        }
+        else
+        {
+            foreach (var key in Request.Query.Keys)
+            {
+                dict[key] = Request.Query[key].ToString();
+            }
+        }
+
+        var result = await _payment.HandleVnpayIpnAsync(dict, ct);
+        return Ok(result);
     }
 }

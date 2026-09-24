@@ -19,6 +19,7 @@ public class PaymentServiceTests
     private sealed class InMemoryPaymentStore : IPaymentStore
     {
         public List<Payment> Payments { get; } = new();
+        public List<Refund> Refunds { get; } = new();
         public BookingHold? Hold { get; set; }
         public Appointment? Appt { get; set; }
 
@@ -36,6 +37,28 @@ public class PaymentServiceTests
 
         public void Add(Payment payment) => Payments.Add(payment);
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<T> ExecuteInTransactionAsync<T>(Func<Task<T>> operation, CancellationToken ct) => operation();
+        public Task ExecuteInTransactionAsync(Func<Task> operation, CancellationToken ct) => operation();
+
+        public Task<IExecutionTransaction> BeginTransactionAsync(CancellationToken ct)
+            => Task.FromResult<IExecutionTransaction>(new NullTx());
+
+        public Task<BookingHold?> FindHoldForUpdateAsync(Guid holdId, CancellationToken ct) => FindHoldAsync(holdId, ct);
+        public Task<Appointment?> FindAppointmentForUpdateAsync(Guid appointmentId, CancellationToken ct) => Task.FromResult(Appt);
+        public Task<Payment?> FindByIdForUpdateAsync(Guid paymentId, CancellationToken ct) => FindByIdAsync(paymentId, ct);
+
+        public void AddRefund(Refund refund) => Refunds.Add(refund);
+        public Task<Refund?> FindRefundByIdAsync(Guid refundId, CancellationToken ct) => Task.FromResult(Refunds.FirstOrDefault(r => r.Id == refundId));
+        public Task<long> GetPendingRefundsTotalAsync(Guid paymentId, CancellationToken ct)
+            => Task.FromResult(Refunds.Where(r => r.PaymentId == paymentId && r.Status == RefundStatus.Pending).Sum(r => r.AmountVnd));
+
+        private sealed class NullTx : IExecutionTransaction
+        {
+            public Task CommitAsync(CancellationToken ct) => Task.CompletedTask;
+            public Task RollbackAsync(CancellationToken ct) => Task.CompletedTask;
+            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        }
     }
 
     private static (InMemoryPaymentStore store, Guid holdId, Guid apptId) Setup(

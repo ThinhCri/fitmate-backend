@@ -19,5 +19,17 @@ public class MissingPaymentProvider : IPaymentProvider
     {
         throw new DomainException(ErrorCodes.Payment.ProviderUnavailable, _reason, 503);
     }
+
+    public Task<ProviderQueryResult> QueryTransactionAsync(
+        ProviderQueryRequest request, CancellationToken ct)
+    {
+        throw new DomainException(ErrorCodes.Payment.ProviderUnavailable, _reason, 503);
+    }
+
+    public Task<ProviderRefundResult> RefundAsync(
+        ProviderRefundRequest request, CancellationToken ct)
+    {
+        throw new DomainException(ErrorCodes.Payment.ProviderUnavailable, _reason, 503);
+    }
 }
 
