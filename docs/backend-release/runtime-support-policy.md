@@ -31,8 +31,8 @@ Dưới đây là ma trận khảo sát hiện trạng và các dải phiên b�
 
 | Thành phần | Phiên bản đang dùng trong repo | Dải ứng viên đề xuất (.NET 8 maintenance) | Dải ứng viên mục tiêu (.NET 10 LTS) | Ghi chú kỹ thuật |
 | :--- | :--- | :--- | :--- | :--- |
-| **Target Framework Moniker (TFM)** | `net8.0` | `net8.0` | `net10.0` | Giữ nguyên `net8.0` trong giai đoạn tài liệu/chuẩn bị. |
-| **.NET SDK Host** | Chưa có `global.json` | `8.0.4xx` | `10.0.1xx` | Cần bổ sung `global.json` khi bước vào giai đoạn upgrade. |
+| **Target Framework Moniker (TFM)** | `net10.0` | N/A | `net10.0` (Active) | Toàn bộ 6 project đã chuyển sang `net10.0`. |
+| **.NET SDK Host** | `global.json` (10.0.100) | N/A | `10.0.1xx` (Active) | Đã cấu hình `global.json` với `rollForward: "latestFeature"`. |
 | **ASP.NET Core Runtime** | `8.0.10` | `8.0.x` latest security patch | `10.0.x` | Theo dõi bản vá bảo mật hàng tháng của Microsoft. |
 | **dotnet-ef CLI Tool** | Global 8.0.10 (Dockerfile) | `8.0.x` | `10.0.x` | Cần bổ sung tool manifest `.config/dotnet-tools.json`. |
 | **Microsoft.EntityFrameworkCore** | `8.0.10` | `8.0.x` (>= 8.0.10) | `10.0.x` | Kiểm tra translation query và shadow state. |

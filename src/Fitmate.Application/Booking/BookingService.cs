@@ -39,6 +39,8 @@ public class BookingService : IBookingService
         _holdTtl = holdTtl ?? TimeSpan.FromMinutes(5); // domain-rules.md §3.6
     }
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _slotLocks = new();
+
     public async Task<(BookingHold Hold, Appointment Appointment)> CreateHoldAsync(
         Guid memberId, Guid ptUserId, Guid serviceId, DateTime slotStartUtc, CancellationToken ct)
     {
@@ -51,24 +53,34 @@ public class BookingService : IBookingService
                 "Service does not belong to PT.",
                 new Dictionary<string, string[]> { ["pt_id"] = new[] { "mismatch" } });
 
-        // 2. Concurrency: không cho 2 member giữ cùng slot active.
-        if (await _appointments.ExistsActiveForSlotAsync(ptUserId, slotStartUtc, ct))
-            throw new ConflictException(ErrorCodes.Booking.SlotTaken,
-                $"Slot {slotStartUtc:O} of PT {ptUserId} is no longer available.");
+        // 2. Concurrency: Lock theo (ptUserId, slotStartUtc) giải quyết dứt điểm race condition khi nhiều VUs cùng tranh chấp 1 slot.
+        var lockKey = $"{ptUserId:N}:{slotStartUtc.Ticks}";
+        var sem = _slotLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
+        await sem.WaitAsync(ct);
+        try
+        {
+            if (await _appointments.ExistsActiveForSlotAsync(ptUserId, slotStartUtc, ct))
+                throw new ConflictException(ErrorCodes.Booking.SlotTaken,
+                    $"Slot {slotStartUtc:O} of PT {ptUserId} is no longer available.");
 
-        // 3. Tạo hold + Appointment(Held).
-        var hold = BookingHold.Create(memberId, ptUserId, serviceId, slotStartUtc, _holdTtl);
-        var appt = Appointment.CreateHold(
-            memberId, ptUserId, serviceId,
-            slotStartUtc, slotStartUtc, svc.DurationMinutes, svc.PriceVnd);
+            // 3. Tạo hold + Appointment(Held).
+            var hold = BookingHold.Create(memberId, ptUserId, serviceId, slotStartUtc, _holdTtl);
+            var appt = Appointment.CreateHold(
+                memberId, ptUserId, serviceId,
+                slotStartUtc, slotStartUtc, svc.DurationMinutes, svc.PriceVnd);
 
-        await _holds.AddAsync(hold, ct);
-        await _appointments.AddAsync(appt, ct);
-        await _appointments.SaveChangesAsync(ct);
-        await _holds.SaveChangesAsync(ct);
+            await _holds.AddAsync(hold, ct);
+            await _appointments.AddAsync(appt, ct);
+            await _appointments.SaveChangesAsync(ct);
+            await _holds.SaveChangesAsync(ct);
 
-        _outbox.Enqueue("booking.held", new { holdId = hold.Id, appointmentId = appt.Id, memberId, ptUserId });
-        return (hold, appt);
+            _outbox.Enqueue("booking.held", new { holdId = hold.Id, appointmentId = appt.Id, memberId, ptUserId });
+            return (hold, appt);
+        }
+        finally
+        {
+            sem.Release();
+        }
     }
 
     public async Task<Appointment> CancelAsync(Guid actorUserId, Guid appointmentId, string reason, CancellationToken ct)

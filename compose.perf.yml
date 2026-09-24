@@ -1,0 +1,85 @@
+name: fitmate-perf
+
+services:
+  postgres-perf:
+    image: postgres:16-alpine
+    container_name: fitmate-perf-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: fitmate_perf
+      POSTGRES_USER: fitmate
+      POSTGRES_PASSWORD: localverify300pw
+    ports:
+      - "5433:5432"
+    volumes:
+      - fitmate-postgres-perf-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fitmate -d fitmate_perf"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  migrate-perf:
+    build:
+      context: .
+      dockerfile: Dockerfile.migrate
+    image: fitmate-migrate:local
+    container_name: fitmate-perf-migrate
+    environment:
+      DB_HOST: postgres-perf
+      DB_PORT: 5432
+      DB_NAME: fitmate_perf
+      DB_USER: fitmate
+      DB_PASSWORD: localverify300pw
+      DB_SSLMODE: disable
+    depends_on:
+      postgres-perf:
+        condition: service_healthy
+    restart: "no"
+
+  api-perf:
+    build:
+      context: .
+      dockerfile: src/Fitmate.Api/Dockerfile
+    image: fitmate-api:local
+    container_name: fitmate-perf-api
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Staging
+      DB_HOST: postgres-perf
+      DB_PORT: 5432
+      DB_NAME: fitmate_perf
+      DB_USER: fitmate
+      DB_PASSWORD: localverify300pw
+      DB_SSLMODE: disable
+      JWT_SIGNING_KEY: FitmatePerfSuperSecretSigningKeyForBenchmarkingOnly2026!
+      JWT_ISSUER: fitmate
+      JWT_AUDIENCE: fitmate
+      FEATURE_PUSH_ENABLED: "false"
+      FEATURE_PAYMENT_ENABLED: "false"
+      # Rate limit settings cho stack đo capacity:
+      # Sử dụng PERF_RATE_LIMIT_* để không bị biến trong .env của dev stack (60/5) ghi đè.
+      RATE_LIMIT_PER_MINUTE_PER_IP: ${PERF_RATE_LIMIT_PER_MINUTE_PER_IP:-10000}
+      RATE_LIMIT_AUTH_PER_MINUTE_PER_IP: ${PERF_RATE_LIMIT_AUTH_PER_MINUTE_PER_IP:-2000}
+      RATE_LIMIT_AUTH_REFRESH_PER_MINUTE_PER_IP: ${PERF_RATE_LIMIT_AUTH_REFRESH_PER_MINUTE_PER_IP:-4000}
+    depends_on:
+      postgres-perf:
+        condition: service_healthy
+    ports:
+      - "8088:8080"
+
+  k6:
+    image: grafana/k6:0.54.0
+    container_name: fitmate-perf-k6
+    volumes:
+      - ./tests/load:/load:ro
+      - ./tests/load/results:/results:rw
+    environment:
+      BASE_URL: http://api-perf:8080
+    depends_on:
+      api-perf:
+        condition: service_started
+
+volumes:
+  fitmate-postgres-perf-data:
+

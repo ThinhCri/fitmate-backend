@@ -66,6 +66,7 @@ pgdata/
 # ===== Load test outputs =====
 load-results/
 k6-report/
+tests/load/results/*.json
 
 # ===== ad-hoc tooling (xóa khi xong task) =====
 node_modules/

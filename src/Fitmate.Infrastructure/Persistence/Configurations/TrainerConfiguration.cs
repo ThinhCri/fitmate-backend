@@ -62,7 +62,11 @@ public class AvailabilitySlotConfiguration : IEntityTypeConfiguration<Availabili
         e.Property(x => x.Id).HasColumnName("id");
         e.Property(x => x.PtUserId).IsRequired();
         e.Property(x => x.SlotStartUtc).IsRequired();
-        e.Property(x => x.SlotStartLocal).IsRequired();
+        e.Property(x => x.SlotStartLocal)
+            .IsRequired()
+            .HasConversion(
+                v => DateTime.SpecifyKind(v, DateTimeKind.Utc),
+                v => DateTime.SpecifyKind(v, DateTimeKind.Unspecified));
         e.Property(x => x.DurationMinutes).IsRequired();
         e.Property(x => x.Status).HasConversion<int>();
         e.HasIndex(x => new { x.PtUserId, x.SlotStartUtc });

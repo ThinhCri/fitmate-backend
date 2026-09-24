@@ -4,187 +4,245 @@ import * as constants from './constants.js';
 
 // ─── Auth helpers ──────────────────────────────────────────────────────────────
 
+const _tokenCache = {};
+
 /**
  * Login member and return { accessToken, userId, expiresAt }.
- * Caches per VU to avoid re-authenticating every iteration.
+ * Allocates 1-1 account per VU from the pool of 100 members.
  */
-let _memberTokenCache = null;
+export function getMemberToken(baseUrl, vuId) {
+  const effectiveVuId = vuId || __VU || 1;
+  const memberIndex = ((effectiveVuId - 1) % 100) + 1;
+  const email = constants.getMemberEmail(memberIndex);
 
-export function getMemberToken(baseUrl) {
-  if (_memberTokenCache) return _memberTokenCache;
+  if (_tokenCache[email] && Date.now() < _tokenCache[email].expiresAt - 60_000) {
+    return _tokenCache[email];
+  }
 
   const payload = JSON.stringify({
-    email: constants.MEMBER_EMAIL,
-    password: constants.MEMBER_PASSWORD,
+    email,
+    password: constants.PERF_PASSWORD,
   });
 
-  const res = http.post(`${baseUrl}${constants.API_PREFIX}/auth/login`, payload, {
+  const res = http.post(`${baseUrl}${constants.ROUTES.AUTH_LOGIN}`, payload, {
     headers: { 'Content-Type': 'application/json' },
+    tags: { type: 'auth' },
   });
 
-  check(res, {
+  const loginSuccess = check(res, {
     'member login: status 200': (r) => r.status === 200,
     'member login: has accessToken': (r) => {
       try {
         const body = r.json();
-        return body && body.accessToken !== undefined;
+        return body && Boolean(body.accessToken);
       } catch {
         return false;
       }
     },
   });
 
+  if (!loginSuccess) {
+    return null;
+  }
+
   const body = res.json();
-  _memberTokenCache = {
+  const session = {
     accessToken: body.accessToken,
     userId: body.user?.id ?? '',
     expiresAt: Date.now() + (body.expiresIn ?? 3600) * 1000,
   };
-  return _memberTokenCache;
+  _tokenCache[email] = session;
+  return session;
 }
 
 /**
- * Login PT and return { accessToken, userId }.
+ * Login PT and return { accessToken, userId, expiresAt }.
+ * Allocates 1-1 account per VU from the pool of 20 PTs.
  */
-let _ptTokenCache = null;
+export function getPtToken(baseUrl, vuId) {
+  const effectiveVuId = vuId || __VU || 1;
+  const ptIndex = ((effectiveVuId - 1) % 20) + 1;
+  const email = constants.getPtEmail(ptIndex);
 
-export function getPtToken(baseUrl) {
-  if (_ptTokenCache) return _ptTokenCache;
+  if (_tokenCache[email] && Date.now() < _tokenCache[email].expiresAt - 60_000) {
+    return _tokenCache[email];
+  }
 
   const payload = JSON.stringify({
-    email: constants.PT_EMAIL,
-    password: constants.PT_PASSWORD,
+    email,
+    password: constants.PERF_PASSWORD,
   });
 
-  const res = http.post(`${baseUrl}${constants.API_PREFIX}/auth/login`, payload, {
+  const res = http.post(`${baseUrl}${constants.ROUTES.AUTH_LOGIN}`, payload, {
     headers: { 'Content-Type': 'application/json' },
+    tags: { type: 'auth' },
   });
 
-  check(res, {
+  const loginSuccess = check(res, {
     'PT login: status 200': (r) => r.status === 200,
     'PT login: has accessToken': (r) => {
       try {
         const body = r.json();
-        return body && body.accessToken !== undefined;
+        return body && Boolean(body.accessToken);
       } catch {
         return false;
       }
     },
   });
 
+  if (!loginSuccess) {
+    return null;
+  }
+
   const body = res.json();
-  _ptTokenCache = {
+  const session = {
     accessToken: body.accessToken,
     userId: body.user?.id ?? '',
     expiresAt: Date.now() + (body.expiresIn ?? 3600) * 1000,
   };
-  return _ptTokenCache;
+  _tokenCache[email] = session;
+  return session;
 }
 
 /**
- * Login admin and return { accessToken, userId }.
+ * Login admin and return { accessToken, userId } or BLOCKED state.
+ * If AuthController lacks 2FA challenge support or admin is not seeded, records BLOCKED status.
  */
-let _adminTokenCache = null;
-
 export function getAdminToken(baseUrl) {
-  if (_adminTokenCache) return _adminTokenCache;
+  const email = constants.ADMIN_EMAIL;
+  if (_tokenCache[email] && Date.now() < _tokenCache[email].expiresAt - 60_000) {
+    return _tokenCache[email];
+  }
 
   const payload = JSON.stringify({
-    email: constants.ADMIN_EMAIL,
+    email,
     password: constants.ADMIN_PASSWORD,
   });
 
-  const res = http.post(`${baseUrl}${constants.API_PREFIX}/auth/login`, payload, {
+  const res = http.post(`${baseUrl}${constants.ROUTES.AUTH_LOGIN}`, payload, {
     headers: { 'Content-Type': 'application/json' },
+    tags: { type: 'auth' },
   });
 
-  check(res, {
-    'admin login: status 200': (r) => r.status === 200,
-    'admin login: has accessToken': (r) => {
-      try {
-        const body = r.json();
-        return body && body.accessToken !== undefined;
-      } catch {
-        return false;
-      }
-    },
-  });
+  if (res.status !== 200) {
+    // Admin login scenario is blocked due to missing MFA challenge handler during login flow
+    return {
+      blocked: true,
+      reason: 'Admin scenario BLOCKED: /api/v1/auth/login lacks MFA challenge handling in AuthController contract',
+      accessToken: null,
+    };
+  }
 
-  const body = res.json();
-  _adminTokenCache = {
-    accessToken: body.accessToken,
-    userId: body.user?.id ?? '',
-    expiresAt: Date.now() + (body.expiresIn ?? 3600) * 1000,
-  };
-  return _adminTokenCache;
+  try {
+    const body = res.json();
+    if (!body || !body.accessToken) {
+      return {
+        blocked: true,
+        reason: 'Admin login response missing accessToken',
+        accessToken: null,
+      };
+    }
+
+    const session = {
+      blocked: false,
+      accessToken: body.accessToken,
+      userId: body.user?.id ?? '',
+      expiresAt: Date.now() + (body.expiresIn ?? 3600) * 1000,
+    };
+    _tokenCache[email] = session;
+    return session;
+  } catch {
+    return {
+      blocked: true,
+      reason: 'Admin login response JSON parse error',
+      accessToken: null,
+    };
+  }
 }
 
 // ─── Request helpers ──────────────────────────────────────────────────────────
 
 /**
- * Authenticated GET with API prefix and standard headers.
+ * Authenticated GET with standard headers and tags.
  */
-export function authGet(baseUrl, path, token) {
+export function authGet(baseUrl, path, token, extraTags = {}) {
+  const headers = {
+    Accept: 'application/json',
+  };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const tags = { type: 'read', ...extraTags };
   const res = http.get(`${baseUrl}${constants.API_PREFIX}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/json',
-    },
+    headers,
+    tags,
   });
   return res;
 }
 
 /**
- * Authenticated POST with API prefix and standard headers.
+ * Authenticated POST with standard headers and tags.
  */
-export function authPost(baseUrl, path, body, token, extraHeaders = {}) {
+export function authPost(baseUrl, path, body, token, extraHeaders = {}, extraTags = {}) {
   const payload = typeof body === 'string' ? body : JSON.stringify(body);
   const headers = {
     'Content-Type': 'application/json',
     Accept: 'application/json',
-    Authorization: `Bearer ${token}`,
     ...extraHeaders,
   };
-  const res = http.post(`${baseUrl}${constants.API_PREFIX}${path}`, payload, { headers });
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const tags = { type: 'write', ...extraTags };
+  const res = http.post(`${baseUrl}${constants.API_PREFIX}${path}`, payload, {
+    headers,
+    tags,
+  });
   return res;
 }
 
 /**
- * Public (unauthenticated) request — bypasses API_PREFIX only when explicitly given a full path.
- * Use for /health/* and any non-prefixed endpoints.
+ * Public (unauthenticated) request.
  */
-export function publicRequest(method, url, body, extraHeaders = {}) {
+export function publicRequest(method, url, body, extraHeaders = {}, extraTags = {}) {
   const payload = body === undefined || body === null ? null : (typeof body === 'string' ? body : JSON.stringify(body));
   const headers = { 'Content-Type': 'application/json', ...extraHeaders };
-  return http.request(method, url, payload, { headers });
+  const tags = { type: 'public', ...extraTags };
+  return http.request(method, url, payload, { headers, tags });
 }
 
 // ─── Health checks ────────────────────────────────────────────────────────────
 
 export function checkHealth(baseUrl) {
   group('Health', () => {
-    const live = http.get(`${baseUrl}/health/live`);
+    const live = http.get(`${baseUrl}${constants.ROUTES.HEALTH_LIVE}`, {
+      tags: { type: 'health' },
+    });
     check(live, {
       'liveness: 200': (r) => r.status === 200,
     });
 
-    const ready = http.get(`${baseUrl}/health/ready`);
+    const ready = http.get(`${baseUrl}${constants.ROUTES.HEALTH_READY}`, {
+      tags: { type: 'health' },
+    });
     check(ready, {
       'readiness: 200': (r) => r.status === 200,
     });
   });
 }
 
-// ─── Token-cache reset (per VU iteration) ────────────────────────────────────
+// ─── Token-cache reset ────────────────────────────────────────────────────────
 
+/**
+ * Cleans up expired cached tokens (only when remaining lifetime < 60s).
+ */
 export function resetCaches() {
-  if (_memberTokenCache && Date.now() > _memberTokenCache.expiresAt - 60_000) {
-    _memberTokenCache = null;
-  }
-  if (_ptTokenCache && Date.now() > (_ptTokenCache.expiresAt ?? Infinity) - 60_000) {
-    _ptTokenCache = null;
-  }
-  if (_adminTokenCache && Date.now() > (_adminTokenCache.expiresAt ?? Infinity) - 60_000) {
-    _adminTokenCache = null;
+  const now = Date.now();
+  for (const email of Object.keys(_tokenCache)) {
+    if (_tokenCache[email] && now > _tokenCache[email].expiresAt - 60_000) {
+      delete _tokenCache[email];
+    }
   }
 }

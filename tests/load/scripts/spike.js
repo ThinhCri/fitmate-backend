@@ -16,22 +16,24 @@ export const options = {
     { duration: '30s', target: 5   },   // spike down
   ],
   thresholds: {
-    http_req_failed:  ['rate<0.10'],  // allow 10% errors under extreme load
-    http_req_duration: ['p(95)<3000'],
+    'http_req_failed':  ['rate<0.10'],  // allow max 10% errors under sudden 100 VU surge
+    'http_req_duration': ['p(95)<3000'],
   },
 };
 
 export default function () {
   common.resetCaches();
 
-  const member = common.getMemberToken(constants.BASE_URL);
+  const member = common.getMemberToken(constants.BASE_URL, __VU);
 
-  check(
-    common.authGet(constants.BASE_URL, '/users/me', member.accessToken),
-    { 'spike /users/me': (r) => r.status === 200 || r.status === 503 }
-  );
-  check(
-    common.authGet(constants.BASE_URL, '/me/bookings', member.accessToken),
-    { 'spike /me/bookings': (r) => r.status === 200 || r.status === 503 }
-  );
+  if (member && member.accessToken) {
+    check(
+      common.authGet(constants.BASE_URL, '/users/me', member.accessToken),
+      { 'spike /users/me: 200 or 503': (r) => r.status === 200 || r.status === 503 }
+    );
+    check(
+      common.authGet(constants.BASE_URL, '/me/bookings', member.accessToken),
+      { 'spike /me/bookings: 200 or 503': (r) => r.status === 200 || r.status === 503 }
+    );
+  }
 }
