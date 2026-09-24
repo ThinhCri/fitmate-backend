@@ -281,12 +281,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-827 — Chốt production và Play release
 - Plan: [Plan triển khai](production-plans/BE-827.md).
-- Status: TODO
+- Status: IN_PROGRESS
 - Priority: P0; depends: BE-822, BE-823, BE-824, BE-825, BE-826, BE-828; requirement: BR-16.
-- Hiện trạng: Chưa triển khai production/Play.
+- Hiện trạng: Đã hoàn thiện toàn diện hồ sơ chuẩn bị phát hành production và Google Play compliance; lập danh mục Release Manifest (`release-manifest.md`) với SHA commit thật của 3 repo (`FitmateAI_BE`, `FitmateAI_FE`, `FitmateWebApp`), SHA-256 OpenAPI frozen và cấu hình secrets; lập hồ sơ tuân thủ Google Play (`google-play-compliance.md`) với trang web xóa tài khoản (`https://fitmate.vn/account-deletion`), SLA xử lý 30 ngày, miễn trừ In-App Billing cho dịch vụ thể chất PT ngoài đời thực và lộ trình phát hành Internal/Closed testing; lập runbook phân kỳ triển khai và hoàn nguyên (`staged-rollout-and-rollback.md`) với ngưỡng dừng và đối soát sổ cái DR. Quyết định phát hành tổng thể giữ trạng thái NO-GO do Gate G7 UAT ba repo trên Staging đang PENDING và các cổng bên ngoài (OPS-03, OPS-04) đang BLOCKED.
 - Scope: Operator approvals, domains/TLS, managed DB budget; signed Android AAB/internal testing, policy forms/privacy/deletion; migration job/backout; staged rollout.
-- Acceptance/evidence: Checklist ký nhận, support on-call, tested restore/rollback; deployment/paid resources phải được duyệt riêng; không tự publish.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-827](production-plans/evidence/BE-827.md) (IN_PROGRESS; Quyết định phát hành: NO-GO).
+- Handoff: hoàn thành bộ hồ sơ chuẩn bị phát hành; sẵn sàng chuyển giao cho Operator và đội kiểm thử Staging khi các điều kiện tiên quyết được đáp ứng.
 
 ### BE-828 — Runtime còn được hỗ trợ
 - Plan: [Plan triển khai](production-plans/BE-828.md).
