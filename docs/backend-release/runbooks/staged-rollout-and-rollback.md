@@ -106,3 +106,4 @@ Tùy thuộc vào bản chất sự cố và tính chất của việc thay đ�
   - [ ] Incident Commander hô lệnh HALT.
   - [ ] Reroute 100% traffic về image stable trước đó.
   - [ ] Thông báo cho đội ngũ hỗ trợ khách hàng và ghi nhận nhật ký sự cố.
+

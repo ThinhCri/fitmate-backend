@@ -110,6 +110,7 @@ builder.Services.AddDbContext<FitmateDbContext>(opt =>
     {
         npg.EnableRetryOnFailure(maxRetryCount: 3, maxRetryDelay: TimeSpan.FromSeconds(5), null);
     });
+    opt.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
 });
 
 // Identity (DEC-032). BE-021: AddIdentityCore + Roles + EF stores.

@@ -118,3 +118,4 @@ flowchart LR
   1. Toàn bộ 10 Release Gates (G1..G10) đạt trạng thái **PASS**.
   2. Trang web `https://fitmate.vn/account-deletion` đã hoạt động thực tế trên internet.
   3. Operator đã ký duyệt văn bản phê duyệt phát hành chính thức.
+

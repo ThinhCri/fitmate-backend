@@ -24,6 +24,7 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<FitmateDbC
 
         var optionsBuilder = new DbContextOptionsBuilder<FitmateDbContext>();
         optionsBuilder.UseNpgsql(connectionString);
+        optionsBuilder.ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning));
 
         return new FitmateDbContext(optionsBuilder.Options);
     }

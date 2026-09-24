@@ -18,7 +18,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.10")
+                .HasAnnotation("ProductVersion", "10.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -489,6 +489,74 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.ToTable("refresh_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Identity.UserPreference", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("BiometricLoginEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("biometric_login_enabled");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("EmailNotifications")
+                        .HasColumnType("boolean")
+                        .HasColumnName("email_notifications");
+
+                    b.Property<bool>("HealthDataSharingConsent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("health_data_sharing_consent");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("language");
+
+                    b.Property<bool>("NotificationsEnabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("notifications_enabled");
+
+                    b.Property<bool>("PushNotifications")
+                        .HasColumnType("boolean")
+                        .HasColumnName("push_notifications");
+
+                    b.Property<string>("Theme")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("theme");
+
+                    b.Property<string>("Timezone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("timezone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("user_preferences", (string)null);
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Identity.UserProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -496,7 +564,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<List<string>>("Allergies")
+                    b.PrimitiveCollection<List<string>>("Allergies")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -518,7 +586,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("HeightCm")
                         .HasColumnType("numeric(5,2)");
 
-                    b.Property<List<string>>("MedicalConditions")
+                    b.PrimitiveCollection<List<string>>("MedicalConditions")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -529,7 +597,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
-                    b.Property<List<string>>("TrainingDays")
+                    b.PrimitiveCollection<List<string>>("TrainingDays")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -1398,7 +1466,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int>("ReactionsCount")
                         .HasColumnType("integer");
 
-                    b.Property<List<string>>("Tags")
+                    b.PrimitiveCollection<List<string>>("Tags")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -1448,6 +1516,109 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("reactions", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Support.SupportTicket", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("category");
+
+                    b.Property<DateTime?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Priority")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("priority");
+
+                    b.Property<DateTime?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("subject");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category", "CreatedAt");
+
+                    b.HasIndex("Status", "CreatedAt");
+
+                    b.HasIndex("UserId", "CreatedAt");
+
+                    b.ToTable("support_tickets", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Support.SupportTicketMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.PrimitiveCollection<List<string>>("AttachmentUrls")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("attachment_urls");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("content");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<bool>("IsAdmin")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_admin");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sender_id");
+
+                    b.Property<Guid>("TicketId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ticket_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TicketId", "CreatedAt");
+
+                    b.ToTable("support_ticket_messages", (string)null);
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Trainers.AvailabilitySlot", b =>
@@ -1686,7 +1857,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int>("Sets")
                         .HasColumnType("integer");
 
-                    b.Property<List<string>>("Tags")
+                    b.PrimitiveCollection<List<string>>("Tags")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -1897,7 +2068,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int>("PlannedSets")
                         .HasColumnType("integer");
 
-                    b.Property<List<string>>("Tags")
+                    b.PrimitiveCollection<List<string>>("Tags")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -2089,6 +2260,15 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Support.SupportTicketMessage", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Support.SupportTicket", null)
+                        .WithMany("Messages")
+                        .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Workout.WorkoutSessionExerciseSet", b =>
                 {
                     b.HasOne("Fitmate.Domain.Workout.WorkoutSessionExercise", null)
@@ -2147,6 +2327,11 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Support.SupportTicket", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Workout.WorkoutSessionExercise", b =>

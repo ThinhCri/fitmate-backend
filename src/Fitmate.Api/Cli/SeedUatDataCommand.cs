@@ -164,6 +164,7 @@ public static class SeedUatDataCommand
                 else
                 {
                     Console.WriteLine($"[seed-uat] Giữ nguyên persona '{spec.Email}' (Role={spec.Role}, Id={existing.Id}). Không reset mật khẩu hoặc MFA.");
+                    await EnsureDomainDataAsync(existing.Id, spec.Email, db);
                 }
                 continue;
             }
@@ -202,42 +203,65 @@ public static class SeedUatDataCommand
                 await userManager.SetTwoFactorEnabledAsync(user, true);
                 Console.WriteLine($"[seed-uat] Đã thiết lập sẵn TwoFactorEnabled=true cho Admin '{spec.Email}'.");
             }
-            else if (spec.Email == "uat.pt.verified@fitmate.local")
+            else
             {
-                var ptProfile = PtProfile.CreateDraft(user.Id, "Hypertrophy & Fat Loss", 5, 350000, "HLV thể hình có chứng chỉ quốc tế.");
+                await EnsureDomainDataAsync(user.Id, spec.Email, db);
+            }
+        }
+
+        Console.WriteLine("[seed-uat] Hoàn tất nạp dữ liệu UAT an toàn (Idempotent seed completed successfully).");
+        return 0;
+    }
+
+    private static async Task EnsureDomainDataAsync(Guid userId, string email, FitmateDbContext db)
+    {
+        if (email == "uat.pt.verified@fitmate.local")
+        {
+            var hasProfile = await db.PtProfiles.AnyAsync(p => p.UserId == userId);
+            if (!hasProfile)
+            {
+                var ptProfile = PtProfile.CreateDraft(userId, "Hypertrophy & Fat Loss", 5, 350000, "HLV thể hình có chứng chỉ quốc tế.");
                 db.PtProfiles.Add(ptProfile);
 
-                var cert = Certificate.Submit(user.Id, "NASM Certified Personal Trainer", "NASM", "NASM-CPT-8826", DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-2)), null);
+                var cert = Certificate.Submit(userId, "NASM Certified Personal Trainer", "NASM", "NASM-CPT-8826", DateOnly.FromDateTime(DateTime.UtcNow.AddYears(-2)), null);
                 cert.Approve(Guid.NewGuid());
                 db.Certificates.Add(cert);
 
-                var s1 = Service.Create(user.Id, "1-on-1 PT Gym Training", "Huấn luyện cá nhân chuyên sâu 60 phút", 350000, 60);
-                var s2 = Service.Create(user.Id, "Nutrition Coaching", "Tư vấn chế độ ăn cá nhân hóa", 200000, 45);
+                var s1 = Service.Create(userId, "1-on-1 PT Gym Training", "Huấn luyện cá nhân chuyên sâu 60 phút", 350000, 60);
+                var s2 = Service.Create(userId, "Nutrition Coaching", "Tư vấn chế độ ăn cá nhân hóa", 200000, 45);
                 db.Services.AddRange(s1, s2);
 
                 var now = DateTime.UtcNow;
                 for (int d = 1; d <= 5; d++)
                 {
                     var slotTime = now.Date.AddDays(d).AddHours(9);
-                    var slot = AvailabilitySlot.Create(user.Id, slotTime, "Asia/Ho_Chi_Minh", 60);
+                    var slot = AvailabilitySlot.Create(userId, slotTime, "Asia/Ho_Chi_Minh", 60);
                     db.AvailabilitySlots.Add(slot);
                 }
                 await db.SaveChangesAsync();
-                Console.WriteLine($"[seed-uat] Đã tạo PT Profile, Certificate (Approved), 2 Services và 5 Availability Slots cho '{spec.Email}'.");
+                Console.WriteLine($"[seed-uat] Đã tạo PT Profile, Certificate (Approved), 2 Services và 5 Availability Slots cho '{email}'.");
             }
-            else if (spec.Email == "uat.pt.pending@fitmate.local")
+        }
+        else if (email == "uat.pt.pending@fitmate.local")
+        {
+            var hasProfile = await db.PtProfiles.AnyAsync(p => p.UserId == userId);
+            if (!hasProfile)
             {
-                var ptProfile = PtProfile.CreateDraft(user.Id, "Calisthenics & Mobility", 2, 250000, "HLV đường phố đang nộp hồ sơ chứng nhận.");
+                var ptProfile = PtProfile.CreateDraft(userId, "Calisthenics & Mobility", 2, 250000, "HLV đường phố đang nộp hồ sơ chứng nhận.");
                 db.PtProfiles.Add(ptProfile);
 
-                var cert = Certificate.Submit(user.Id, "ACE Fitness Instructor", "ACE", "ACE-PENDING-101", DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(-3)), null);
+                var cert = Certificate.Submit(userId, "ACE Fitness Instructor", "ACE", "ACE-PENDING-101", DateOnly.FromDateTime(DateTime.UtcNow.AddMonths(-3)), null);
                 db.Certificates.Add(cert);
                 await db.SaveChangesAsync();
-                Console.WriteLine($"[seed-uat] Đã tạo PT Profile và Certificate (Pending) cho '{spec.Email}'.");
+                Console.WriteLine($"[seed-uat] Đã tạo PT Profile và Certificate (Pending) cho '{email}'.");
             }
-            else if (spec.Email == "uat.member@fitmate.local")
+        }
+        else if (email == "uat.member@fitmate.local")
+        {
+            var hasProfile = await db.UserProfiles.AnyAsync(p => p.UserId == userId);
+            if (!hasProfile)
             {
-                var profile = UserProfile.Create(user.Id);
+                var profile = UserProfile.Create(userId);
                 profile.Update(
                     phone: "0901234567",
                     gender: Gender.Female,
@@ -247,23 +271,32 @@ public static class SeedUatDataCommand
                     fitnessGoal: "Tăng cơ giảm mỡ",
                     trainingDays: new List<string> { "Monday", "Wednesday", "Friday" });
                 db.UserProfiles.Add(profile);
-
-                var pref = UserPreference.CreateDefault(user.Id);
-                db.UserPreferences.Add(pref);
-
-                var plan = WorkoutPlan.Create(user.Id, "Kế hoạch tập phục hồi 4 tuần", "Tập toàn thân nhẹ nhàng", 4, 3);
-                db.WorkoutPlans.Add(plan);
-
-                var meal = MealLog.Create(user.Id, "Ức gà áp chảo và cơm gạo lứt", null, 480, 42, 50, 10, 1.0m, MealSource.Manual, null, true, DateTime.UtcNow);
-                db.MealLogs.Add(meal);
-
-                await db.SaveChangesAsync();
-                Console.WriteLine($"[seed-uat] Đã tạo Profile, Preferences, Workout Plan và Meal Log cho Member '{spec.Email}'.");
             }
-        }
 
-        Console.WriteLine("[seed-uat] Hoàn tất nạp dữ liệu UAT an toàn (Idempotent seed completed successfully).");
-        return 0;
+            var hasPref = await db.UserPreferences.AnyAsync(p => p.UserId == userId);
+            if (!hasPref)
+            {
+                var pref = UserPreference.CreateDefault(userId);
+                db.UserPreferences.Add(pref);
+            }
+
+            var hasPlan = await db.WorkoutPlans.AnyAsync(p => p.UserId == userId);
+            if (!hasPlan)
+            {
+                var plan = WorkoutPlan.Create(userId, "Monday", "Kế hoạch tập phục hồi toàn thân", 45, 300);
+                db.WorkoutPlans.Add(plan);
+            }
+
+            var hasMeal = await db.MealLogs.AnyAsync(m => m.UserId == userId);
+            if (!hasMeal)
+            {
+                var meal = MealLog.Create(userId, "Ức gà áp chảo và cơm gạo lứt", null, 480, 42, 50, 10, 1.0m, MealSource.Manual, null, true, DateTime.UtcNow);
+                db.MealLogs.Add(meal);
+            }
+
+            await db.SaveChangesAsync();
+            Console.WriteLine($"[seed-uat] Đã hoàn tất Profile, Preferences, Workout Plan và Meal Log cho Member '{email}'.");
+        }
     }
 
     private static void PrintUsage()
