@@ -116,3 +116,4 @@ Theo ranh giới thiết kế tại **BE-829**, các tính năng sau bắt buộ
 - [BE-828 .NET 10 LTS Runtime](production-plans/evidence/BE-828.md) (VERIFIED: .NET 10 full test suite PASS)
 - [BE-829 VIP & Rewards Backlog Isolation](production-plans/evidence/BE-829.md) (VERIFIED: 586/586 tests PASS)
 - [BE-827 Chốt Production và Play Release](production-plans/evidence/BE-827.md) (Tài liệu này — Trạng thái: **NO-GO**)
+
