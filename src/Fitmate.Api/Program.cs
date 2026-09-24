@@ -49,6 +49,7 @@ if (args.Length > 0 && !args[0].StartsWith("--"))
     {
         "seed-admin" => await SeedAdminCommand.RunAsync(args[1..], config),
         "seed-perf-data" => await SeedPerfDataCommand.RunAsync(args[1..], config),
+        "seed-uat-data" => await SeedUatDataCommand.RunAsync(args[1..], config),
         _ => UnknownCommand(args[0])
     };
     Environment.Exit(exitCode);
@@ -56,7 +57,7 @@ if (args.Length > 0 && !args[0].StartsWith("--"))
 
 static int UnknownCommand(string cmd)
 {
-    Console.Error.WriteLine($"[fitmate-api] Unknown command: '{cmd}'. Supported: seed-admin, seed-perf-data");
+    Console.Error.WriteLine($"[fitmate-api] Unknown command: '{cmd}'. Supported: seed-admin, seed-perf-data, seed-uat-data");
     return 1;
 }
 

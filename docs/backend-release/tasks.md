@@ -272,12 +272,12 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-826 — UAT ba repo và staging
 - Plan: [Plan triển khai](production-plans/BE-826.md).
-- Status: TODO
+- Status: IN_PROGRESS
 - Priority: P0; depends: BE-807, BE-810, BE-811, BE-812, BE-813, BE-814, BE-815, BE-818, BE-819, BE-820, BE-821; requirement: BR-01..BR-16.
-- Hiện trạng: FE còn mock/prototype.
+- Hiện trạng: Đã xây dựng công cụ nạp dữ liệu UAT an toàn qua CLI (`SeedUatDataCommand.cs`) kèm chốt chặn bảo mật (cấm production, whitelist database `fitmate_uat`/`fitmate_staging`, nhận mật khẩu an toàn qua STDIN/env, tính lũy kế idempotent không đè MFA); đã thiết lập bộ 4 Synthetic Personas; đã xây dựng bộ kiểm thử tích hợp 10 hành trình nghiệp vụ (`UatJourneysIntegrationTests.cs`) đối chiếu chính xác contract và domain entities hiện có (10/10 tests PASS trên PostgreSQL 16); đã ban hành tài liệu ma trận UAT (`uat-matrix.md`) không chứa plaintext secret. Phần nghiệm thu Backend API đã VERIFIED; phần UAT giao diện và Staging ngoài giữ trạng thái PENDING chờ phối hợp thực tế với 2 repo frontend (`FitmateAI_FE` mobile và `FitmateWebApp`).
 - Scope: Chạy E2E BR flows với app Android + admin trên staging; network offline/timeout/back button/session expiry; same fixture IDs và ledger.
-- Acceptance/evidence: Video/screenshots/test run + bug severity closure; không P0/P1 còn mở; API/FE release revisions ghi trong manifest.
-- Handoff: chưa triển khai trong lần viết lại tài liệu này.
+- Acceptance/evidence: [Evidence BE-826](production-plans/evidence/BE-826.md) (IN_PROGRESS; Backend API 10/10 VERIFIED; Staging UI PENDING).
+- Handoff: hoàn thành giai đoạn chuẩn bị UAT và kiểm chứng tích hợp API; sẵn sàng bàn giao kịch bản và công cụ nạp dữ liệu cho đội ngũ kiểm thử Staging.
 
 ### BE-827 — Chốt production và Play release
 - Plan: [Plan triển khai](production-plans/BE-827.md).
