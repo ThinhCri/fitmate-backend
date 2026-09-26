@@ -50,9 +50,16 @@ public enum RefundStatus
     Failed = 2
 }
 
+[System.Text.Json.Serialization.JsonConverter(typeof(PaymentMethodJsonConverter))]
 public enum PaymentMethod
 {
-    Vnpay = 0
+    Vnpay = 0,
+    Payos = 1
+}
+
+public sealed class PaymentMethodJsonConverter : System.Text.Json.Serialization.JsonStringEnumConverter<PaymentMethod>
+{
+    public PaymentMethodJsonConverter() : base(System.Text.Json.JsonNamingPolicy.CamelCase, allowIntegerValues: false) { }
 }
 
 public enum AvailabilityStatus

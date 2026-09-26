@@ -38,6 +38,11 @@ public static class LogRedactor
         "secret",
         "client_secret",
         "authorization",
+        "X-Finance-Totp",
+        "x-api-key",
+        "checksumKey",
+        "signature",
+        "accountNumber",
         "medicalHistory",
         "medical_history",
         "allergies",
@@ -102,4 +107,3 @@ public static class LogRedactor
         return result;
     }
 }
-

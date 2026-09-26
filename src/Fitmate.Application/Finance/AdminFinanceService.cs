@@ -139,6 +139,9 @@ public class AdminFinanceService : IAdminFinanceService
         var payment = await _store.FindPaymentByIdAsync(request.PaymentId, ct)
             ?? throw new NotFoundException(PaymentErrorCodes.PaymentNotFound, $"Payment {request.PaymentId} not found.");
 
+        if (payment.Method == PaymentMethod.Payos)
+            throw new ConflictException("MANUAL_REFUND_REQUIRED", "Use manual-refunds to record the intent and then confirm a real bank transfer.");
+
         if (payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded))
             throw new ConflictException(ErrorCodes.Payment.AlreadyProcessed, $"Cannot refund payment in status {payment.Status}.");
 

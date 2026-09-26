@@ -33,6 +33,8 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
                 a.PlatformFeeVnd,
                 a.TrainerShareVnd,
                 a.Status,
+                PaidOutVnd = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id && s.Status == "paid").Select(s => (long?)s.AmountVnd).FirstOrDefault() ?? 0L,
+                SettlementStatus = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.Status).FirstOrDefault() ?? "pending_review",
                 RefundedVnd = _db.Payments
                     .Where(p => p.AppointmentId == a.Id && (p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.PartialRefunded))
                     .Sum(p => (long?)p.RefundedSoFarVnd) ?? 0L
@@ -48,7 +50,7 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
             PlatformFeeVnd: a.PlatformFeeVnd,
             TrainerShareVnd: a.TrainerShareVnd,
             RefundedVnd: a.RefundedVnd,
-            Status: a.Status)).ToList();
+            Status: a.Status, PaidOutVnd: a.PaidOutVnd, SettlementStatus: a.SettlementStatus)).ToList();
     }
 
     public async Task<(IReadOnlyList<TrainerBookingRevenueRow> Items, int Total)> ListHistoryPagedAsync(
@@ -73,6 +75,8 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
                 a.PlatformFeeVnd,
                 a.TrainerShareVnd,
                 a.Status,
+                PaidOutVnd = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id && s.Status == "paid").Select(s => (long?)s.AmountVnd).FirstOrDefault() ?? 0L,
+                SettlementStatus = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.Status).FirstOrDefault() ?? "pending_review",
                 RefundedVnd = _db.Payments
                     .Where(p => p.AppointmentId == a.Id && (p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.PartialRefunded))
                     .Sum(p => (long?)p.RefundedSoFarVnd) ?? 0L
@@ -88,7 +92,7 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
             PlatformFeeVnd: a.PlatformFeeVnd,
             TrainerShareVnd: a.TrainerShareVnd,
             RefundedVnd: a.RefundedVnd,
-            Status: a.Status)).ToList();
+            Status: a.Status, PaidOutVnd: a.PaidOutVnd, SettlementStatus: a.SettlementStatus)).ToList();
 
         return (items, total);
     }

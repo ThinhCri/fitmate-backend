@@ -35,7 +35,10 @@ public class IdempotencyMiddleware
 
     public async Task InvokeAsync(HttpContext context, IIdempotencyService service)
     {
-        if (!MutatingMethods.Contains(context.Request.Method) ||
+        if (context.User.Identity?.IsAuthenticated != true ||
+            context.Request.Path.StartsWithSegments("/api/v1/payments/payos/webhook") ||
+            context.Request.Path.StartsWithSegments("/api/v1/payments/vnpay/ipn") ||
+            !MutatingMethods.Contains(context.Request.Method) ||
             !context.Request.Headers.TryGetValue(HeaderName, out var keyValues) ||
             string.IsNullOrWhiteSpace(keyValues.ToString()))
         {
@@ -55,6 +58,13 @@ public class IdempotencyMiddleware
                 traceId: FitmateProblemDetails.ResolveTraceId(context));
             return;
         }
+
+        // An identical key from another actor or endpoint must never replay money or private data.
+        var actor = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? context.User.FindFirst("sub")?.Value;
+        if (string.IsNullOrWhiteSpace(actor)) { await _next(context); return; }
+        key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{actor}\n{context.Request.Method}\n{context.Request.Path}\n{key}")));
 
         // Enable buffering để Controller đọc lại body sau khi middleware hash xong.
         context.Request.EnableBuffering();
@@ -128,16 +138,9 @@ public class IdempotencyMiddleware
 
     private static async Task<byte[]> ReadBodyAsync(HttpRequest req)
     {
-        if (req.ContentLength is null or 0) return Array.Empty<byte>();
-        var buf = new byte[Math.Min((int)(req.ContentLength ?? 0), 1_048_576)];
-        var read = 0;
-        while (read < buf.Length)
-        {
-            var n = await req.Body.ReadAsync(buf.AsMemory(read, buf.Length - read));
-            if (n == 0) break;
-            read += n;
-        }
-        return buf[..read];
+        using var buffer = new MemoryStream();
+        await req.Body.CopyToAsync(buffer, req.HttpContext.RequestAborted);
+        return buffer.ToArray();
     }
 
     private static string ComputeHash(byte[] body, string? contentType)
@@ -152,7 +155,7 @@ public class IdempotencyMiddleware
     }
 
     private static bool ShouldStore(int statusCode) =>
-        statusCode is >= 200 and < 500;
+        statusCode is >= 200 and < 500 and not 401 and not 403 and not 429;
 
     private static async Task WriteReplayAsync(HttpContext context, int statusCode, string body)
     {

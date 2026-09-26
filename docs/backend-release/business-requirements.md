@@ -25,7 +25,7 @@ Giữ đầy đủ thông tin nghiệp vụ đang có ở prototype; chuyển d�
 | BR-03 | Quyền kiểm soát dữ liệu | Yêu cầu xóa trong app và trang public; xuất dữ liệu riêng; retention và consent rõ | BE-805 |
 | BR-04 | PT được kiểm định | Hồ sơ chuyên môn, kinh nghiệm, dịch vụ/giá, cert và trạng thái duyệt; marketplace chỉ PT đủ điều kiện | BE-806 |
 | BR-05 | Đặt PT tin cậy | Xem slot, hold, thanh toán, PT accept, bắt đầu/hoàn thành, hủy/đổi lịch; không double booking | BE-807 |
-| BR-06 | Tiền chính xác | VNPay thật, callback xác minh, refund/đối soát; không ghi nhận tiền từ redirect phía FE | BE-808, BE-809 |
+| BR-06 | Tiền chính xác | payOS thu tiền theo booking, webhook xác minh, hoàn tiền thủ công có chứng từ; không ghi nhận tiền từ redirect phía FE | BE-808, BE-809 |
 | BR-07 | Doanh thu PT trên app | Gross, phí 10%, phần PT, hoàn tiền, chờ ghi nhận/đã ghi nhận/chưa chi/đã chi; biểu đồ và chi tiết | BE-810 |
 | BR-08 | Tập và theo dõi cân nặng | CRUD plan, time/reps, hướng dẫn có nguồn, session snapshot/per-set/offline sync, weight history | BE-811 |
 | BR-09 | Dinh dưỡng hữu ích | Log/sửa/xóa bữa, khẩu phần/macros, lịch ăn; confirm kết quả AI trước ghi nhật ký | BE-812 |
@@ -54,3 +54,9 @@ Giữ đầy đủ thông tin nghiệp vụ đang có ở prototype; chuyển d�
 Các giá trị vận hành mới ở domain-rules là mặc định thiết kế do lần rà soát này đề xuất trong phạm vi user yêu cầu hoàn thiện nghiệp vụ, chưa phải policy đã công bố.
 Không cần hỏi lại developer cho từng file. Operator phải duyệt điều khoản khách hàng, retention pháp lý, merchant/payout, ngân sách và release manifest trước phát hành.
 Nội dung sức khỏe là tự khai/ước tính, không hứa chẩn đoán hay tăng cơ tại vùng cơ chỉ từ một hình minh họa.
+
+## Thay đổi được user yêu cầu — 2026-09-26
+- Provider checkout được chọn: payOS; VNPay giữ lịch sử, không tự kích hoạt live. Xem [runbook](runbooks/payos-manual-settlement.md).
+- BR-07: Sau giờ kết thúc buổi và trạng thái Completed, Admin gọi xác nhận khách + PT, kiểm tra hồ sơ buổi tập và người nhận tiền, xác nhận không tranh chấp rồi mới approve.
+- Admin chuyển khoản bằng ngân hàng bên ngoài hệ thống; chỉ khi có mã giao dịch và chứng từ mới record-transfer/paid. Không có chuyển tiền PT tự động, không duyệt theo timer hoặc chỉ vì payment Paid.
+- Chưa thu tiền thật cho tới khi OPS-03 xác nhận mô hình thu tiền/chi PT được provider chấp thuận và các gate kỹ thuật đã verified.

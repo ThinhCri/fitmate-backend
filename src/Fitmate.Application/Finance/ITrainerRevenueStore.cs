@@ -11,7 +11,9 @@ public sealed record TrainerBookingRevenueRow(
     long PlatformFeeVnd,
     long TrainerShareVnd,
     long RefundedVnd,
-    BookingStatus Status);
+    BookingStatus Status,
+    long PaidOutVnd = 0,
+    string SettlementStatus = "pending_review");
 
 public interface ITrainerRevenueStore
 {
@@ -19,4 +21,3 @@ public interface ITrainerRevenueStore
     Task<(IReadOnlyList<TrainerBookingRevenueRow> Items, int Total)> ListHistoryPagedAsync(Guid ptUserId, int skip, int take, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }
-

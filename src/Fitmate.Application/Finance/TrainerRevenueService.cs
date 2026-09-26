@@ -31,16 +31,15 @@ public class TrainerRevenueService : ITrainerRevenueService
         var (fromUtc, toUtc) = ResolveRange(range);
         var rows = await _store.ListBookingsInRangeAsync(ptUserId, fromUtc, toUtc, ct);
 
-        // Recognized bookings are those Paid, Confirmed, InProgress, Completed, Refunded
-        var paidRows = rows.Where(r => r.Status is BookingStatus.Paid or BookingStatus.Confirmed or BookingStatus.InProgress or BookingStatus.Completed or BookingStatus.Refunded).ToList();
+        // Completion recognizes earnings; a verified transfer independently records paid-out money.
+        var paidRows = rows.Where(r => r.Status == BookingStatus.Completed).ToList();
 
         long gross = paidRows.Sum(r => r.ActualPaidVnd);
         long fee = paidRows.Sum(r => r.PlatformFeeVnd);
-        long trainerShare = paidRows.Sum(r => r.TrainerShareVnd);
-        long refundedVnd = rows.Where(r => r.Status == BookingStatus.Refunded).Sum(r => r.RefundedVnd);
 
         // Net earnings = trainer share - (trainer proportion of refund or total refund deducted from gross)
-        long netEarnings = Math.Max(0, trainerShare - (long)Math.Round(refundedVnd * 0.90m, MidpointRounding.AwayFromZero));
+        long netEarnings = paidRows.Sum(NetRevenue);
+        long paidOut = rows.Sum(r => r.PaidOutVnd);
 
         var completedRows = rows.Where(r => r.Status == BookingStatus.Completed).ToList();
         var completedSessionsCount = completedRows.Count;
@@ -50,7 +49,7 @@ public class TrainerRevenueService : ITrainerRevenueService
             .Select(g => new TrainerRevenueChartPoint(
                 Date: g.Key,
                 SessionsCount: g.Count(),
-                NetEarningsVnd: g.Sum(x => x.TrainerShareVnd)))
+                NetEarningsVnd: g.Sum(NetRevenue)))
             .OrderBy(p => p.Date)
             .ToList();
 
@@ -59,8 +58,8 @@ public class TrainerRevenueService : ITrainerRevenueService
             TotalGrossVnd: gross,
             PlatformFeeVnd: fee,
             NetEarningsVnd: netEarnings,
-            PendingPayoutVnd: netEarnings, // Pending settlement
-            CompletedPayoutVnd: 0,
+            PendingPayoutVnd: netEarnings - paidOut,
+            CompletedPayoutVnd: paidOut,
             CompletedSessionsCount: completedSessionsCount,
             Chart: chart);
     }
@@ -81,8 +80,8 @@ public class TrainerRevenueService : ITrainerRevenueService
             Date: r.SlotStartUtc,
             GrossVnd: r.ActualPaidVnd,
             PlatformFeeVnd: r.PlatformFeeVnd,
-            NetVnd: r.TrainerShareVnd,
-            Status: r.Status)).ToList();
+            NetVnd: NetRevenue(r),
+            Status: r.Status, PaidOutVnd: r.PaidOutVnd, SettlementStatus: r.SettlementStatus)).ToList();
 
         return new TrainerRevenueHistoryPage(items, total, page, pageSize);
     }
@@ -99,29 +98,13 @@ public class TrainerRevenueService : ITrainerRevenueService
             throw new ValidationException(ErrorCodes.Validation.RequiredField, "ReferenceNumber is required.",
                 new Dictionary<string, string[]> { ["reference_number"] = new[] { "required" } });
 
-        var settlementId = Guid.NewGuid();
-        var processedAt = DateTime.UtcNow;
-
-        _outbox.Enqueue("finance.trainer_settled", new
-        {
-            settlementId,
-            ptUserId = request.PtUserId,
-            amountVnd = request.AmountVnd,
-            referenceNumber = request.ReferenceNumber,
-            note = request.Note,
-            adminUserId,
-            processedAt
-        });
-
-        await _store.SaveChangesAsync(ct);
-
-        return new TrainerSettlementResult(
-            SettlementId: settlementId,
-            PtUserId: request.PtUserId,
-            AmountVnd: request.AmountVnd,
-            ReferenceNumber: request.ReferenceNumber,
-            ProcessedAt: processedAt);
+        throw new ConflictException("MANUAL_SETTLEMENT_REVIEW_REQUIRED",
+            "Use manual-settlements per appointment: approve the verification record, then record the actual bank transfer.");
     }
+
+    private static long NetRevenue(TrainerBookingRevenueRow row) => row.ActualPaidVnd <= 0 ? 0 :
+        row.TrainerShareVnd - row.RefundedVnd + (long)Math.Round(
+            row.PlatformFeeVnd * (decimal)row.RefundedVnd / row.ActualPaidVnd, MidpointRounding.AwayFromZero);
 
     private static readonly TimeSpan ZoneOffset = TimeSpan.FromHours(7); // Asia/Ho_Chi_Minh
 
@@ -145,4 +128,3 @@ public class TrainerRevenueService : ITrainerRevenueService
         _ => "all"
     };
 }
-

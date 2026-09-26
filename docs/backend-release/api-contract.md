@@ -36,3 +36,7 @@ Trước production client đầu: coordinated breaking changes v1 được phé
 Sau freeze: additive hoặc version/migration window có consumer agreement.
 Mỗi operation có implemented/spec-only/proposed/verified marker trong coverage report.
 Production lỗi phải show error/unavailable; không fallback mock.
+
+
+## Payment/settlement override — 2026-09-26
+User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.

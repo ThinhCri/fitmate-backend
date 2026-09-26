@@ -13,3 +13,7 @@ Baseline PROD-2026-09-22-v1. Không chứa secret. [user-actions.md](user-action
 | OPS-08 | Release owner | Ký nhận release manifest, residual risk, incident owner và ngân sách | Production rollout | Chuẩn bị mọi evidence |
 Không yêu cầu gửi key/password qua chat hoặc commit. Ghi tên secret reference và owner, không ghi giá trị.
 Mặc định sản phẩm mới (acceptance timeout/payout hold/retention targets) phải được review cùng điều khoản trước go-live, không chặn viết code configurable.
+
+
+## Payment/settlement override — 2026-09-26
+User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.

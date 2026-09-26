@@ -27,3 +27,7 @@ Mobile FP-001..040 vẫn ở repo app (FP-034 đang trùng nhãn trong tài li�
 Safe-area/tabs/bottom-sheet/timer/audio/checkpoint/image-picker là FE, không cần endpoint riêng cho mỗi UI primitive.
 Web legacy Mentor/Student/Premium files: WEB-807 kiểm imports/routes trước cleanup, không xóa chỉ vì tên.
 Bảng cũ từ Spring Boot có endpoint giả định và số “chưa có” lỗi thời được thay; truy lịch sử qua Git/handoff.
+
+
+## Payment/settlement override — 2026-09-26
+User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.

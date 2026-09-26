@@ -18,6 +18,15 @@ public class AdminFinanceController : ControllerBase
 
     public AdminFinanceController(IAdminFinanceService svc) { _svc = svc; }
 
+    [HttpGet("payments/{paymentId:guid}/provider-status")]
+    public async Task<IActionResult> ProviderStatus(Guid paymentId,
+        [FromServices] Fitmate.Application.Auth.IAuthorizationGuard authz,
+        [FromServices] Fitmate.Application.Payments.IPaymentService payments, CancellationToken ct)
+    {
+        await authz.EnsureRoleAsync(GetUserId(), "Admin", ct);
+        return Ok(await payments.QueryTransactionAsync(paymentId, ct));
+    }
+
     [HttpGet("overview")]
     public async Task<IActionResult> Overview([FromQuery] string range = "30d", CancellationToken ct = default)
     {

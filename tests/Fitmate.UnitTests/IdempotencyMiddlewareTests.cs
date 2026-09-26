@@ -39,6 +39,9 @@ public class IdempotencyMiddlewareTests
         Action<HttpContext>? setupResponse = null)
     {
         var ctx = new DefaultHttpContext();
+        ctx.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "test-user-one") }, "Test"));
+        ctx.Request.Path = "/api/v1/test";
         ctx.Request.Method = method;
         ctx.Request.Headers["Idempotency-Key"] = key;
         ctx.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(body));
@@ -55,6 +58,58 @@ public class IdempotencyMiddlewareTests
         ctx.Response.Body.Position = 0;
         using var sr = new StreamReader(ctx.Response.Body, Encoding.UTF8);
         return await sr.ReadToEndAsync();
+    }
+
+    [Fact]
+    public async Task Same_key_for_different_actor_or_operation_never_replays()
+    {
+        var store = new InMemoryStore();
+        var svc = new IdempotencyService(store);
+        var calls = 0;
+        var middleware = new IdempotencyMiddleware(ctx => { calls++; return ctx.Response.WriteAsync("{}"); }, NullLogger<IdempotencyMiddleware>.Instance);
+        var first = await BuildContext("POST", "same-key-123", "{}");
+        await middleware.InvokeAsync(first, svc);
+        var otherActor = await BuildContext("POST", "same-key-123", "{}");
+        otherActor.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity(
+            new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "test-user-two") }, "Test"));
+        await middleware.InvokeAsync(otherActor, svc);
+        var otherPath = await BuildContext("POST", "same-key-123", "{}");
+        otherPath.Request.Path = "/api/v1/another-operation";
+        await middleware.InvokeAsync(otherPath, svc);
+        calls.Should().Be(3);
+        store.Items.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task Webhook_never_uses_client_supplied_idempotency_cache()
+    {
+        var store = new InMemoryStore();
+        var svc = new IdempotencyService(store);
+        var calls = 0;
+        var middleware = new IdempotencyMiddleware(ctx => { calls++; return ctx.Response.WriteAsync("{}"); }, NullLogger<IdempotencyMiddleware>.Instance);
+        for (var i = 0; i < 2; i++)
+        {
+            var ctx = await BuildContext("POST", "same-key-123", "{}");
+            ctx.Request.Path = "/api/v1/payments/payos/webhook";
+            await middleware.InvokeAsync(ctx, svc);
+        }
+        calls.Should().Be(2);
+        store.Items.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Mfa_rejection_does_not_poison_the_key_for_a_later_valid_attempt()
+    {
+        var store = new InMemoryStore();
+        var svc = new IdempotencyService(store);
+        var denied = new IdempotencyMiddleware(ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; }, NullLogger<IdempotencyMiddleware>.Instance);
+        await denied.InvokeAsync(await BuildContext("POST", "same-key-123", "{}"), svc);
+        store.Items.Should().BeEmpty();
+        var calls = 0;
+        var valid = new IdempotencyMiddleware(ctx => { calls++; return ctx.Response.WriteAsync("{}"); }, NullLogger<IdempotencyMiddleware>.Instance);
+        await valid.InvokeAsync(await BuildContext("POST", "same-key-123", "{}"), svc);
+        calls.Should().Be(1);
+        store.Items.Should().HaveCount(1);
     }
 
     [Fact]
@@ -105,7 +160,7 @@ public class IdempotencyMiddlewareTests
 
         called.Should().Be(1);
         store.Items.Should().HaveCount(1);
-        var rec = store.Items["valid-key-1234"];
+        var rec = store.Items.Values.Single();
         rec.StatusCode.Should().Be(201);
         rec.ResponseBody.Should().Contain("\"id\":\"abc\"");
     }

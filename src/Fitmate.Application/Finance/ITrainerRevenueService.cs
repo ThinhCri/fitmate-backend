@@ -20,7 +20,9 @@ public sealed record TrainerRevenueItem(
     long GrossVnd,
     long PlatformFeeVnd,
     long NetVnd,
-    BookingStatus Status);
+    BookingStatus Status,
+    long PaidOutVnd = 0,
+    string SettlementStatus = "pending_review");
 
 public sealed record TrainerRevenueHistoryPage(
     IReadOnlyList<TrainerRevenueItem> Items,
@@ -47,4 +49,3 @@ public interface ITrainerRevenueService
     Task<TrainerRevenueHistoryPage> GetHistoryAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct);
     Task<TrainerSettlementResult> SettleTrainerAsync(Guid adminUserId, TrainerSettlementRequest request, CancellationToken ct);
 }
-

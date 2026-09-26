@@ -1,22 +1,24 @@
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Payment;
+using System.Text.Json.Serialization;
 
 namespace Fitmate.Application.Payments;
 
 public sealed record PaymentView(
     Guid Id,
-    Guid AppointmentId,
+    [property: JsonPropertyName("appointment_id")] Guid AppointmentId,
     PaymentMethod Method,
-    PaymentStatus Status,
-    long AmountVnd,
-    long RefundedSoFarVnd,
-    string? RedirectUrl,
-    string? ProviderTxnRef,
-    DateTime CreatedAt,
-    DateTime? CompletedAt);
+    [property: JsonConverter(typeof(JsonStringEnumConverter<PaymentStatus>))] PaymentStatus Status,
+    [property: JsonPropertyName("amount_vnd")] long AmountVnd,
+    [property: JsonPropertyName("refunded_so_far_vnd")] long RefundedSoFarVnd,
+    [property: JsonPropertyName("redirect_url")] string? RedirectUrl,
+    [property: JsonPropertyName("provider_txn_ref")] string? ProviderTxnRef,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt,
+    [property: JsonPropertyName("completed_at")] DateTime? CompletedAt);
 
 public sealed record CreatePaymentRequest
 {
+    [JsonPropertyName("hold_id")]
     public required Guid HoldId { get; init; }
     public required PaymentMethod Method { get; init; }
 }

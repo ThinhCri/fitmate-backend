@@ -39,6 +39,12 @@ public class Payment : AuditableEntity
         Touch();
     }
 
+    public void SetCheckoutUrl(string redirectUrl)
+    {
+        RedirectUrl = redirectUrl;
+        Touch();
+    }
+
     public void MarkFailed()
     {
         Status = PaymentStatus.Failed;

@@ -89,11 +89,12 @@ builder.Services.AddSingleton(jwtOptions);
 // In production, when payment feature is enabled, real gateway credentials must be configured.
 if (builder.Environment.IsProduction() && string.Equals(builder.Configuration["FEATURE_PAYMENT_ENABLED"], "true", StringComparison.OrdinalIgnoreCase))
 {
-    var vnpaySecret = builder.Configuration["VNPAY_HASH_SECRET"];
-    if (string.IsNullOrWhiteSpace(vnpaySecret) || vnpaySecret.StartsWith("__SET_"))
-    {
-        throw new InvalidOperationException("Fail-closed: In production, FEATURE_PAYMENT_ENABLED is true but VNPAY_HASH_SECRET is not configured.");
-    }
+    var selected = builder.Configuration.GetSection(PaymentOptions.SectionName).Get<PaymentOptions>() ?? new();
+    var payos = builder.Configuration.GetSection(PayosOptions.SectionName).Get<PayosOptions>() ?? new();
+    var vnpay = builder.Configuration.GetSection(VnpayOptions.SectionName).Get<VnpayOptions>();
+    var ready = selected.Provider == "payos" ? payos.Enabled && payos.IsValid()
+        : selected.Provider == "vnpay" && vnpay?.IsValid() == true;
+    if (!ready) throw new InvalidOperationException("Enabled production payments require a configured and approved selected provider.");
 }
 
 // DB.
@@ -217,6 +218,9 @@ builder.Services.AddScoped<IAdminFinanceService, Fitmate.Application.Finance.Adm
 // BE-810: Trainer revenue and settlements.
 builder.Services.AddScoped<ITrainerRevenueStore, Fitmate.Infrastructure.Finance.EfTrainerRevenueStore>();
 builder.Services.AddScoped<ITrainerRevenueService, Fitmate.Application.Finance.TrainerRevenueService>();
+builder.Services.AddScoped<IManualSettlementStore, Fitmate.Infrastructure.Finance.EfManualSettlementStore>();
+builder.Services.AddScoped<ManualSettlementService>();
+builder.Services.AddScoped<IFinanceStepUp, Fitmate.Api.Admin.FinanceStepUp>();
 
 // BE-151: Platform policy (read-only).
 builder.Services.AddScoped<IPlatformPolicyService, Fitmate.Application.Finance.PlatformPolicyService>();
@@ -296,11 +300,24 @@ builder.Services.AddHttpClient<Fitmate.Infrastructure.Payments.Vnpay.IVnpayClien
 builder.Services.AddScoped<IPaymentStore, Fitmate.Infrastructure.Payments.EfPaymentStore>();
 
 var vnpayConfig = builder.Configuration.GetSection(Fitmate.Application.Payments.VnpayOptions.SectionName).Get<Fitmate.Application.Payments.VnpayOptions>();
-if (vnpayConfig != null && vnpayConfig.IsValid())
+var payosConfig = builder.Configuration.GetSection(PayosOptions.SectionName).Get<PayosOptions>() ?? new PayosOptions();
+builder.Services.Configure<PayosOptions>(builder.Configuration.GetSection(PayosOptions.SectionName));
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Payments.Payos.PayosPaymentAdapter>(client => client.Timeout = TimeSpan.FromSeconds(20))
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<IPayosWebhookHandler, Fitmate.Infrastructure.Payments.Payos.PayosWebhookHandler>();
+if (paymentOptions.AllowMockProvider && !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
+    throw new InvalidOperationException("Mock payments are restricted to Development/Testing.");
+if (payosConfig.Enabled && (!payosConfig.IsValid() || paymentOptions.Provider != "payos"))
+    throw new InvalidOperationException("Enabled payOS requires an approved merchant, complete credentials and Payment:Provider=payos.");
+if (paymentOptions.Provider == "payos" && payosConfig.Enabled)
+{
+    builder.Services.AddScoped<IPaymentProvider>(sp => sp.GetRequiredService<Fitmate.Infrastructure.Payments.Payos.PayosPaymentAdapter>());
+}
+else if (paymentOptions.Provider == "vnpay" && vnpayConfig != null && vnpayConfig.IsValid())
 {
     builder.Services.AddScoped<IPaymentProvider, Fitmate.Infrastructure.Payments.Vnpay.VnpayPaymentAdapter>();
 }
-else if (builder.Environment.IsDevelopment() || paymentOptions.AllowMockProvider)
+else if (paymentOptions.AllowMockProvider)
 {
     builder.Services.AddScoped<IPaymentProvider, StubPaymentProvider>();
 }

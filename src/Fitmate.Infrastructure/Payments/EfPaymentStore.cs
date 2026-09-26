@@ -52,17 +52,13 @@ public class EfPaymentStore : IPaymentStore
                 return await operation();
             }
 
-            try
+            if (!_db.Database.IsRelational())
+                return await operation();
             {
                 await using var tx = await _db.Database.BeginTransactionAsync(ct);
                 var result = await operation();
                 await tx.CommitAsync(ct);
                 return result;
-            }
-            catch (InvalidOperationException)
-            {
-                // In-memory or non-relational fallback
-                return await operation();
             }
         });
     }

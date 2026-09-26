@@ -1,3 +1,6 @@
+## Payment/settlement update — 2026-09-26
+BE-400/808/809/810 cần re-verification cho payOS và chi thủ công. [Evidence mới](production-plans/evidence/payos-manual-settlement-20260926.md). Evidence cũ không chứng nhận thay đổi mới. Xem [runbook](runbooks/payos-manual-settlement.md).
+
 # Fitmate — Backlog hoàn thiện production
 Baseline PROD-2026-09-22-v1, khảo sát 2026-09-22. Owner mặc định các BE task: backend developer; operator action xem operator-actions.md.
 Task cũ giữ ID để truy vết commit, nhưng DONE lịch sử chỉ có nghĩa scope cũ đã được báo cáo, không chứng nhận production.
@@ -110,7 +113,7 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-808 — Loại payment giả khỏi production
 - Plan: [Plan triển khai](production-plans/BE-808.md).
-- Status: VERIFIED
+- Status: IN_PROGRESS (payOS/manual finance change 2026-09-26; runtime re-verification pending)
 - Priority: P0; depends: BE-801; requirement: BR-06.
 - Hiện trạng: Đã triển khai gating `PaymentOptions.AllowMockProvider` và `MissingPaymentProvider` fail-closed (503 `FITMATE.PAYMENT.PROVIDER_UNAVAILABLE`) trong production khi chưa cấu hình gateway; sửa `PaymentService.CreateAsync` giữ trạng thái `Pending` (không tự ý đánh dấu `Paid` khi chỉ mới sinh URL); bổ sung kiểm tra số tiền > 0; xác thực chữ ký callback; và mở rộng bộ unit tests trong `PaymentServiceTests.cs`; user đã verify build 0 error và 441/441 tests PASS.
 - Scope: Gate mock chỉ tests/dev explicit; enabled production thiếu cấu hình fail; reject sai amount/owner; provider attempt/retry/idempotency durable; BE-400 cho adapter.
@@ -119,7 +122,7 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-809 — Refund, dispute và reconciliation
 - Plan: [Plan triển khai](production-plans/BE-809.md).
-- Status: VERIFIED
+- Status: IN_PROGRESS (payOS/manual finance change 2026-09-26; runtime re-verification pending)
 - Priority: P0; depends: BE-807, BE-808, BE-400; requirement: BR-06.
 - Hiện trạng: Đã triển khai luồng hoàn tiền Admin (`POST /api/v1/admin/finance/refunds`) với bảo vệ số tiền hoàn tích lũy không vượt quá tổng thanh toán (`RefundCapExceeded`), cập nhật trạng thái `Payment` & `Appointment`, enqueue Outbox `finance.refund_processed`, triển khai đối soát thanh toán và hoàn tiền (`GET /api/v1/admin/finance/reconciliation`), và mở rộng bộ unit tests trong `AdminFinanceServiceTests.cs`; user đã verify build 0 error và 450/450 tests PASS.
 - Scope: Refund pending reservation + cumulative rounding + retry; admin dispute evidence/reason; reconciliation job/report; late/duplicate callback recovery.
@@ -128,7 +131,7 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 
 ### BE-810 — Doanh thu PT và settlement
 - Plan: [Plan triển khai](production-plans/BE-810.md).
-- Status: VERIFIED
+- Status: IN_PROGRESS (2026-09-26: manual verification/transfer workflow changed; requires re-verification)
 - Priority: P0; depends: BE-807, BE-809; requirement: BR-07.
 - Hiện trạng: Đã triển khai `ITrainerRevenueService` và `TrainerRevenueController`: xem tổng quan doanh thu PT (`GET /api/v1/me/revenue`), lịch sử phân trang (`GET /api/v1/me/revenue/history`), quyết toán Admin (`POST /api/v1/admin/finance/settlements`), bảo đảm tỷ lệ chia 90/10 và trừ hoàn tiền chuẩn xác, enqueue outbox `finance.trainer_settled`, và bộ unit tests trong `TrainerRevenueServiceTests.cs`; user đã verify build 0 error và 458/458 tests PASS.
 - Scope: Owner revenue overview/chart/detail, ledger immutable recognized/adjustment; manual payout batch approved reference và khóa chống chi trùng; admin finance cùng projection.
@@ -311,10 +314,10 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 - Plan: [Plan triển khai](production-plans/BE-099.md).
 - Status: BLOCKED (operator xác minh rotation và duyệt riêng phạm vi rewrite).
 - Owner: operator; theo OPS-01. Không coi allowlist secret cũ là giải quyết leak.
-### BE-400 — VNPay adapter thật
+### BE-400 — Payment adapter: payOS mới, VNPay lịch sử
 - Plan: [Plan triển khai](production-plans/BE-400.md).
 - Evidence: [Bằng chứng nghiệm thu](production-plans/evidence/BE-400.md).
-- Status: IMPLEMENTED (Core adapter, query/refund, concurrency locking & PostgreSQL integration tests verified; Live sandbox BLOCKED pending OPS-03).
+- Status: IN_PROGRESS (payOS adapter/webhook + manual refunds implemented in working tree; build/tests/migration NOT RUN; live BLOCKED OPS-03).
 - Depends: BE-808, OPS-03. Acceptance: provider docs/version, signatures/amount/order, retries, IPN và refund/query sandbox evidence.
 ### BE-410 — Email thật
 - Plan: [Plan triển khai](production-plans/BE-410.md).

@@ -46,6 +46,12 @@ public class PaymentService : IPaymentService
         if (memberId == Guid.Empty)
             throw new ForbiddenException(ErrorCodes.Identity.NotAuthenticated, "Authentication required.");
 
+        if (_provider is MissingPaymentProvider)
+            throw new DomainException(ErrorCodes.Payment.ProviderUnavailable, "Payment provider is not configured.", 503);
+
+        if (request.Method != _provider.Method)
+            throw new DomainException("PAYMENT_METHOD_UNAVAILABLE", "The requested payment method is not enabled.", 503);
+
         // 1. Validate hold + get appointment.
         var hold = await _store.FindHoldAsync(request.HoldId, ct)
             ?? throw new NotFoundException(PaymentErrorCodes.HoldNotFound, $"Hold '{request.HoldId}' not found.");
@@ -63,22 +69,30 @@ public class PaymentService : IPaymentService
             throw new ValidationException(PaymentErrorCodes.InvalidAmount, "Payment amount must be greater than zero.",
                 new Dictionary<string, string[]> { ["amount"] = new[] { "must be positive" } });
 
-        // 2. Idempotency: nếu đã có Payment cho appointment → trả row cũ.
-        var existing = await _store.FindByAppointmentIdAsync(appt.Id, ct);
-        if (existing is not null)
-            return ToView(existing);
+        // Serialize reservation per appointment. Never hold this lock during HTTP.
+        var payment = await _store.ExecuteInTransactionAsync(async () =>
+        {
+            await _store.FindAppointmentForUpdateAsync(appt.Id, ct);
+            var existing = await _store.FindByAppointmentIdAsync(appt.Id, ct);
+            if (existing != null)
+            {
+                if (existing.Method != request.Method)
+                    throw new ConflictException("PAYMENT_PROVIDER_CONFLICT", "This booking already has a payment with another provider.");
+                return existing;
+            }
+            var pending = Payment.CreatePending(appt.Id, _provider.Method, appt.PriceListedVnd, null);
+            _store.Add(pending);
+            if (_provider is IPaymentReservation reservation)
+                reservation.Reserve(pending.Id, hold.ExpiresAt);
+            await _store.SaveChangesAsync(ct);
+            return pending;
+        }, ct);
+        if (payment.RedirectUrl != null || payment.Status != PaymentStatus.Pending)
+            return ToView(payment);
 
-        // 3. Create payment với provider.
         var result = await _provider.CreatePaymentAsync(
-            new ProviderCreatePaymentRequest(appt.Id, appt.PriceListedVnd, "Fitmate booking"), ct);
-
-        var payment = Payment.CreatePending(
-            appointmentId: appt.Id,
-            method: request.Method,
-            amountVnd: appt.PriceListedVnd,
-            redirectUrl: result.RedirectUrl);
-
-        _store.Add(payment);
+            new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
+        payment.SetCheckoutUrl(result.RedirectUrl);
         await _store.SaveChangesAsync(ct);
 
         return ToView(payment);
@@ -190,6 +204,8 @@ public class PaymentService : IPaymentService
                 _logger.LogWarning("VNPay IPN payment record not found: {PaymentId}", paymentId);
                 return new VnpayIpnResponse("01", "Order Not Found");
             }
+            if (payment.Method != PaymentMethod.Vnpay)
+                return new VnpayIpnResponse("01", "Order Not Found");
 
             if (payment.AmountVnd != amountVnd)
             {
@@ -293,6 +309,9 @@ public class PaymentService : IPaymentService
         var payment = await _store.FindByIdAsync(paymentId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Payment '{paymentId}' not found.");
 
+        if (payment.Method != _provider.Method)
+            throw new DomainException("PAYMENT_METHOD_UNAVAILABLE", "Reconcile using the original payment provider.", 503);
+
         return await _provider.QueryTransactionAsync(
             new ProviderQueryRequest(payment.Id, payment.CreatedAt), ct);
     }
@@ -317,6 +336,8 @@ public class PaymentService : IPaymentService
         {
             var p = await _store.FindByIdForUpdateAsync(paymentId, ct)
                 ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Payment '{paymentId}' not found.");
+            if (p.Method != _provider.Method)
+                throw new DomainException("PAYMENT_METHOD_UNAVAILABLE", "Refund using the original payment provider.", 503);
 
             if (p.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded))
                 throw new ConflictException(ErrorCodes.Payment.AlreadyProcessed, $"Cannot refund payment in status {p.Status}.");
@@ -334,6 +355,10 @@ public class PaymentService : IPaymentService
             await _store.SaveChangesAsync(ct);
             return (r, p);
         }, ct);
+
+        if (payment.Method == PaymentMethod.Payos)
+            return new ProviderRefundResult(false, "MANUAL_REFUND_REQUIRED", null,
+                "Refund intent recorded. An administrator must transfer and reconcile the refund manually.");
 
         // Step 2: External network call to provider outside DB transaction
         try

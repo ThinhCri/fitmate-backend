@@ -1,3 +1,16 @@
+## 2026-09-26 — User-run verification and revenue regression fixture correction
+- User-provided terminal evidence: solution build succeeded (72 warnings); email integration 4/4 and email unit tests 24/24 passed; full unit suite 626/627 passed.
+- The failing backlog guard expected 700,000 gross / 70,000 fee including a fully refunded booking. Updated expectations to 500,000 / 50,000 for the completed session, consistent with recognition rules. Added a paid-but-unfinished booking and assertions for pending payout, zero paid-out money, chart and no outbox event.
+- No production service changes in this correction. Agent did not run build/tests/restore or commit; corrected test awaits user rerun without --no-build. Dependency vulnerability warnings remain unresolved; no production approval.
+
+## 2026-09-26 — payOS + xác minh buổi tập và chi PT thủ công
+- User chọn agent tự tích hợp provider; chọn payOS theo API booking + KYC cá nhân. Chưa được suy ra mô hình thu hộ nhiều PT đã được provider duyệt. Mặc định tắt live; OPS-03 vẫn chặn.
+- Thêm adapter HTTP/HMAC, durable order code, webhook idempotent/late-payment pending refund; giữ VNPay history. Không payout API.
+- Thêm approve/hold/record-transfer per appointment và manual refund intent/receipt; chặn legacy settlement event-only và legacy fake refund với payOS; private evidence references, audit, amount computed server, shared payment lock + bank reference lock.
+- Revenue/history/ledger đọc receipt; capability phản ánh provider. Payment DTO snake_case và method lowercase; manual finance camelCase. Scoped idempotency key theo actor/method/path, webhook bỏ qua cache.
+- Migration 20260926120000_PayosAndManualSettlements + snapshot/designer soạn thủ công; chưa áp DB. Có unit/integration test sources mới; không tự chạy build/test/restore/migrate/commit theo yêu cầu user.
+- Cập nhật contract/rules/tasks/runbook và snapshot hai FE; không sửa code UI đang dở trong FE.
+- Tiếp theo: user chạy lệnh trong runbooks/payos-manual-settlement.md, phản hồi lỗi; verify schema diff/contract/concurrency, Admin MFA và evidence storage, ledger adjustments; chỉ bật tiền thật sau provider approval và operator UAT.
 # Handoff — Backend Release
 
 ## BE-410 terminal email failure fix — 2026-09-26
@@ -1102,3 +1115,5 @@ Triển khai xong các quyết định user đã chốt:
 - Depends on: BE-110.
 - Status: TODO
 <!-- Local maintenance 2026-09-21: BE-330 k6 load scripts + 2 pre-existing DI fixes (OutboxBackgroundService, SignInManager) + compose override fixes. Smoke test 100% pass. -->
+
+- Bổ sung trong cùng phiên: IFinanceStepUp/FinanceStepUp kiểm Admin MFA bằng X-Finance-Totp; tests nguồn cho role/MFA, PostgreSQL concurrent receipts/refund hold; timestamp receipt chuẩn hóa microseconds. Chưa chạy bất kỳ build/test/migration nào.

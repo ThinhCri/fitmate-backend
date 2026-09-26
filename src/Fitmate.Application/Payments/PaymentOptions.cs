@@ -11,6 +11,5 @@ public sealed class PaymentOptions
     /// </summary>
     public bool AllowMockProvider { get; set; } = false;
 
-    public string Provider { get; set; } = "vnpay";
+    public string Provider { get; set; } = "payos";
 }
-

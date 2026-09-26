@@ -90,7 +90,7 @@ public class VipAndRewardBacklogGuardTests
     }
 
     [Fact]
-    public async Task TrainerRevenue_Calculates_From_Paid_Bookings_And_Refunds_Isolated_From_Rewards()
+    public async Task TrainerRevenue_Recognizes_Completed_Bookings_Without_Automatic_Payout()
     {
         var storeMock = new Mock<ITrainerRevenueStore>();
         var authzMock = new Mock<IAuthorizationGuard>();
@@ -119,7 +119,18 @@ public class VipAndRewardBacklogGuardTests
                 PlatformFeeVnd: 20_000,
                 TrainerShareVnd: 180_000,
                 RefundedVnd: 200_000,
-                Status: BookingStatus.Refunded)
+                Status: BookingStatus.Refunded),
+            // Payment alone must not recognize earnings or trigger a PT transfer.
+            new(
+                AppointmentId: Guid.NewGuid(),
+                SlotStartUtc: DateTime.UtcNow.AddDays(1),
+                CreatedAt: DateTime.UtcNow.AddDays(-1),
+                PriceListedVnd: 300_000,
+                ActualPaidVnd: 300_000,
+                PlatformFeeVnd: 30_000,
+                TrainerShareVnd: 270_000,
+                RefundedVnd: 0,
+                Status: BookingStatus.Paid)
         };
 
         storeMock.Setup(s => s.ListBookingsInRangeAsync(ptUserId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))
@@ -129,15 +140,16 @@ public class VipAndRewardBacklogGuardTests
 
         var result = await service.GetOverviewAsync(ptUserId, FinanceRange._7d, CancellationToken.None);
 
-        // Gross = 500k + 200k = 700k
-        result.TotalGrossVnd.Should().Be(700_000);
-        // Platform fee = 50k + 20k = 70k
-        result.PlatformFeeVnd.Should().Be(70_000);
-        // Trainer share = 450k + 180k = 630k
-        // Refunded share deduction = 200k * 90% = 180k
-        // Net = 630k - 180k = 450k
+        // Only the completed session recognizes revenue; the cancelled/refunded booking does not.
+        result.TotalGrossVnd.Should().Be(500_000);
+        result.PlatformFeeVnd.Should().Be(50_000);
         result.NetEarningsVnd.Should().Be(450_000);
         result.CompletedSessionsCount.Should().Be(1);
+        result.PendingPayoutVnd.Should().Be(450_000);
+        result.CompletedPayoutVnd.Should().Be(0);
+        result.Chart.Should().ContainSingle()
+            .Which.NetEarningsVnd.Should().Be(450_000);
+        outboxMock.Verify(o => o.Enqueue(It.IsAny<string>(), It.IsAny<object>()), Times.Never);
     }
 
     [Fact]

@@ -828,7 +828,7 @@ paths:
                   type: string
                 method:
                   type: string
-                  enum: [vnpay]
+                  enum: [vnpay, payos]
       responses:
         '201':
           description: Created
@@ -2396,8 +2396,229 @@ paths:
               schema:
                 $ref: '#/components/schemas/SystemCapabilitiesResponse'
 
+  /payments/payos/webhook:
+    post:
+      tags: [Payments]
+      operationId: payosWebhook
+      summary: Verify payOS payment signature and settle once
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data, signature]
+              properties:
+                data: {type: object, additionalProperties: true}
+                signature: {type: string, minLength: 64, maxLength: 64}
+      responses:
+        '200': {description: Acknowledged; unknown signed registration probes do not mutate payments}
+        '400': {description: Invalid signature or data}
+        '409': {description: Order amount or state mismatch; reconcile manually}
+        '503': {description: Provider disabled}
+
+  /admin/finance/payments/{paymentId}/provider-status:
+    get:
+      tags: [Admin]
+      operationId: queryPaymentProviderStatus
+      summary: Read provider status for reconciliation; never settles from a browser return
+      parameters:
+        - {in: path, name: paymentId, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200':
+          description: Provider status only, no financial mutation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  isSuccess: {type: boolean}
+                  responseCode: {type: string}
+                  transactionStatus: {type: string}
+                  providerTxnNo: {type: [string, 'null']}
+                  message: {type: string}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Payment not found}
+        '503': {description: Original provider not selected or unavailable}
+
+  /admin/finance/manual-settlements:
+    get:
+      tags: [Admin]
+      operationId: listManualSettlements
+      summary: Admin-only verification and transfer records (camelCase fields)
+      parameters:
+        - {in: query, name: page, schema: {type: integer, minimum: 1, maximum: 100000, default: 1}}
+        - {in: query, name: pageSize, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+      responses:
+        '200':
+          description: Paginated records; new unreviewed appointments are selected from admin bookings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/ManualSettlement'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+
+  /admin/finance/manual-settlements/{appointmentId}/approve:
+    post:
+      tags: [Admin]
+      operationId: approveManualSettlement
+      summary: Record both participant confirmations and approve the server-calculated PT share
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/FinanceTotp'
+        - {in: path, name: appointmentId, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customerConfirmedAt, trainerConfirmedAt, sessionEvidenceReference, payeeEvidenceReference, noOpenDisputeConfirmed]
+              properties:
+                customerConfirmedAt: {type: string, format: date-time, description: UTC after session end}
+                trainerConfirmedAt: {type: string, format: date-time, description: UTC after session end}
+                sessionEvidenceReference: {type: string, maxLength: 200, description: Private case/storage reference, not raw health data}
+                payeeEvidenceReference: {type: string, maxLength: 200}
+                noOpenDisputeConfirmed: {type: boolean, enum: [true]}
+      responses:
+        '200': {$ref: '#/components/responses/ManualSettlementResult'}
+        '400': {description: Missing or invalid confirmation/evidence/idempotency key}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Booking/payment not found}
+        '409': {description: Not completed, pending refund, already paid, or stale financial state}
+
+  /admin/finance/manual-settlements/{appointmentId}/hold:
+    post:
+      tags: [Admin]
+      operationId: holdManualSettlement
+      summary: Suspend an unpaid settlement for dispute or further review
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/FinanceTotp'
+        - {in: path, name: appointmentId, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 1, maxLength: 200}
+      responses:
+        '200': {$ref: '#/components/responses/ManualSettlementResult'}
+        '400': {description: Invalid reason}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Booking/payment not found}
+        '409': {description: Already paid}
+
+  /admin/finance/manual-settlements/{appointmentId}/record-transfer:
+    post:
+      tags: [Admin]
+      operationId: recordManualSettlementTransfer
+      summary: Record an actual manual bank transfer; never calls a payout API
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/FinanceTotp'
+        - {in: path, name: appointmentId, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ManualTransferRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/ManualSettlementResult'}
+        '400': {description: Missing transfer evidence or idempotency key}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Booking/payment not found}
+        '409': {description: Missing approval, pending refund, changed amount, reused reference or different existing receipt}
+
+  /admin/finance/manual-refunds:
+    get:
+      tags: [Admin]
+      operationId: listManualRefunds
+      parameters:
+        - {in: query, name: page, schema: {type: integer, minimum: 1, maximum: 100000, default: 1}}
+        - {in: query, name: pageSize, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+      responses:
+        '200':
+          description: Paginated payOS refunds, camelCase DTO
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/ManualRefundView'}}
+                  total: {type: integer}
+                  page: {type: integer}
+                  pageSize: {type: integer}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+    post:
+      tags: [Admin]
+      operationId: requestManualRefund
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/FinanceTotp'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, amountVnd, reason]
+              properties:
+                paymentId: {type: string, format: uuid}
+                amountVnd: {type: integer, format: int64, minimum: 1}
+                reason: {type: string, minLength: 1, maxLength: 500}
+      responses:
+        '200': {$ref: '#/components/responses/ManualRefundResult'}
+        '400': {description: Invalid request}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Payment not found}
+        '409': {description: Refund cap exceeded or wrong payment state/provider}
+
+  /admin/finance/manual-refunds/{refundId}/record-transfer:
+    post:
+      tags: [Admin]
+      operationId: confirmManualRefundTransfer
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/FinanceTotp'
+        - {in: path, name: refundId, required: true, schema: {type: string, format: uuid}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ManualTransferRequest'}
+      responses:
+        '200': {$ref: '#/components/responses/ManualRefundResult'}
+        '400': {description: Invalid evidence/time/idempotency key}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Refund not found}
+        '409': {description: Reused transfer reference or refund already processed}
+
 components:
   parameters:
+    FinanceTotp:
+      in: header
+      name: X-Finance-Totp
+      required: true
+      schema: {type: string, pattern: '^[0-9]{6}$'}
+      description: Current authenticator code; Admin must have MFA enabled
     IdPath:
       in: path
       name: id
@@ -2413,6 +2634,16 @@ components:
         format: uuid
 
   responses:
+    ManualSettlementResult:
+      description: Durable settlement record; approval is not proof of bank transfer
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ManualSettlement'}
+    ManualRefundResult:
+      description: Durable manual refund record
+      content:
+        application/json:
+          schema: {$ref: '#/components/schemas/ManualRefundView'}
     Unauthorized:
       description: Unauthorized
       content:
@@ -2460,6 +2691,42 @@ components:
             $ref: '#/components/schemas/ProblemDetails'
 
   schemas:
+    ManualTransferRequest:
+      type: object
+      required: [bankReference, evidenceReference, transferredAt]
+      properties:
+        bankReference: {type: string, minLength: 1, maxLength: 128}
+        evidenceReference: {type: string, minLength: 1, maxLength: 200}
+        transferredAt: {type: string, format: date-time, description: UTC time from actual bank receipt}
+    ManualRefundView:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        paymentId: {type: string, format: uuid}
+        appointmentId: {type: string, format: uuid}
+        amountVnd: {type: integer, format: int64}
+        reason: {type: string}
+        status: {type: integer, enum: [0, 1, 2], description: "Pending=0, Succeeded=1, Failed=2"}
+        createdAt: {type: string, format: date-time}
+    ManualSettlement:
+      type: object
+      properties:
+        appointmentId: {type: string, format: uuid}
+        ptUserId: {type: string, format: uuid}
+        paymentId: {type: string, format: uuid}
+        status: {type: string, enum: [on_hold, approved, paid]}
+        amountVnd: {type: integer, format: int64}
+        reviewedBy: {type: string, format: uuid}
+        customerConfirmedAt: {type: [string, 'null'], format: date-time}
+        trainerConfirmedAt: {type: [string, 'null'], format: date-time}
+        approvedAt: {type: [string, 'null'], format: date-time}
+        sessionEvidenceReference: {type: [string, 'null']}
+        payeeEvidenceReference: {type: [string, 'null']}
+        holdReason: {type: [string, 'null']}
+        transferredBy: {type: [string, 'null'], format: uuid}
+        transferredAt: {type: [string, 'null'], format: date-time}
+        bankReference: {type: [string, 'null']}
+        transferEvidenceReference: {type: [string, 'null']}
     ProblemDetails:
       type: object
       required: [type, title, status, code, traceId]
@@ -2910,9 +3177,9 @@ components:
         method:
           type: string
           description: |
-            Theo DEC-027 — release đầu chỉ triển khai VNPay. Enum cố định 1 value.
-            Provider bổ sung sau cần migration OpenAPI + DI adapter.
-          enum: [vnpay]
+            payos is the selected checkout provider; vnpay remains for historical records.
+            An unconfigured or unselected provider returns 503; no mock fallback.
+          enum: [vnpay, payos]
         status:
           $ref: '#/components/schemas/PaymentStatus'
         amount_vnd:

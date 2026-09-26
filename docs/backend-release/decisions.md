@@ -1,3 +1,5 @@
+## User decision — 2026-09-26: payOS checkout, manual PT verification and transfer
+Yêu cầu trực tiếp của user thay provider baseline VNPay cho checkout mới và thay policy chi theo lịch bằng duyệt từng buổi sau gọi khách/PT + hồ sơ. Implement payOS payment-requests, không payouts. Không tự tạo task/DEC ID mới. Lịch sử DEC cũ được giữ; nội dung mâu thuẫn nhường quyết định này. OPS-03 vẫn chặn live tới khi provider duyệt mô hình và có evidence. Chi tiết: [runbook](runbooks/payos-manual-settlement.md).
 # Decisions Log
 
 ## DEC-051 — Production baseline và contract chung ba repo (2026-09-22)

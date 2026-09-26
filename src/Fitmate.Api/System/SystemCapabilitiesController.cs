@@ -20,11 +20,14 @@ public class SystemCapabilitiesController : ControllerBase
 {
     private readonly IWebHostEnvironment _env;
     private readonly IOptions<AiOptions> _aiOptions;
+    private readonly Fitmate.Application.Payments.IPaymentProvider? _payments;
 
-    public SystemCapabilitiesController(IWebHostEnvironment env, IOptions<AiOptions> aiOptions)
+    public SystemCapabilitiesController(IWebHostEnvironment env, IOptions<AiOptions> aiOptions,
+        Fitmate.Application.Payments.IPaymentProvider? payments = null)
     {
         _env = env;
         _aiOptions = aiOptions;
+        _payments = payments;
     }
 
     [HttpGet]
@@ -52,7 +55,8 @@ public class SystemCapabilitiesController : ControllerBase
                 Enabled: false,
                 StatusReason: "Automated direct payouts are not active. Trainer earnings are settled periodically through verified manual accounting transfers."),
             PushNotificationsEnabled: true,
-            PaymentsEnabled: true,
+            PaymentsEnabled: _payments is not null and not Fitmate.Application.Payments.MissingPaymentProvider
+                and not Fitmate.Application.Payments.StubPaymentProvider,
             StorageProvider: "local",
             Policies: new PlatformPoliciesSummary(
                 PlatformFeeBps: 1000,

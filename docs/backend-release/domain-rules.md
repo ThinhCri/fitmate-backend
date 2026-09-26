@@ -70,7 +70,7 @@ Client không PATCH status tùy ý; transition đi qua command có guard + audit
 - Mặc định đề xuất Fitmate chịu provider fee riêng; không trừ âm thầm vào 90% PT. Chi phí này tách khỏi gross platform fee.
 - PT revenue chỉ owner: gross, fee, share, refunds, pending recognition, recognized net, available payable, processing payout, paid out.
 - Payout != refund != reward withdrawal. Không hiển thị available payable như đã chuyển khoản.
-- Settlement baseline: admin lập batch thủ công hàng tuần cho phần completed đủ 7 ngày, không tranh chấp; có statement, account verification, reference chuyển tiền và xác nhận độc lập.
+- Settlement hiện hành (user 2026-09-26): duyệt từng buổi sau giờ kết thúc + Completed, Admin gọi xác nhận khách/PT, kiểm tra hồ sơ buổi và người nhận tiền, không tranh chấp/refund pending; chuyển tiền thủ công rồi ghi chứng từ. Không auto chi theo lịch tuần hoặc đủ 7 ngày.
 - Trước khi chi, kiểm tra refund/dispute pending; một ledger item không vào hai payout. Refund sau payout tạo debit/negative payable kỳ tới, không sửa lịch sử payout.
 - Merchant capability, điều khoản/PT banking và quy trình chi cần operator duyệt trước thu tiền thật (OPS-03).
 - Phí 10% read-only ở admin; thay policy tương lai cần version/audit, không đổi snapshot cũ.
@@ -148,3 +148,13 @@ Client không PATCH status tùy ý; transition đi qua command có guard + audit
 Xem [operator-actions.md](operator-actions.md). Các mặc định TTL/acceptance/payout/retention ở đây là baseline thiết kế, phải đồng bộ điều khoản và cấu hình trước phục vụ khách thật.
 Không tự mua tài nguyên, phát hành, migrate production hoặc rewrite lịch sử Git.
 
+
+## Quyết định chi PT thủ công — 2026-09-26 (ưu tiên hơn lịch chi mặc định ở trên)
+- payOS là provider checkout mới; vnpay được giữ cho giao dịch lịch sử. PaymentMethod thêm payos, không đổi giá trị lưu vnpay=0.
+- Không chi tự động sau 7 ngày/đến lịch tuần. Điều kiện bắt buộc: buổi đã qua và Completed, tiền đã nhận, không refund pending, Admin xác nhận cuộc gọi với cả khách và PT, có session evidence và payee verification, không tranh chấp chưa giải quyết.
+- State per appointment: chưa có record → pending_review (projection); on_hold → approved → paid. Approve không chuyển tiền. Hold chặn chi và cần approve lại; paid bất biến.
+- Chỉ record-transfer sau khi operator đã chuyển tiền và có bank reference/evidence/time thật. Một reference không dùng lại cho buổi hoặc refund khác. Chưa hỗ trợ batch nhiều buổi/một transfer.
+- Thu tiền, hoàn tiền, approval và chuyển PT là các trạng thái độc lập. Late webhook không khôi phục hold. Cancel checkout không refund. Refund payOS Pending → Succeeded chỉ sau đối soát chuyển khoản thủ công.
+- Record buổi tập là private evidence/case reference; không mặc định là video/audio bắt buộc. Lưu metadata tối thiểu, không log raw hồ sơ hay thông tin ngân hàng.
+- Refund sau paid payout không sửa lịch sử chi; chênh lệch cần đối soát/thu hồi. Projection hiện chưa thay thế immutable accounting ledger; gate BE-810 còn mở.
+- API/ràng buộc và giới hạn triển khai: runbooks/payos-manual-settlement.md.

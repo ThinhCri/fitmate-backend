@@ -141,7 +141,7 @@ public class TrainerRevenueServiceTests
     }
 
     [Fact]
-    public async Task SettleTrainer_HappyPath_EnqueuesOutbox()
+    public async Task SettleTrainer_LegacyRoute_RequiresReview_WithoutOutbox()
     {
         var store = new InMemoryTrainerTrainerStoreWrapper();
         var outbox = new CapturingOutbox();
@@ -150,14 +150,10 @@ public class TrainerRevenueServiceTests
 
         var svc = NewService(store, "Admin", outbox);
         var req = new TrainerSettlementRequest(ptId, 500_000, "VNP_SETTLE_123456", "Weekly settlement");
-        var result = await svc.SettleTrainerAsync(adminId, req, CancellationToken.None);
-
-        result.AmountVnd.Should().Be(500_000);
-        result.ReferenceNumber.Should().Be("VNP_SETTLE_123456");
-        result.PtUserId.Should().Be(ptId);
-        outbox.Messages.Should().Contain(m => m.Type == "finance.trainer_settled");
+        var act = () => svc.SettleTrainerAsync(adminId, req, CancellationToken.None);
+        await act.Should().ThrowAsync<ConflictException>().Where(e => e.Code == "MANUAL_SETTLEMENT_REVIEW_REQUIRED");
+        outbox.Messages.Should().BeEmpty();
     }
-
     [Fact]
     public async Task SettleTrainer_NonAdmin_Forbidden()
     {

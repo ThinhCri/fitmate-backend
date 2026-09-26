@@ -108,6 +108,13 @@ public class EfAdminFinanceStore : IAdminFinanceStore
                 rows.Add(("refund", r.AmountVnd, r.Id, r.AppointmentId, null, r.OccurredAt));
         }
 
+        if (type is null or LedgerEntryType.Payout)
+        {
+            var paid = await _db.Set<ManualPtSettlement>().AsNoTracking().Where(s => s.Status == "paid").ToListAsync(ct);
+            foreach (var s in paid)
+                rows.Add(("payout", s.AmountVnd, s.AppointmentId, s.AppointmentId, s.PaymentId, s.TransferredAt!.Value));
+        }
+
         // Sort by occurred desc, skip/take.
         var ordered = rows.OrderByDescending(x => x.occurred).ThenBy(x => x.id).ToList();
         var page = ordered.Skip(skip).Take(take).ToList();
@@ -125,14 +132,15 @@ public class EfAdminFinanceStore : IAdminFinanceStore
         int paidBookings = await _db.Appointments
             .CountAsync(a => a.Status == BookingStatus.Paid || a.Status == BookingStatus.Completed, ct);
         int succeededRefunds = await _db.Refunds.CountAsync(r => r.Status == RefundStatus.Succeeded, ct);
+        int payouts = await _db.Set<ManualPtSettlement>().CountAsync(s => s.Status == "paid", ct);
 
         return type switch
         {
             LedgerEntryType.PlatformFee => paidBookings,
             LedgerEntryType.TrainerShare => paidBookings,
             LedgerEntryType.Refund => succeededRefunds,
-            LedgerEntryType.Payout => 0, // payout chưa triển khai ở BE-NNN hiện tại (UA-019)
-            _ => paidBookings * 2 + succeededRefunds
+            LedgerEntryType.Payout => payouts,
+            _ => paidBookings * 2 + succeededRefunds + payouts
         };
     }
 

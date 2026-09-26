@@ -27,3 +27,7 @@ Không fake payment/AI/push trong production, không tự deploy/push/rewrite.
 ## Tài liệu lịch sử
 [Documentation maintenance](documentation-maintenance.md) ghi nội dung được thay và những file giữ.
 tasks/BE-*-plan.md và handoff cũ là lịch sử scope/evidence; trạng thái production đọc tasks.md mới.
+
+
+## Payment/settlement override — 2026-09-26
+User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.
