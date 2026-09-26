@@ -1,5 +1,13 @@
 # Handoff — Backend Release
 
+## BE-410 terminal email failure fix — 2026-09-26
+- User test output: EmailOutboxIntegrationTests had 3 passed / 1 failed; expired-token terminal exception incorrectly left the message pending.
+- Added explicit TerminalOutboxException handling before the generic retry catch in OutboxWorker; terminal failures move directly to dead_letter without logging the raw exception. Transient retry and shutdown cancellation behavior are preserved.
+- Strengthened existing email tests to assert no send/no automatic retry after terminal failure, and pending/attempt/backoff behavior for transient errors.
+- Read-only review performed; build/tests not run per user manual-execution workflow. No commit. Existing email implementation changes preserved.
+- User should rerun the filtered EmailOutboxIntegrationTests. These tests use an in-memory store/fake sender, not PostgreSQL or real SMTP delivery.
+- Separate unresolved warnings in supplied output: vulnerable MailKit/MimeKit/DataProtection/System.Security.Cryptography.Xml dependencies and deprecated forwarded-header APIs. This focused worker fix does not resolve those warnings or establish release readiness.
+
 ## AI artifact preparation — 2026-09-23
 - Theo user: nhóm AI phụ trách AI, dự kiến bàn giao `.pt` vài hôm tới; chưa biết format/runtime/I/O.
 - Cập nhật ai-contract.md, ai-handoff-checklist.md, BE-817 revision 2, BE-430, OPS-06/task tracking và README production của Android/Admin.

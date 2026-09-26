@@ -72,6 +72,15 @@ public class OutboxWorker
         {
             throw;
         }
+        catch (TerminalOutboxException ex)
+        {
+            // Permanent failures must not consume the transient retry budget.
+            // Do not log the raw exception: email errors can contain token-bearing URLs.
+            msg.MarkDeadLetter(Truncate(SanitizeError(ex.Message), 1000));
+            _logger.LogWarning(
+                "Outbox: handler {Type} permanently failed for {Id}; moved to DEAD_LETTER",
+                msg.Type, msg.Id);
+        }
         catch (Exception ex)
         {
             var backoff = Backoff(msg.Attempts);

@@ -1,3 +1,4 @@
+using Fitmate.Application.Outbox;
 using Fitmate.Domain.Support;
 
 namespace Fitmate.Application.Support;
@@ -5,10 +6,12 @@ namespace Fitmate.Application.Support;
 public class SupportService : ISupportService
 {
     private readonly ISupportTicketStore _store;
+    private readonly IOutboxDispatcher? _outbox;
 
-    public SupportService(ISupportTicketStore store)
+    public SupportService(ISupportTicketStore store, IOutboxDispatcher? outbox = null)
     {
         _store = store;
+        _outbox = outbox;
     }
 
     public async Task<SupportTicketDetailDto> CreateTicketAsync(
@@ -150,6 +153,15 @@ public class SupportService : ISupportService
 
         ticket.AddAdminReply(adminUserId, request.Message, request.AttachmentUrls);
         await _store.SaveChangesAsync(ct);
+
+        _outbox?.Enqueue("support.ticket_replied", new
+        {
+            TicketId = ticket.Id,
+            UserId = ticket.UserId,
+            AdminUserId = adminUserId,
+            TicketCode = ticket.Id.ToString()[..8].ToUpperInvariant(),
+            CreatedAtUtc = DateTime.UtcNow
+        });
 
         return MapToDetailDto(ticket);
     }
