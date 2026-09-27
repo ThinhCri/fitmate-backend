@@ -1,3 +1,19 @@
+## 2026-09-26 — Verify stack API port collision
+- Docker inspection: fitmate-api-check-api-1 remained Created because Compose merged base port 8080 with verify port 18080; existing local API already owns 8080.
+- Changed verify API ports to !override (Compose >= 2.24.4; installed version 5.5.1), exposing only loopback 18080. No container restarted by agent; user must rerun compose up. Development remains the correct Swagger environment.
+
+## 2026-09-26 — Development Swagger UI
+- Enabled existing Swashbuckle package in Development only: /swagger and /swagger/v1/swagger.json. No new dependencies. Production and Testing do not expose the explorer.
+- Runtime controller discovery, unique schema names, Bearer authorization on protected endpoints, optional Idempotency-Key and finance TOTP header inputs. No persisted browser authorization configured.
+- Swagger requests execute real local operations. Generated runtime document is for exploration; canonical cross-repo OpenAPI remains separately maintained.
+- No build/test/restore/commit performed. User must rebuild/restart the API and verify JSON/UI and authenticated requests.
+
+## 2026-09-26 — Fix stale PostgreSQL integration schema
+- User log: payOS suite 0/8 passed; PostgreSQL 42P01 for payos_orders/manual_pt_settlements. Shared fixture reused a database initialized before these entities existed; EnsureCreated does not update existing tables.
+- Fixture now defaults to a unique test database per process, validates explicit test database names, parameterizes database lookup and fails immediately on provisioning/schema initialization errors or an already populated database. No database/volume deletion; databases retained for diagnosis.
+- This fixture verifies current EF model behavior, not migration upgrades. Migration-chain verification remains a separate gate. Updated payOS runbook accordingly.
+- No build/test/restore/migration/commit executed by agent. User must rebuild tests and rerun the payOS filter. Untracked PlatformPolicy.cs was preserved.
+
 ## 2026-09-26 — User-run verification and revenue regression fixture correction
 - User-provided terminal evidence: solution build succeeded (72 warnings); email integration 4/4 and email unit tests 24/24 passed; full unit suite 626/627 passed.
 - The failing backlog guard expected 700,000 gross / 70,000 fee including a fully refunded booking. Updated expectations to 500,000 / 50,000 for the completed session, consistent with recognition rules. Added a paid-but-unfinished booking and assertions for pending payout, zero paid-out money, chart and no outbox event.
@@ -1117,3 +1133,7 @@ Triển khai xong các quyết định user đã chốt:
 <!-- Local maintenance 2026-09-21: BE-330 k6 load scripts + 2 pre-existing DI fixes (OutboxBackgroundService, SignInManager) + compose override fixes. Smoke test 100% pass. -->
 
 - Bổ sung trong cùng phiên: IFinanceStepUp/FinanceStepUp kiểm Admin MFA bằng X-Finance-Totp; tests nguồn cho role/MFA, PostgreSQL concurrent receipts/refund hold; timestamp receipt chuẩn hóa microseconds. Chưa chạy bất kỳ build/test/migration nào.
+## 2026-09-27 — Admin completion execution docs
+- Khảo sát Admin Web manifest/App/Login và BE controller routes/auth/manual finance. Tailwind4 đã có; web còn auto-admin/mock/localStorage. Phát hiện login-MFA/enrollment và business KPI contract cần đối chiếu bổ sung.
+- Thêm bộ docs tại FitmateWebApp/docs/production/admin-completion: 7 files về scope/API gaps/architecture/security/task execution/verification/prompt, liên kết từ README/tracker/plans index.
+- BE coordination: [admin-web-integration-handoff.md](admin-web-integration-handoff.md). Chỉ docs; chưa sửa runtime, chưa build/test/install/commit; không thay trạng thái release.

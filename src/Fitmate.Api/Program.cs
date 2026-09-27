@@ -572,6 +572,28 @@ builder.Services.AddControllers()
         };
     });
 
+// Interactive API exploration is available only on local development hosts.
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+        {
+            Title = "Fitmate API", Version = "v1",
+            Description = "Development API explorer. Requests execute against the running database."
+        });
+        options.CustomSchemaIds(type => type.FullName?.Replace("+", ".") ?? type.Name);
+        options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+        {
+            Type = Microsoft.OpenApi.Models.SecuritySchemeType.Http,
+            Scheme = "bearer", BearerFormat = "JWT",
+            Description = "Paste the access token returned by login (without the Bearer prefix)."
+        });
+        options.OperationFilter<Fitmate.Api.OpenApi.DevelopmentOperationFilter>();
+    });
+}
+
 // Health checks.
 builder.Services.AddHealthChecks()
     .AddCheck<Fitmate.Infrastructure.Persistence.DatabaseHealthCheck>("database", tags: new[] { "ready" });
@@ -624,6 +646,16 @@ app.UseExceptionHandler(handler =>
 });
 
 // BE-822: Forwarded Headers middleware (must run before rate limiting and auth)
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("v1/swagger.json", "Fitmate API v1");
+        options.RoutePrefix = "swagger";
+    });
+}
+
 app.UseForwardedHeaders();
 
 // BE-822: Security Headers middleware

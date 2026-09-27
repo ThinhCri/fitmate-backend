@@ -20,7 +20,25 @@ public class FitmateTestAppFactory : WebApplicationFactory<Program>
     public static string DbHost => Environment.GetEnvironmentVariable("DB_HOST") ?? "localhost";
     public static string DbPort => Environment.GetEnvironmentVariable("DB_PORT") ?? "5432";
     public static string DbUser => Environment.GetEnvironmentVariable("DB_USER") ?? "fitmate";
-    public static string TestDbName => Environment.GetEnvironmentVariable("TEST_DB_NAME") ?? "fitmate_integration_test";
+    // One fresh database per test process, shared by all factory instances in that process.
+    public static string TestDbName { get; } = ResolveTestDatabaseName();
+
+    private static string ResolveTestDatabaseName()
+    {
+        var name = Environment.GetEnvironmentVariable("TEST_DB_NAME");
+        if (string.IsNullOrWhiteSpace(name))
+            return "fitmate_integration_test_" + Guid.NewGuid().ToString("N");
+
+        if (name.Length > 63 ||
+            !(name.StartsWith("fitmate_integration_test", StringComparison.Ordinal) ||
+              name.StartsWith("fitmate_payos_it_", StringComparison.Ordinal)) ||
+            name.Any(c => !(c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_')))
+            throw new InvalidOperationException(
+                "TEST_DB_NAME must be an isolated test database: fitmate_integration_test* or fitmate_payos_it_*, " +
+                "using lowercase ASCII letters, digits and underscores (maximum 63 characters).");
+
+        return name;
+    }
 
     public static string DbPassword { get; private set; } = "dev";
 
@@ -78,7 +96,8 @@ public class FitmateTestAppFactory : WebApplicationFactory<Program>
     private static void EnsureTestDatabaseAndSchemaCreated(string password)
     {
         // 1. Ensure test database exists on PostgreSQL
-        string[] adminDbs = { "fitmate", "postgres" };
+        string[] adminDbs = { "postgres", "fitmate" };
+        var databaseAvailable = false;
         foreach (var adminDb in adminDbs)
         {
             try
@@ -87,14 +106,16 @@ public class FitmateTestAppFactory : WebApplicationFactory<Program>
                 conn.Open();
 
                 using var checkCmd = conn.CreateCommand();
-                checkCmd.CommandText = $"SELECT 1 FROM pg_database WHERE datname = '{TestDbName}'";
+                checkCmd.CommandText = "SELECT 1 FROM pg_database WHERE datname = @name";
+                checkCmd.Parameters.AddWithValue("name", TestDbName);
                 var exists = checkCmd.ExecuteScalar();
                 if (exists == null)
                 {
                     using var createCmd = conn.CreateCommand();
-                    createCmd.CommandText = $"CREATE DATABASE {TestDbName}";
+                    createCmd.CommandText = $"CREATE DATABASE \"{TestDbName}\"";
                     createCmd.ExecuteNonQuery();
                 }
+                databaseAvailable = true;
                 break;
             }
             catch
@@ -103,17 +124,23 @@ public class FitmateTestAppFactory : WebApplicationFactory<Program>
             }
         }
 
-        // 2. Early schema creation: Ensure all tables and constraints exist before WebApplicationFactory boots Program.cs
-        try
+        if (!databaseAvailable)
+            throw new InvalidOperationException(
+                "Cannot provision the isolated integration database. Check DB_HOST/DB_PORT/DB_USER/DB_PASSWORD " +
+                "and CREATEDB permission, or supply an empty test database through TEST_DB_NAME.");
+
+        // EnsureCreated tests the current model, not the migration chain. Never reuse a stale schema.
+        // Leave the test database intact for diagnosis; do not delete user databases or volumes.
         {
             var optionsBuilder = new DbContextOptionsBuilder<FitmateDbContext>();
             optionsBuilder.UseNpgsql($"Host={DbHost};Port={DbPort};Database={TestDbName};Username={DbUser};Password={password}");
             using var db = new FitmateDbContext(optionsBuilder.Options);
-            db.Database.EnsureCreated();
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[FitmateTestAppFactory] Warning: Early EnsureCreated encountered: {ex.Message}");
+            if (!db.Database.EnsureCreated())
+                throw new InvalidOperationException(
+                    "The integration database already contains tables. EnsureCreated cannot upgrade its schema. " +
+                    "Unset TEST_DB_NAME for a fresh per-run database, or select a new empty test database. " +
+                    "Existing data has not been deleted.");
+            Console.WriteLine($"[FitmateTestAppFactory] Isolated test database: {TestDbName}");
         }
     }
 

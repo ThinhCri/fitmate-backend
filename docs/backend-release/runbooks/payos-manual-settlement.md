@@ -52,12 +52,12 @@ dotnet ef migrations has-pending-model-changes --project src/Fitmate.Infrastruct
 dotnet ef migrations script 20260924115742_SupportAndPreferences 20260926120000_PayosAndManualSettlements --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api --output payos-migration-review.sql
 # Chỉ sau khi kiểm tra DB_HOST/DB_PORT/DB_NAME là DB kiểm thử riêng:
 dotnet ef database update --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api
-# Chọn DB test MỚI để fixture EnsureCreated không dùng schema cũ:
-$env:TEST_DB_NAME = 'fitmate_payos_it_' + (Get-Date -Format 'yyyyMMddHHmmss')
+# Fixture tự cấp DB test mới cho mỗi process nếu không đặt TEST_DB_NAME:
+Remove-Item Env:TEST_DB_NAME -ErrorAction SilentlyContinue
 dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --no-build --no-restore --filter "FullyQualifiedName~PayosPostgresIntegrationTests"
 ```
 
-Migration/snapshot được soạn thủ công vì không chạy dotnet-ef; phải kiểm `has-pending-model-changes` trước áp dụng. Fixture integration hiện dùng EnsureCreated, không nâng schema DB test cũ: cần áp migration trên DB test đúng cấu hình hoặc chọn DB test mới. Không xóa volume DB để chữa lỗi. Rollback Down chỉ cho bảng mới rỗng; khi có giao dịch dùng forward fix, không xóa chứng từ.
+Migration/snapshot được soạn thủ công vì không chạy dotnet-ef; phải kiểm `has-pending-model-changes` trước áp dụng. Fixture integration dùng EnsureCreated trên DB mới mỗi process, không kiểm chứng migration chain. Nếu đặt TEST_DB_NAME, DB phải trống và tên bắt đầu bằng `fitmate_integration_test` hoặc `fitmate_payos_it_`; fixture từ chối DB đã có bảng thay vì chạy với schema cũ. User DB role cần quyền CREATEDB khi DB chưa tồn tại. Tên DB được in trong output; DB giữ lại sau test để chẩn đoán, cần quản lý dung lượng riêng. Không xóa volume DB để chữa lỗi. Kiểm chứng migration thực hiện riêng trên DB cô lập khác. Rollback Down chỉ cho bảng mới rỗng; khi có giao dịch dùng forward fix, không xóa chứng từ.
 
 ## Gate nghiệm thu còn mở
 - Compile + toàn bộ tests; contract round-trip snake_case Payment, camelCase manual finance; test thật HTTP 401/403/400/404/409.

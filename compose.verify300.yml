@@ -24,7 +24,9 @@ services:
   api:
     volumes:
       - verify300-dpkeys:/home/fitmate/.aspnet/DataProtection-Keys
-    ports:
+    # Replace the base API port mapping instead of merging its occupied 8080 port.
+    # Requires Docker Compose 2.24.4 or later.
+    ports: !override
       - "127.0.0.1:18080:8080"
 
   migrate:
