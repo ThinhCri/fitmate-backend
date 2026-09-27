@@ -1137,3 +1137,8 @@ Triển khai xong các quyết định user đã chốt:
 - Khảo sát Admin Web manifest/App/Login và BE controller routes/auth/manual finance. Tailwind4 đã có; web còn auto-admin/mock/localStorage. Phát hiện login-MFA/enrollment và business KPI contract cần đối chiếu bổ sung.
 - Thêm bộ docs tại FitmateWebApp/docs/production/admin-completion: 7 files về scope/API gaps/architecture/security/task execution/verification/prompt, liên kết từ README/tracker/plans index.
 - BE coordination: [admin-web-integration-handoff.md](admin-web-integration-handoff.md). Chỉ docs; chưa sửa runtime, chưa build/test/install/commit; không thay trạng thái release.
+## 2026-09-27 — Restore dropped work and normalize commit subjects
+- User explicitly authorized recovery and history normalization on backend-release/contract-and-foundation. Preserved other contributors' author/committer identities and all historical commit trees; normalized 35 subjects without bodies or attribution trailers.
+- Restored the seven files from e72601f after verifying the staged tree exactly matched that recovery commit; recovery recorded separately as ab0b6a1. This restores Swagger, verify port isolation, test database isolation and their documentation.
+- Local backup branches preserve pre-normalization HEAD and e72601f; a Git bundle and commit map were saved outside the repository. Historical SHA references in old evidence remain historical and must not be treated as the current release revision.
+- Updated AGENTS and Cursor policy: one English subject, maximum 72 characters, no body, owner email votanthinhcri28@gmail.com; retain original contributor identities. No build, test, migration, service restart or push performed.

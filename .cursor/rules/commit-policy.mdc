@@ -6,9 +6,10 @@ alwaysApply: true
 # Commit policy
 
 - Follow the repository's `AGENTS.md` commit and safety rules.
-- Write all commit subjects and bodies in English.
+- Write one English imperative subject only. No body, trailers, attribution or signatures.
+- New owner commits must use author and committer email `votanthinhcri28@gmail.com`. Do not replace existing contributors' identities.
 - Use Conventional Commits: `<type>(<scope>): <imperative summary> [BE-NNN]`.
-- **Header-only commits preferred.** When a single sentence in the subject fully conveys the change, omit the body. Multi-element lists (files, schemas, test counts) belong in `docs/<area>/handoff.md`, not the commit message.
+- **Header-only commits required.** Put file lists, explanations and test results in the relevant handoff document. Shorten by rewriting meaningfully, never by slicing the subject or losing an existing task ID.
 - **Allowed punctuation in subjects:** only ASCII letters, digits, spaces, hyphens `-`, parentheses `()`, square brackets `[]`, and the colon `:` after the type/scope. **Forbidden in subjects:** plus `+`, ampersand `&`, at `@`, hash `#`, exclamation `!`, question `?`, pipe `|`, asterisk `*`, tilde `~`, backtick `` ` ``, equals `=`, slash `/`, backslash `\`, and any non-ASCII character. To separate items in the summary, use the comma `,` (not the plus sign).
 - **Subject length:** ≤ 72 chars. Counted with terminal width, not bytes.
 - Read the staged diff and describe the actual change; avoid generic messages such as `docs: handoff`.

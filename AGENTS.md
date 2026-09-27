@@ -71,9 +71,10 @@ Tài liệu nguồn chuẩn: [`docs/backend-release/README.md`](docs/backend-rel
 
 ## Commit
 
-- Write all commit subjects and bodies in English, using imperative summaries that describe the actual change.
+- Write a single English imperative subject of at most 72 characters. Do not include a commit body or trailers.
+- For new commits by the repository owner, use author and committer email `votanthinhcri28@gmail.com`. Preserve other contributors' attribution in existing history.
 - Do not add `Co-authored-by` trailers, AI attribution, or tool-generated signatures.
-- Preserve existing task IDs and meaningful non-attribution trailers; do not invent task IDs when rewriting messages.
+- Preserve existing task IDs in the subject; do not invent task IDs or truncate words or brackets when shortening messages.
 - Inspect the final message after committing. History rewrites require explicit user authorization for the specific scope.
 - Conventional Commits: `<type>(<scope>): <desc> [BE-NNN]`
 - Không push/merge/amend/reset --hard.
