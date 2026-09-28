@@ -18,6 +18,8 @@ public interface IAvailabilitySlotStore
     Task<IReadOnlyList<AvailabilitySlot>> ListByPtAsync(Guid ptUserId, AvailabilityStatus[] statuses, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
     Task<IReadOnlyList<AvailabilitySlot>> ListOpenByPtAsync(Guid ptUserId, DateTime fromUtc, DateTime toUtc, CancellationToken ct);
     Task DeleteByPtAndStatusAsync(Guid ptUserId, AvailabilityStatus status, CancellationToken ct);
+    Task ReplaceScopedAsync(Guid ptUserId, DateTime fromUtc, DateTime toUtc, IReadOnlyList<AvailabilitySlot> newSlots, CancellationToken ct);
+    Task<string?> GetPtTimezoneAsync(Guid ptUserId, CancellationToken ct);
     Task AddAsync(AvailabilitySlot slot, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }

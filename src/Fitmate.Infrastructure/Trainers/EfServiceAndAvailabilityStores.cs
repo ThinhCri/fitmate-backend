@@ -59,6 +59,45 @@ public class EfAvailabilitySlotStore : IAvailabilitySlotStore
             .ExecuteDeleteAsync(ct);
     }
 
+    public async Task ReplaceScopedAsync(Guid ptUserId, DateTime fromUtc, DateTime toUtc, IReadOnlyList<AvailabilitySlot> newSlots, CancellationToken ct)
+    {
+        if (_db.Database.IsRelational())
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            await _db.AvailabilitySlots
+                .Where(s => s.PtUserId == ptUserId && s.Status == AvailabilityStatus.Open && s.SlotStartUtc >= fromUtc && s.SlotStartUtc < toUtc)
+                .ExecuteDeleteAsync(ct);
+
+            if (newSlots.Count > 0)
+            {
+                await _db.AvailabilitySlots.AddRangeAsync(newSlots, ct);
+                await _db.SaveChangesAsync(ct);
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        else
+        {
+            var toDelete = await _db.AvailabilitySlots
+                .Where(s => s.PtUserId == ptUserId && s.Status == AvailabilityStatus.Open && s.SlotStartUtc >= fromUtc && s.SlotStartUtc < toUtc)
+                .ToListAsync(ct);
+            _db.AvailabilitySlots.RemoveRange(toDelete);
+            if (newSlots.Count > 0)
+            {
+                await _db.AvailabilitySlots.AddRangeAsync(newSlots, ct);
+            }
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
+    public async Task<string?> GetPtTimezoneAsync(Guid ptUserId, CancellationToken ct)
+    {
+        return await _db.Users
+            .Where(u => u.Id == ptUserId)
+            .Select(u => u.Timezone)
+            .FirstOrDefaultAsync(ct);
+    }
+
     public async Task AddAsync(AvailabilitySlot slot, CancellationToken ct)
         => await _db.AvailabilitySlots.AddAsync(slot, ct);
 

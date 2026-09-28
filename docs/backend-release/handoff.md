@@ -1,3 +1,15 @@
+## 2026-09-27 — Admin Web draft implementation and documentation handoff
+- User redirected the work to detailed documentation only. Preserved the preceding unfinished code changes; no additional runtime code changes in this documentation pass.
+- Prior draft touched Admin MFA/login/refresh/JWT validation, certificate preview/revoke, AdminReview APIs and Web auth/finance/support/certificate flows. These changes are NOT verified; tests and contracts still need coordinated updates.
+- Start at [Admin Web finalization handoff](admin-web-finalization-handoff.md), then the linked Web finalization documents 01–07. They specify actual gaps, target security/finance workflows, implementation order, source-test requirements, operator gates and a copy-ready Antigravity prompt.
+- Known critical gaps include client-controlled MFA marker, refresh/session races, financial uncertain-result retries, non-atomic certificate audit and missing audit/booking-review UI. New target session/challenge/history/case contracts are proposals to implement, not existing functionality.
+- No build/test/typecheck/install/Docker/migration/server/inference or commit performed. User must run verification; do not mark VERIFIED or production-ready from this handoff.
+
+## 2026-09-27 — Admin Web static completion review
+- Reviewed active Web routes/API callers against BE controllers and application contracts. Seven modules exist but production completion is not established.
+- Findings and ordered closure checklist: `../FitmateWebApp/docs/production/admin-completion/review-2026-09-27.md` (sibling repository). Main gaps: refresh identity mismatch, missing admin login MFA, session cache cleanup, first settlement review entry, hold TOTP, absent manual-refund UI, private certificate preview, support detail/paging and DTO drift.
+- No runtime code changed; no install/build/tests/Docker/inference executed, no commit. User's existing Web changes preserved. Earlier Web test evidence was not rerun or treated as real-backend UAT.
+
 ## 2026-09-26 — Verify stack API port collision
 - Docker inspection: fitmate-api-check-api-1 remained Created because Compose merged base port 8080 with verify port 18080; existing local API already owns 8080.
 - Changed verify API ports to !override (Compose >= 2.24.4; installed version 5.5.1), exposing only loopback 18080. No container restarted by agent; user must rerun compose up. Development remains the correct Swagger environment.
@@ -1142,3 +1154,213 @@ Triển khai xong các quyết định user đã chốt:
 - Restored the seven files from e72601f after verifying the staged tree exactly matched that recovery commit; recovery recorded separately as ab0b6a1. This restores Swagger, verify port isolation, test database isolation and their documentation.
 - Local backup branches preserve pre-normalization HEAD and e72601f; a Git bundle and commit map were saved outside the repository. Historical SHA references in old evidence remain historical and must not be treated as the current release revision.
 - Updated AGENTS and Cursor policy: one English subject, maximum 72 characters, no body, owner email votanthinhcri28@gmail.com; retain original contributor identities. No build, test, migration, service restart or push performed.
+
+## 2026-09-28 — Admin Web finalization: cert pagination, cert ownership, idempotency scope, BE-152 MFA verify
+
+### Cert list pagination (CERT-01)
+- `Fitmate.Application/Trainers/ICertificateService.ListTrainerForAdminAsync` giờ trả `(IReadOnlyList<Certificate> Items, int Total)` với `page` (≥1) + `pageSize` (1..100, mặc định 25). Cùng signature được thêm vào `CertificatePage` DTO.
+- Store: `Fitmate.Infrastructure/Trainers/EfTrainerStores.ListByPtPagedAsync` dùng `Skip((page-1)*pageSize).Take(pageSize)`.
+- Controller: `Fitmate.Api/Trainers/AdminCertificatesController.GET /admin/certificates/trainer/{ptUserId}` chấp nhận `?page&pageSize`, response shape = `{ items, total, page, pageSize }`.
+- Tests: `tests/Fitmate.UnitTests/CertificateServiceTests.cs` — `ListTrainer_Pagination_ReturnsCorrectSlice` (page 2 size 2 của 5 certs), `Certificate_Submit_PersistsImageUploadedByUserId`.
+
+### Cert ownership (CERT-02)
+- Domain: `Certificate.ImageUploadedByUserId` (nullable Guid) lưu user thực sự upload cert lên storage.
+- Migration: `Fitmate.Infrastructure/Persistence/Migrations/20260928130000_CertificateOwnership.cs` — thêm nullable column + index `IX_certificates_ImageUploadedByUserId`; KHÔNG backfill chủ sở hữu cho dữ liệu cũ (legacy rows = null).
+- Upload path: `CertificatesController.Submit` (PT) ghi `uploadedByUserId = currentUser.Id`. Cập nhật `ICertificateStore.SubmitAsync`/`CertificateService.SubmitAsync` để nhận tham số này.
+- Ownership gate: `AdminCertificatesController.Preview(id)`:
+  - 404 NotFound nếu `cert.ImageStorageKey` null / `ImageUploadedByUserId` null (legacy + cert chưa có key).
+  - 403 Forbid nếu `ImageUploadedByUserId != cert.PtUserId` (admin muốn lấy link chứng chỉ của PT khác).
+  - 200 OK + ghi audit `certificate.preview.viewed` nếu `ImageUploadedByUserId == cert.PtUserId`.
+- Tests: `tests/Fitmate.UnitTests/AdminCertificatesControllerOwnershipTests.cs` — 3 case: missing uploader (404), mismatch (403), match (200 + audit).
+
+### Password policy — thống nhất 12 ký tự (user chốt 2026-09-28)
+
+Có **5 nơi lệch nhau**, gây vòng bất khả thi: đăng ký qua API được mật khẩu 8 ký tự
+(`RegisterRequestValidator`), nhưng Admin Web bắt `minLength={12}` khi đổi mật khẩu — chính
+admin đó không thể đổi mật khẩu mà không tăng độ dài.
+
+Đã tạo `src/Fitmate.Domain/Common/PasswordPolicy.cs` (`MinimumLength = 12`, `MaximumLength = 128`,
+`MinimumLengthMessage`, `IsAcceptable()`) và thay ở:
+
+- `AuthValidators`: `RegisterRequestValidator`, `ResetPasswordRequestValidator`, `ChangePasswordRequestValidator`
+  (từ `MinimumLength(8)` → `PasswordPolicy.MinimumLength`).
+- `Program.cs`: `IdentityOptions.Password.RequiredLength`.
+- `SeedAdminCommand` (check STDIN + Identity), `SeedPerfDataCommand`, `SeedUatDataCommand`.
+- `openapi/fitmate-v1.yaml`: `minLength: 8 → 12` ở register / reset / change.
+- Web `Settings.tsx` **không đổi** (đã là 12).
+
+**Phạm vi có chủ đích**: chỉ mật khẩu MỚI. Không tác động hash hiện có, không buộc tài khoản
+đang tồn tại đổi mật khẩu, không vô hiệu hóa phiên đăng nhập. Tài khoản cũ có mật khẩu 8–11 ký tự
+vẫn đăng nhập bình thường; chỉ khi họ chủ động đổi/đặt lại mật khẩu mới chịu ràng buộc 12.
+
+**Ngoại lệ có chủ đích**: `SeedPerfDataCommand` vẫn bật `RequireUppercase/RequireLowercase/RequireNonAlphanumeric = true`
+(mật khẩu persona test tự sinh, nghiêm hơn sản phẩm). Không nới về policy chung vì dữ liệu test không nên trùng mẫu yếu của production. Đã ghi chú trong code.
+
+Test: `tests/Fitmate.UnitTests/PasswordPolicyTests.cs` (NEW, 10 case).
+
+### Idempotency scope fix
+- Bug: `IdempotencyMiddleware.ShouldStore` cache cả 4xx (kể cả 400 validation), làm retry với payload đã sửa vẫn bị replay 400.
+- Fix: chỉ store 2xx và 409 Conflict (`statusCode is >= 200 and < 300 || statusCode == 409`). 4xx khác (400, 422) cho phép retry với payload mới.
+- Tests: `tests/Fitmate.UnitTests/IdempotencyMiddlewareTests.cs` — `Validation_400_Is_NOT_Stored_ForReplay`, `Retry_After_400_Reaches_Controller_With_Fixed_Body`, `Conflict_409_IS_Stored_ForReplay`.
+
+### Status changes
+- BE-152 `POST /admin/auth/login/verify` + challenge expiry/reuse: source đã có trong `AuthController.Verify` (gọi `IAdminLoginChallengeService`) + `AdminLoginChallengeService` (single-use, 5 phút TTL). Không thay đổi code; đã rà soát static.
+- BE-150 `POST /admin/auth/login` MFA enforcement: xác nhận `AuthController.Login` reject nếu `Status == PendingDeletion` (403), dùng `Identity.ExternalLoginInfo` mapping, return 202 challenge khi `RequiresMfa` true. Không thay đổi code.
+- Outbox: chưa chạy; cần smoke manual settlement để xác nhận `OutboxBackgroundService` enqueue + process.
+
+### Open (chưa giải)
+- Migration `20260928130000_CertificateOwnership`: chưa apply vào DB nào. Cần user chạy `dotnet ef database update` trên local Postgres trước, kiểm tra `psql \d certificates` thấy column `ImageUploadedByUserId uuid NULL` + index `IX_certificates_ImageUploadedByUserId` đã tạo.
+- Finance step-up: **ĐÃ enforce đúng**. `ManualSettlementService` gọi `stepUp.EnsureAsync(adminId, ct)` trên `CreateRefundAsync`, `ConfirmRefundAsync`, `ApproveAsync`, `HoldAsync`, `RecordTransferAsync` — tức ở Application layer, không phải chỉ controller. `FinanceStepUp` đọc header `X-Finance-Totp`, yêu cầu 6 chữ số ASCII, `VerifyTwoFactorTokenAsync`, `AccessFailedAsync` khi sai. Test source mới: `tests/Fitmate.UnitTests/FinanceStepUpTests.cs` (11 case, mock `UserManager` + `IUserLockoutStore`). Token TOTP thật vẫn cần integration test.
+- `OpenAPI/fitmate-v1.yaml`: **đã cập nhật 2026-09-28** — thêm `/admin/certificates/trainer/{ptUserId}` (paged), `/admin/certificates/{id}/preview` (403/404 ownership), `/admin/certificates/{id}/revoke`, `/admin/bookings/{id}/review`, `/admin/trainers/{id}/review`, `/admin/auth/login/verify`, response `202` challenge của `/auth/login`. CHƯA validate YAML parse — user chạy lệnh validate.
+- `authorization-matrix.md`: đã thêm mục "Cert image preview ownership" mô tả bảng điều kiện 404/403/200.
+- `feature-api-matrix.md` / `api-contract.md`: CHƯA cập nhật (bảng cấp feature, không liệt kê từng endpoint; `api-contract.md` chưa đọc lại để khẳng định là cần).
+
+### Sửa lỗ hổng storage key (2026-09-28) — phát hiện khi rà soát CERT-02 sâu hơn
+
+- `UploadsController` tạo key dạng `{category}/{safeName}_{guid}{ext}` — **không chứa userId**. Hệ quả: một PT có thể lấy storage key của tài khoản khác (từ signed URL lúc upload) rồi submit key đó cho cert của mình. Khi đó `ImageUploadedByUserId` = PT đó = `PtUserId`, nên check "uploader == owner" ở preview **vô hiệu hoàn toàn** — đúng cái lỗ hổng mà CERT-02 cố đóng.
+- Đã sửa `UploadsController`: key nay là `{category}/{userIdN}_{safeName}_{random}{ext}`; thiếu user id claim → 401 thay vì ghi `"anonymous"` vào log + key.
+- Đã sửa `CertificatesController.Submit`: kiểm `ImageKeyBelongsTo(storageKey, currentUserId)` trước khi ghi `ImageUploadedByUserId`; sai scope → `DomainException("CERT_IMAGE_NOT_OWNED", ..., 403)`. Có `internal static` để test được mà không cần HTTP.
+- Test: `tests/Fitmate.UnitTests/CertificateImageKeyOwnershipTests.cs` (NEW, 9 case: key của chính mình 2 shape, thiếu `_` separator, key của user khác, key legacy không có scope, 7 dạng malformed gồm traversal, trim, case-insensitive).
+- **Tác động dữ liệu**: không có. Chỉ đổi format key cho **file upload mới**. Storage key cũ vẫn đọc được qua signed URL; nhưng nếu muốn submit lại cert cũ bằng key cũ thì sẽ bị 403 (đúng — không chứng minh được chủ).
+
+### Sửa lỗi phát hiện khi đối chiếu docs ↔ code (2026-09-28)
+- `AdminCertificatesController.Preview` trả `Forbid()` (403) cho cả trường hợp `ImageUploadedByUserId == null`. Điều này **khớp ngược** với quyết định "fail-safe 404" đã ghi ở `requirement-matrix.md`/`risks-and-verification.md`/`authorization-matrix.md`/OpenAPI. Đã sửa code: `null` → `NotFound()` (không tiết lộ sự tồn tại của tài nguyên không xác minh được chủ); mismatch uploader ≠ owner → `Forbid()` (403).
+- `IdempotencyMiddleware` comment nội bộ ghi "chỉ store JSON 2xx/4xx" và remark nói "5xx stored for read-only inspection" — mâu thuẫn với `ShouldStore` (chỉ 2xx + 409). Đã sửa cả hai comment cho khớp code.
+- Handoff cũ ghi "Finance controller chưa wire `X-Finance-Totp`" — SAI. Đã đối chiếu source: `ManualSettlementService` gọi `EnsureAsync` trên cả 5 mutation. Đã sửa handoff.
+
+### Tests
+- Chưa chạy `dotnet test` (theo lệnh user). Đã viết test source cho CERT-01, CERT-02, idempotency scope, finance step-up.
+- Chi tiết file + số case: `docs/review-handoff/requirement-matrix.md` (FIN-07, CERT-01, CERT-02, FIN-09).
+
+### PowerShell commands (chạy local)
+
+```powershell
+# 1. Build
+Set-Location D:\Ky8\exe201\FitmateAI_BE
+dotnet build src/Fitmate.Api/Fitmate.Api.csproj --nologo
+
+# 2. Unit tests — chạy riêng từng nhóm viết ở đợt này
+dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --nologo --verbosity minimal `
+  --filter "FullyQualifiedName~Certificate"
+dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --nologo --verbosity minimal `
+  --filter "FullyQualifiedName~IdempotencyMiddleware"
+dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --nologo --verbosity minimal `
+  --filter "FullyQualifiedName~FinanceStepUp"
+dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --nologo --verbosity minimal `
+  --filter "FullyQualifiedName~AuthSession"
+dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --nologo --verbosity minimal `
+  --filter "FullyQualifiedName~PasswordPolicy"
+
+# 3. Toàn bộ unit tests (khuyến nghị trước bàn giao)
+dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --nologo --verbosity minimal
+
+# 4. Validate OpenAPI sau khi thêm 6 path mới
+Set-Location D:\Ky8\exe201\FitmateAI_BE
+npx @redocly/cli lint docs/backend-release/openapi/fitmate-v1.yaml
+```
+
+### Migration `20260928130000_CertificateOwnership` — pre-flight
+
+1. **DB đích**: chỉ áp dụng lên môi trường local Postgres (Docker compose service `postgres`) hoặc staging clone.
+   **KHÔNG** chạy trên production cho tới khi operator duyệt plan rollback. Production là managed Postgres DigitalOcean (DEC-030) — cần backup của nhà cung cấp trước, xem `runbooks/`.
+2. **Tác động dữ liệu**:
+   - Thêm **một cột nullable** `image_uploaded_by_user_id uuid NULL` + index trên bảng `certificates`.
+   - **Không backfill.** Mọi cert có sẵn sẽ có `NULL`.
+   - Hệ quả nghiệp vụ: `GET /admin/certificates/{id}/preview` trả **404** cho toàn bộ cert cũ tới khi có bằng chứng ai upload. Admin vẫn thấy metadata (list/approve/reject/revoke) — chỉ mất khả năng xem ảnh. Đây là hành vi fail-safe có chủ đích.
+   - Không `NOT NULL`, không default, không rewrite bảng lớn → lock nhẹ, thời gian thực thi ngắn.
+3. **Thứ tự thao tác**:
+   1. Backup local: `docker exec fitmate-postgres-1 pg_dump -U fitmate -d fitmate > cert-backup.sql`
+      (production: dùng managed backup của nhà cung cấp, không `pg_dump` ad-hoc qua tunnel).
+   2. Xem trạng thái migration hiện tại:
+      `dotnet ef migrations list --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api`
+   3. Apply: `dotnet ef database update --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api`
+   4. Kiểm tra schema đích:
+      `docker exec -it fitmate-postgres-1 psql -U fitmate -d fitmate -c "\d certificates"`
+      Expect: cột `image_uploaded_by_user_id uuid NULL` + `index IX_certificates_ImageUploadedByUserId`.
+   5. Restart API để controller mới đọc column.
+   6. Smoke test (mục kế tiếp).
+4. **Backfill (tùy chọn, chỉ khi operator có bằng chứng)**:
+   ```sql
+   -- CHỈ chạy khi đã xác minh được mọi cert cũ thuộc đúng PtUserId.
+   UPDATE certificates
+      SET image_uploaded_by_user_id = pt_user_id
+    WHERE image_storage_key IS NOT NULL
+      AND image_uploaded_by_user_id IS NULL;
+   ```
+   Không tự ý chạy câu này. Không có bằng chứng thì để `NULL` — preview trả 404 là hành vi đúng.
+5. **Rollback**:
+   ```powershell
+   dotnet ef database update 20260928120000_AdminSessionSecurity `
+     --project src/Fitmate.Infrastructure --startup-project src/Fitmate.Api
+   ```
+   Migration `Down` drop index rồi drop column. Mất dữ liệu cột đã backfill (nếu có) — lưu ý trước khi rollback.
+
+### Smoke test sau khi apply (user thực hiện)
+
+```powershell
+# 1) Khởi động Postgres + API
+Set-Location D:\Ky8\exe201\FitmateAI_BE
+docker compose up -d postgres
+docker compose up -d api
+
+# 2) Đăng nhập admin (MFA nếu đã bật) — lấy access token
+$admin = Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/login `
+  -Headers @{ 'X-Fitmate-Client' = 'admin-web' } `
+  -ContentType 'application/json' `
+  -Body (@{ email = '<admin-email>'; password = '<password>' } | ConvertTo-Json)
+$h = @{ Authorization = "Bearer $($admin.accessToken)"; 'X-Fitmate-Client' = 'admin-web' }
+
+# 3) Danh sách cert phân trang: page/pageSize phải được echo lại trong response
+Invoke-RestMethod -Uri "http://localhost:5116/api/v1/admin/certificates/trainer/<ptUserId>?page=1&pageSize=25" -Headers $h
+
+# 4) Preview:
+#    cert MỚI (submit sau migration)  -> 200 + { url }
+#    cert CŨ (trước migration)         -> 404 (ImageUploadedByUserId NULL)
+Invoke-RestMethod -Uri "http://localhost:5116/api/v1/admin/certificates/<certId>/preview" -Headers $h
+
+# 5) Idempotency sau 400: cùng key + payload đã sửa phải tới controller (không bị replay 400)
+#    Xem hành vi mong đợi trong tests/Fitmate.UnitTests/IdempotencyMiddlewareTests.cs
+```
+
+### Smoke test password policy (chạy được không cần migration)
+
+```powershell
+Set-Location D:\Ky8\exe201\FitmateAI_BE
+docker compose up -d postgres api
+
+# A) Đăng ký với mật khẩu 8 ký tự → phải bị từ chối 400 với message "at least 12 characters"
+try {
+  Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
+    -ContentType 'application/json' `
+    -Body (@{ email = 'pwshort@test.local'; password = 'Short1!'; full_name = 'Short Pass'; role = 'member' } | ConvertTo-Json)
+  Write-Host "SAI: đăng ký 8 ký tự phải bị từ chối" -ForegroundColor Red
+} catch {
+  Write-Host "OK: $($_.Exception.Response.StatusCode.value__) $($_.ErrorDetails.Message)" -ForegroundColor Green
+}
+
+# B) Đăng ký với mật khẩu 12 ký tự → 200/201
+Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
+  -ContentType 'application/json' `
+  -Body (@{ email = 'pwlong@test.local'; password = 'TwelveChars1'; full_name = 'Long Pass'; role = 'member' } | ConvertTo-Json)
+
+# C) Tài khoản cũ (đăng ký trước khi deploy bản này, mật khẩu 8 ký tự) vẫn đăng nhập được
+#    → xác nhận không có tác động tới hash/phiên hiện hữu.
+```
+
+## 2026-09-29 — PT Wire Contracts (BE-801) & Scoped Availability Updates (BE-807)
+
+- **BE-801 PT Wire Contracts**:
+  - `ServicesController`: Created explicit `ServiceResponse`, `CreateServiceRequest`, and `UpdateServiceRequest` with `snake_case` JSON properties (`id`, `name`, `description`, `price_vnd`, `duration_minutes`, `is_active`). Replaced direct domain entity exposure.
+  - `CertificatesController`: Created `CertificateResponse` and `CertificatePageResponse` with `snake_case` JSON properties (`id`, `pt_id`, `title`, `issued_by`, `code`, `issue_date`, `status`, `image_url`, `reject_reason`, `verified_at`). Status serialized as lowercase string enum (`pending`, `approved`, `rejected`, `revoked`). Image URL generated via presigned read URL from `ISignedUrlService`.
+  - `TrainersPublicController`: Mapped `Services` in `GetDetailAsync` to `ServiceResponse` so `PTPublicDetail.services` conforms to OpenAPI `Service` schema.
+  - Added unit test suite `tests/Fitmate.UnitTests/PtSerializationContractTests.cs` (6 tests).
+
+- **BE-807 Scoped Availability Updates**:
+  - `IAvailabilityService` / `AvailabilityService`: Added `ListAuthoritativeForPtAsync` (returns all `Open`, `Held`, `Booked` slots for PT in range `[fromUtc, toUtc)`) and `ReplaceScopedAsync` (transactionally replaces only `Open` slots within `[fromUtc, toUtc)`, protecting `Open` slots outside range and never touching `Held`/`Booked` slots).
+  - Validation: rejects slots outside range, rejects batch interval overlaps (`ConflictException` 409), rejects overlap with existing `Held` or `Booked` slots (`ConflictException` 409), validates duration (15..240), computes UTC based on PT profile timezone (`user.Timezone`, fallback `Asia/Ho_Chi_Minh`).
+  - `IAvailabilitySlotStore` / `EfAvailabilitySlotStore`: Added `ReplaceScopedAsync` and `GetPtTimezoneAsync`.
+  - `AvailabilityController`: Added owner `GET /api/v1/me/availability?from=&to=` returning `AvailabilitySlotResponse[]` (`id`, `slot_start_utc`, `slot_start_local`, `duration_minutes`, `status`). Updated `PUT /api/v1/me/availability` to support scoped replacement when `from` and `to` are passed (query or body), preserving legacy behavior when omitted.
+  - Added unit tests in `AvailabilityServiceTests.cs` (5 new tests covering scoped replacement, boundary validation, batch overlap rejection, held/booked conflict rejection, and authoritative listing).
+  - Test evidence: 711 unit tests passing in `Fitmate.UnitTests` (100% pass, 0 fail).
+
+

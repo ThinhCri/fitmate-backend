@@ -89,6 +89,36 @@ paths:
               description: refresh_token HttpOnly Secure SameSite=Lax
               schema:
                 type: string
+        '202':
+          description: |
+            Admin password accepted but a second factor is required. No access token is
+            issued in this response; the caller must complete the challenge.
+            - mfaRequired: complete the challenge with POST /admin/auth/login/verify.
+            - mfaSetupRequired: first-time MFA enrolment; the setup token is only valid
+              for POST /admin/auth/mfa/setup and /admin/auth/mfa/verify.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    required: [mfaRequired, challengeId, expiresIn]
+                    properties:
+                      mfaRequired:
+                        type: boolean
+                        enum: [true]
+                      challengeId:
+                        type: string
+                      expiresIn:
+                        type: integer
+                        description: Challenge TTL in seconds (300).
+                  - type: object
+                    required: [mfaSetupRequired, setupToken]
+                    properties:
+                      mfaSetupRequired:
+                        type: boolean
+                        enum: [true]
+                      setupToken:
+                        type: string
         '401':
           description: Sai email hoặc password
           content:
@@ -96,7 +126,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
         '403':
-          description: Tài khoản bị khóa
+          description: Tài khoản bị khóa hoặc đang chờ xóa (PendingDeletion)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /admin/auth/login/verify:
+    post:
+      tags: [Auth]
+      summary: Complete an admin login MFA challenge
+      description: |
+        Single-use challenge. Consuming it issues a normal session for the web client.
+        A challenge is valid for 5 minutes and at most 5 verification attempts; an
+        exhausted or expired challenge is rejected and cannot be replayed.
+      operationId: verifyAdminLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, code]
+              properties:
+                challengeId:
+                  type: string
+                code:
+                  type: string
+                  description: 6-digit TOTP, or a recovery code when useRecoveryCode is true.
+                useRecoveryCode:
+                  type: boolean
+                  default: false
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+          headers:
+            Set-Cookie:
+              description: refresh_token HttpOnly Secure SameSite=Lax
+              schema:
+                type: string
+        '400':
+          description: Malformed code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          description: Challenge invalid, expired, already consumed, or attempts exhausted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '403':
+          description: Client is not allowed to use cookie auth
           content:
             application/json:
               schema:
@@ -182,7 +271,7 @@ paths:
                   type: string
                 new_password:
                   type: string
-                  minLength: 8
+                  minLength: 12
                   maxLength: 128
       responses:
         '204':
@@ -270,7 +359,7 @@ paths:
                   type: string
                 new_password:
                   type: string
-                  minLength: 8
+                  minLength: 12
                   maxLength: 128
       responses:
         '204':
@@ -437,10 +526,63 @@ paths:
                   $ref: '#/components/schemas/AvailabilitySlot'
 
   /me/availability:
+    get:
+      tags: [Availability]
+      summary: PT xem lịch khả dụng authoritative (gồm Open, Held, Booked) trong range
+      operationId: getMyAvailability
+      parameters:
+        - name: from
+          in: query
+          required: true
+          description: UTC ISO-8601 start boundary
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          description: UTC ISO-8601 end boundary
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AvailabilitySlot'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
     put:
       tags: [Availability]
-      summary: PT cập nhật lịch khả dụng (replace)
+      summary: PT cập nhật lịch khả dụng (scoped replace khi có from/to, hoặc global replace khi không truyền)
       operationId: setMyAvailability
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: Optional UTC ISO-8601 start boundary for scoped replace
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Optional UTC ISO-8601 end boundary for scoped replace
+          schema:
+            type: string
+            format: date-time
       requestBody:
         required: true
         content:
@@ -453,11 +595,23 @@ paths:
                   type: array
                   items:
                     $ref: '#/components/schemas/AvailabilitySlotInput'
+                from:
+                  type: string
+                  format: date-time
+                to:
+                  type: string
+                  format: date-time
       responses:
         '204':
           description: No Content
         '400':
           description: Slot trùng / không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '409':
+          description: Slot trùng lặp hoặc trùng lịch Held/Booked
           content:
             application/json:
               schema:
@@ -2011,6 +2165,118 @@ paths:
               schema:
                 $ref: '#/components/schemas/Certificate'
 
+  /admin/certificates/{id}/revoke:
+    post:
+      tags: [Admin]
+      summary: Revoke an approved certificate (reason bắt buộc)
+      operationId: adminRevokeCertificate
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 5
+                  maxLength: 500
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Certificate'
+        '404':
+          description: Certificate not found
+        '409':
+          description: Certificate is not in a revocable state
+
+  /admin/certificates/trainer/{ptUserId}:
+    get:
+      tags: [Admin]
+      summary: List certificates of one trainer (server-side pagination)
+      operationId: adminListTrainerCertificates
+      parameters:
+        - in: path
+          name: ptUserId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: page
+          description: 1-based page index. Values below 1 are clamped to 1.
+          schema:
+            type: integer
+            minimum: 1
+          default: 1
+        - in: query
+          name: pageSize
+          description: Items per page. Clamped to 1..100 by the server.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+          default: 25
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, total, page, pageSize]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+                  total:
+                    type: integer
+                    description: Total rows matching the filter, not the page length.
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
+        '404':
+          description: Trainer not found
+
+  /admin/certificates/{id}/preview:
+    get:
+      tags: [Admin]
+      summary: Issue a short-lived signed URL for a certificate image
+      description: |
+        Ownership is enforced against the recorded uploader, not a storage-key prefix.
+        A certificate uploaded before the ownership column existed has no recorded
+        uploader and therefore returns 404; it is never attributed automatically.
+      operationId: adminPreviewCertificate
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [url]
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                  expiresInSeconds:
+                    type: integer
+                    description: Signed URL TTL (currently 300 seconds).
+        '403':
+          description: Uploader is recorded but does not own this certificate
+        '404':
+          description: Certificate not found, has no image key, or has no recorded uploader
+
   /admin/bookings:
     get:
       tags: [Admin]
@@ -2266,6 +2532,113 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Report'
+
+  /admin/bookings/{id}/review:
+    get:
+      tags: [Admin]
+      summary: Booking review payload split into appointment, payments and refunds
+      description: |
+        Returns only the fields the admin review screen is allowed to render.
+        Raw payment metadata (gateway charge ids, provider payloads) is never returned.
+      operationId: adminBookingReview
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, appointmentStatus, payments, refunds]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  appointmentStatus:
+                    type: string
+                    description: Appointment state, independent of payment state.
+                  payments:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, status, method, amountVnd, refundedVnd, createdAt]
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        status:
+                          type: string
+                        method:
+                          type: string
+                        amountVnd:
+                          type: integer
+                          format: int64
+                          description: Integer VND. No floating point.
+                        refundedVnd:
+                          type: integer
+                          format: int64
+                        createdAt:
+                          type: string
+                          format: date-time
+                  refunds:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, paymentId, status, amountVnd, reason, createdAt]
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        paymentId:
+                          type: string
+                          format: uuid
+                        status:
+                          type: string
+                        amountVnd:
+                          type: integer
+                          format: int64
+                        reason:
+                          type: string
+                        transferReference:
+                          type: string
+                          nullable: true
+                        createdAt:
+                          type: string
+                          format: date-time
+        '404':
+          description: Booking not found
+        '403':
+          description: Caller is not an admin
+
+  /admin/trainers/{id}/review:
+    get:
+      tags: [Admin]
+      summary: Trainer review payload
+      operationId: adminTrainerReview
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  specialty:
+                    type: string
+                    nullable: true
+                  experienceYears:
+                    type: integer
+                    nullable: true
+                  bio:
+                    type: string
+                    nullable: true
+        '404':
+          description: Trainer not found
+        '403':
+          description: Caller is not an admin
 
   /admin/audit:
     get:
@@ -2762,7 +3135,7 @@ components:
           format: email
         password:
           type: string
-          minLength: 8
+          minLength: 12
           maxLength: 128
         full_name:
           type: string

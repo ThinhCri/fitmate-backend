@@ -33,6 +33,18 @@ public class AvailabilityServiceTests
             return Task.CompletedTask;
         }
 
+        public Task ReplaceScopedAsync(Guid ptUserId, DateTime fromUtc, DateTime toUtc, IReadOnlyList<AvailabilitySlot> newSlots, CancellationToken ct)
+        {
+            var toRemove = Items.Where(s => s.PtUserId == ptUserId && s.Status == AvailabilityStatus.Open && s.SlotStartUtc >= fromUtc && s.SlotStartUtc < toUtc).ToList();
+            foreach (var r in toRemove) Items.Remove(r);
+            Items.AddRange(newSlots);
+            SaveCalls++;
+            return Task.CompletedTask;
+        }
+
+        public Task<string?> GetPtTimezoneAsync(Guid ptUserId, CancellationToken ct)
+            => Task.FromResult<string?>("Asia/Ho_Chi_Minh");
+
         public Task AddAsync(AvailabilitySlot slot, CancellationToken ct)
         {
             Items.Add(slot);
@@ -145,5 +157,119 @@ public class AvailabilityServiceTests
             toUtc: DateTime.UtcNow.AddMinutes(-1),
             ct: CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task ReplaceScoped_ReplacesOnlyOpenInRange_PreservesOutsideAndHeld()
+    {
+        var store = new InMemoryStore();
+        var pt = Guid.NewGuid();
+        var svc = NewService(store);
+
+        // Outside range (yesterday): Open
+        var outsideOpen = AvailabilitySlot.Create(pt, new DateTime(2026, 12, 1, 9, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        // Inside range: Open (should be replaced)
+        var insideOpen = AvailabilitySlot.Create(pt, new DateTime(2026, 12, 5, 9, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        // Inside range: Booked (should NEVER be replaced or deleted)
+        var insideBooked = AvailabilitySlot.Create(pt, new DateTime(2026, 12, 5, 14, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        insideBooked.MarkBooked();
+
+        store.Items.AddRange(new[] { outsideOpen, insideOpen, insideBooked });
+
+        var fromUtc = new DateTime(2026, 12, 5, 0, 0, 0, DateTimeKind.Utc);
+        var toUtc = new DateTime(2026, 12, 6, 0, 0, 0, DateTimeKind.Utc);
+
+        // New slot inside range (at 10:00 local, doesn't overlap 14:00 booked)
+        var newSlot = MakeSlot(new DateTime(2026, 12, 5, 10, 0, 0), "Asia/Ho_Chi_Minh", 60);
+
+        var result = await svc.ReplaceScopedAsync(pt, fromUtc, toUtc, new[] { newSlot }, CancellationToken.None);
+
+        result.Should().HaveCount(1);
+        store.Items.Should().Contain(outsideOpen);
+        store.Items.Should().NotContain(insideOpen);
+        store.Items.Should().Contain(insideBooked);
+        store.Items.Should().Contain(s => s.SlotStartLocal == new DateTime(2026, 12, 5, 10, 0, 0));
+    }
+
+    [Fact]
+    public async Task ReplaceScoped_SlotOutsideRange_ThrowsValidationException()
+    {
+        var store = new InMemoryStore();
+        var pt = Guid.NewGuid();
+        var svc = NewService(store);
+
+        var fromUtc = new DateTime(2026, 12, 5, 0, 0, 0, DateTimeKind.Utc);
+        var toUtc = new DateTime(2026, 12, 6, 0, 0, 0, DateTimeKind.Utc);
+
+        // Slot on Dec 4 (outside range)
+        var slotOutside = MakeSlot(new DateTime(2026, 12, 4, 10, 0, 0), "Asia/Ho_Chi_Minh", 60);
+
+        var act = () => svc.ReplaceScopedAsync(pt, fromUtc, toUtc, new[] { slotOutside }, CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task ReplaceScoped_IntervalOverlapInBatch_ThrowsConflictException()
+    {
+        var store = new InMemoryStore();
+        var pt = Guid.NewGuid();
+        var svc = NewService(store);
+
+        var fromUtc = new DateTime(2026, 12, 5, 0, 0, 0, DateTimeKind.Utc);
+        var toUtc = new DateTime(2026, 12, 6, 0, 0, 0, DateTimeKind.Utc);
+
+        // Slot 1: 09:00 - 10:00 (60m)
+        var slot1 = MakeSlot(new DateTime(2026, 12, 5, 9, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        // Slot 2: 09:30 - 10:30 (overlaps with Slot 1)
+        var slot2 = MakeSlot(new DateTime(2026, 12, 5, 9, 30, 0), "Asia/Ho_Chi_Minh", 60);
+
+        var act = () => svc.ReplaceScopedAsync(pt, fromUtc, toUtc, new[] { slot1, slot2 }, CancellationToken.None);
+        await act.Should().ThrowAsync<ConflictException>();
+    }
+
+    [Fact]
+    public async Task ReplaceScoped_OverlapWithHeldOrBooked_ThrowsConflictException()
+    {
+        var store = new InMemoryStore();
+        var pt = Guid.NewGuid();
+        var svc = NewService(store);
+
+        var fromUtc = new DateTime(2026, 12, 5, 0, 0, 0, DateTimeKind.Utc);
+        var toUtc = new DateTime(2026, 12, 6, 0, 0, 0, DateTimeKind.Utc);
+
+        // Existing held slot at 09:00 for 60m
+        var existingHeld = AvailabilitySlot.Create(pt, new DateTime(2026, 12, 5, 9, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        existingHeld.MarkHeld();
+        store.Items.Add(existingHeld);
+
+        // New slot at 09:30 for 60m (overlaps with 09:00-10:00 held slot)
+        var newOverlapping = MakeSlot(new DateTime(2026, 12, 5, 9, 30, 0), "Asia/Ho_Chi_Minh", 60);
+
+        var act = () => svc.ReplaceScopedAsync(pt, fromUtc, toUtc, new[] { newOverlapping }, CancellationToken.None);
+        await act.Should().ThrowAsync<ConflictException>();
+    }
+
+    [Fact]
+    public async Task ListAuthoritativeForPt_ReturnsAllSlotStatuses()
+    {
+        var store = new InMemoryStore();
+        var pt = Guid.NewGuid();
+        var svc = NewService(store);
+
+        var sOpen = AvailabilitySlot.Create(pt, new DateTime(2026, 12, 5, 9, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        var sHeld = AvailabilitySlot.Create(pt, new DateTime(2026, 12, 5, 11, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        sHeld.MarkHeld();
+        var sBooked = AvailabilitySlot.Create(pt, new DateTime(2026, 12, 5, 14, 0, 0), "Asia/Ho_Chi_Minh", 60);
+        sBooked.MarkBooked();
+
+        store.Items.AddRange(new[] { sOpen, sHeld, sBooked });
+
+        var fromUtc = new DateTime(2026, 12, 5, 0, 0, 0, DateTimeKind.Utc);
+        var toUtc = new DateTime(2026, 12, 6, 0, 0, 0, DateTimeKind.Utc);
+
+        var slots = await svc.ListAuthoritativeForPtAsync(pt, fromUtc, toUtc, CancellationToken.None);
+
+        slots.Should().HaveCount(3);
+        slots.Select(s => s.Status).Should().Contain(new[] { AvailabilityStatus.Open, AvailabilityStatus.Held, AvailabilityStatus.Booked });
     }
 }
