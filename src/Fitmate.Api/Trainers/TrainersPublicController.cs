@@ -39,6 +39,11 @@ public class TrainersPublicController : ControllerBase
     public async Task<IActionResult> Get(Guid ptUserId, CancellationToken ct)
     {
         var detail = await _svc.GetDetailAsync(ptUserId, ct);
-        return Ok(detail);
+        return Ok(new
+        {
+            profile = detail.Profile,
+            bio = detail.Bio,
+            services = detail.Services.Select(ServicesController.ToResponse).ToList()
+        });
     }
 }

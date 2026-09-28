@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fitmate.Api.Auth;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Trainers;
@@ -22,17 +23,17 @@ public class ServicesController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<Service>>> List(
+    public async Task<ActionResult<IReadOnlyList<ServiceResponse>>> List(
         [FromServices] ICurrentUserAccessor current,
         [FromQuery] bool include_inactive = false,
         CancellationToken ct = default)
     {
         var items = await _services.ListMineAsync(current.GetUserIdOrThrow(), include_inactive, ct);
-        return Ok(items);
+        return Ok(items.Select(ToResponse).ToList());
     }
 
     [HttpPost]
-    public async Task<ActionResult<Service>> Create(
+    public async Task<ActionResult<ServiceResponse>> Create(
         [FromServices] ICurrentUserAccessor current,
         [FromBody] CreateServiceRequest body,
         CancellationToken ct)
@@ -40,21 +41,21 @@ public class ServicesController : ControllerBase
         var s = await _services.CreateAsync(
             current.GetUserIdOrThrow(),
             body.Name, body.Description, body.PriceVnd, body.DurationMinutes, ct);
-        return CreatedAtAction(nameof(Get), new { id = s.Id }, s);
+        return CreatedAtAction(nameof(Get), new { id = s.Id }, ToResponse(s));
     }
 
     [HttpGet("{id:guid}")]
-    public async Task<ActionResult<Service>> Get(
+    public async Task<ActionResult<ServiceResponse>> Get(
         [FromServices] ICurrentUserAccessor current,
         Guid id,
         CancellationToken ct)
     {
         var s = await _services.GetAsync(current.GetUserIdOrThrow(), id, ct);
-        return s is null ? NotFound() : Ok(s);
+        return s is null ? NotFound() : Ok(ToResponse(s));
     }
 
     [HttpPatch("{id:guid}")]
-    public async Task<ActionResult<Service>> Update(
+    public async Task<ActionResult<ServiceResponse>> Update(
         [FromServices] ICurrentUserAccessor current,
         Guid id,
         [FromBody] UpdateServiceRequest body,
@@ -64,7 +65,7 @@ public class ServicesController : ControllerBase
             current.GetUserIdOrThrow(),
             id,
             body.Name, body.Description, body.PriceVnd, body.DurationMinutes, body.IsActive, ct);
-        return Ok(s);
+        return Ok(ToResponse(s));
     }
 
     [HttpDelete("{id:guid}")]
@@ -76,7 +77,28 @@ public class ServicesController : ControllerBase
         await _services.DeactivateAsync(current.GetUserIdOrThrow(), id, ct);
         return NoContent();
     }
+
+    internal static ServiceResponse ToResponse(Service s) =>
+        new(s.Id, s.Name, s.Description, s.PriceVnd, s.DurationMinutes, s.IsActive);
 }
 
-public sealed record CreateServiceRequest(string Name, string? Description, long PriceVnd, int DurationMinutes);
-public sealed record UpdateServiceRequest(string? Name, string? Description, long? PriceVnd, int? DurationMinutes, bool? IsActive);
+public sealed record ServiceResponse(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("description")] string? Description,
+    [property: JsonPropertyName("price_vnd")] long PriceVnd,
+    [property: JsonPropertyName("duration_minutes")] int DurationMinutes,
+    [property: JsonPropertyName("is_active")] bool IsActive);
+
+public sealed record CreateServiceRequest(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("description")] string? Description,
+    [property: JsonPropertyName("price_vnd")] long PriceVnd,
+    [property: JsonPropertyName("duration_minutes")] int DurationMinutes);
+
+public sealed record UpdateServiceRequest(
+    [property: JsonPropertyName("name")] string? Name,
+    [property: JsonPropertyName("description")] string? Description,
+    [property: JsonPropertyName("price_vnd")] long? PriceVnd,
+    [property: JsonPropertyName("duration_minutes")] int? DurationMinutes,
+    [property: JsonPropertyName("is_active")] bool? IsActive);
