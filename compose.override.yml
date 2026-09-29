@@ -3,14 +3,29 @@
 
 services:
   api:
+    # Keep the hot-reload SDK image separate from the production-style runtime
+    # image in compose.yml. Reusing fitmate-api:local can retain its ENTRYPOINT
+    # and cause the dev command to be parsed as a Fitmate CLI command.
+    image: fitmate-api-dev:local
     build:
       dockerfile: src/Fitmate.Api/Dockerfile.dev
     volumes:
       - ./src:/src/src
+      # Hide Windows build artifacts from the Linux SDK container. Without
+      # these overlays, stale obj files contain backslash paths and make
+      # dotnet watch fail while loading static web assets.
+      - /src/src/Fitmate.Domain/bin
+      - /src/src/Fitmate.Domain/obj
+      - /src/src/Fitmate.Application/bin
+      - /src/src/Fitmate.Application/obj
+      - /src/src/Fitmate.Infrastructure/bin
+      - /src/src/Fitmate.Infrastructure/obj
+      - /src/src/Fitmate.Api/bin
+      - /src/src/Fitmate.Api/obj
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_URLS: http://+:5116
       DOTNET_USE_POLLING_FILE_WATCHER: "true"
     command: ["dotnet", "watch", "run", "--project", "src/Fitmate.Api/Fitmate.Api.csproj", "--urls", "http://+:5116"]
-    ports:
+    ports: !override
       - "127.0.0.1:5116:5116"

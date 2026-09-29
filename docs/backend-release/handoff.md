@@ -1399,4 +1399,13 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Replaced the nonexistent `aquasecurity/trivy-action@0.28.0` ref with the official `v0.36.0` release. The failing Docker job had stopped while resolving the action, before either Dockerfile was built.
 - Repository diff checks passed before commit. The definitive Gitleaks and action-resolution verification remains a new GitHub Actions run after the commit is pushed.
 
+## 2026-09-29 — Local Compose hot-reload repair (verified)
+
+- `docker compose up api` reused the production-style `fitmate-api:local` image, whose `ENTRYPOINT` caused the override's `dotnet watch` command to be interpreted as the application's `dotnet` CLI argument.
+- The local override now uses the distinct `fitmate-api-dev:local` image, exposes only port `5116`, and aligns `ASPNETCORE_URLS` with that port.
+- `Dockerfile.dev` now uses the .NET 10 SDK required by the current `net10.0` projects.
+- Operator rerun required: `docker compose up --build api`, then verify `/health/ready` and `/swagger` on `http://localhost:5116`.
+- First rerun built all four .NET 10 projects with 0 warnings and 0 errors, then `dotnet watch` encountered a Windows `obj\\Debug` path inside the Linux bind mount. The override now masks every project `bin`/`obj` directory with container-only anonymous volumes. Rerun with renewed anonymous volumes before runtime verification.
+- Verification after `docker compose up --build --force-recreate --renew-anon-volumes api`: all four projects built with 0 warnings and 0 errors; role bootstrap and outbox queries reached PostgreSQL; Kestrel listened on `http://[::]:5116`; `GET http://127.0.0.1:5116/health/live` returned HTTP 200. The `dotnet watch` static-web-assets read message and failed in-container browser launch are non-fatal tooling diagnostics; the application remains running.
+
 
