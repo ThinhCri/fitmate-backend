@@ -70,9 +70,20 @@ public sealed class UploadsController : ControllerBase
                 "File content does not match the specified MIME type signature."));
 
         // 6) Build storage key.
+        //    CERT-02: the key embeds the uploader id so a storage key alone proves
+        //    ownership. Without it, a client could submit a key issued to another
+        //    account and the "uploader == owner" check would be trivially bypassed.
+        //    Format: {category}/{userIdN}_{safeName}_{random}{ext}
         var ext = GetExtension(contentType);
         var safeName = SanitizeFilename(Path.GetFileNameWithoutExtension(request.File.FileName));
-        var storageKey = $"{request.Category.ToLowerInvariant()}/{safeName}_{Guid.NewGuid():N}{ext}";
+        var uploaderId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? User.FindFirst("sub")?.Value;
+        if (string.IsNullOrWhiteSpace(uploaderId))
+            return Unauthorized(MakeProblem(401, "UNAUTHENTICATED", "Unauthenticated", "A user id claim is required to upload."));
+        var userScope = Guid.TryParse(uploaderId, out var parsedUserId)
+            ? parsedUserId.ToString("N")
+            : SanitizeFilename(uploaderId);
+        var storageKey = $"{request.Category.ToLowerInvariant()}/{userScope}_{safeName}_{Guid.NewGuid():N}{ext}";
 
         // 7) Stream to storage.
         var uri = await _storage.UploadAsync(storageKey, stream, contentType, ct);
@@ -82,11 +93,8 @@ public sealed class UploadsController : ControllerBase
             storageKey,
             TimeSpan.FromMinutes(_options.SignedUrlTtlMinutes));
 
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-            ?? User.FindFirst("sub")?.Value ?? "anonymous";
-
         _logger.LogInformation("Upload: user {UserId} uploaded {Key} stored at {Uri}, signed URL expiring in {Minutes} min",
-            userId, storageKey, uri, _options.SignedUrlTtlMinutes);
+            uploaderId, storageKey, uri, _options.SignedUrlTtlMinutes);
 
         return Created(uri, new UploadResponse(storageKey, uri.ToString(), signedUrl.ToString()));
     }

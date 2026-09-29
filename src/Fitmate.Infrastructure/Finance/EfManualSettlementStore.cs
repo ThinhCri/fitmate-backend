@@ -72,7 +72,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
 
     public async Task<ManualPtSettlement> UpdateAsync(Guid appointmentId, Guid adminId, string action, Action<SettlementContext> update, CancellationToken ct)
     {
-        var paymentId = await db.Payments.Where(p => p.AppointmentId == appointmentId).Select(p => (Guid?)p.Id).SingleOrDefaultAsync(ct)
+        var paymentId = await db.Appointments.Where(p => p.Id == appointmentId).Select(p => p.PaymentId).SingleOrDefaultAsync(ct)
             ?? throw new NotFoundException("PAYMENT_NOT_FOUND", "Payment not found.");
         return await payments.ExecuteInTransactionAsync(async () =>
         {
@@ -89,7 +89,9 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             }
             var wasPaid = settlement.Status == "paid";
             var pending = await db.Refunds.AnyAsync(r => r.PaymentId == paymentId && r.Status == RefundStatus.Pending, ct);
-            update(new SettlementContext(appointment, payment, settlement, pending));
+            var dispute = await db.SupportTickets.AnyAsync(t => t.BookingId == appointmentId &&
+                t.Status != Fitmate.Domain.Support.SupportTicketStatus.Resolved && t.Status != Fitmate.Domain.Support.SupportTicketStatus.Closed, ct);
+            update(new SettlementContext(appointment, payment, settlement, pending, dispute));
             if (wasPaid) return settlement; // Do not emit duplicate receipts/audits.
             if (settlement.BankReference != null)
             {

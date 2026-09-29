@@ -4,6 +4,7 @@ namespace Fitmate.Application.Support;
 
 public interface ISupportTicketStore
 {
+    Task<bool> CanLinkBookingAsync(Guid bookingId, Guid actorId, CancellationToken ct) => Task.FromResult(false);
     Task<SupportTicket?> FindByIdAsync(Guid id, CancellationToken ct);
     Task<(IReadOnlyList<SupportTicket> Items, int Total)> ListByUserPagedAsync(
         Guid userId,

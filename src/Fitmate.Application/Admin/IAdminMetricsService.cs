@@ -7,6 +7,7 @@ public sealed record RecentBookingSummary(
     Guid MemberId,
     Guid PtUserId,
     long ActualPaidVnd,
+    long PlatformFeeVnd,
     string Status,
     DateTime CreatedAt);
 

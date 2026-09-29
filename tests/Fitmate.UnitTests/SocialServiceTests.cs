@@ -30,6 +30,7 @@ public class SocialServiceTests
         public Task<Certificate?> FindByIdentityAsync(Guid ptUserId, string title, string issuedBy, string code, CancellationToken ct) => Task.FromResult<Certificate?>(null);
         public Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct) => Task.FromResult<Certificate?>(Certs.GetValueOrDefault(certId));
         public Task<IReadOnlyList<Certificate>> ListByPtAsync(Guid ptUserId, CancellationToken ct) => Task.FromResult<IReadOnlyList<Certificate>>(new List<Certificate>());
+        public Task<(IReadOnlyList<Certificate> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct) => Task.FromResult<(IReadOnlyList<Certificate>, int)>((new List<Certificate>(), 0));
         public Task<(IReadOnlyList<Certificate> Items, int Total)> ListPendingPagedAsync(int page, int pageSize, CancellationToken ct) => Task.FromResult<(IReadOnlyList<Certificate>, int)>((new List<Certificate>(), 0));
         public Task AddAsync(Certificate cert, CancellationToken ct) { Certs[cert.Id] = cert; return Task.CompletedTask; }
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;

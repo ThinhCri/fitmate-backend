@@ -454,6 +454,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("SessionId").HasColumnType("uuid");
                     b.Property<string>("DeviceLabel")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -465,7 +466,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
-                    b.Property<DateTime?>("RevokedAt")
+                    b.Property<DateTime?>("RevokedAt").IsConcurrencyToken()
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("TokenHash")
@@ -1678,6 +1679,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("ImageUploadedByUserId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ImageStorageKey")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -1715,6 +1719,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ImageUploadedByUserId")
+                        .HasDatabaseName("IX_certificates_ImageUploadedByUserId");
 
                     b.HasIndex("PtUserId", "Status");
 
@@ -2376,6 +2383,28 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                 b.ToTable("manual_pt_settlements");
                 b.HasOne("Fitmate.Domain.Booking.Appointment", null).WithMany().HasForeignKey("AppointmentId").OnDelete(DeleteBehavior.Restrict).IsRequired();
                 b.HasOne("Fitmate.Domain.Payment.Payment", null).WithMany().HasForeignKey("PaymentId").OnDelete(DeleteBehavior.Restrict).IsRequired();
+            });
+            modelBuilder.Entity("Fitmate.Domain.Identity.AuthSession", b =>
+            {
+                b.Property<Guid>("Id").ValueGeneratedOnAdd().HasColumnType("uuid");
+                b.Property<Guid>("UserId").HasColumnType("uuid");
+                b.Property<string>("SecurityStamp").IsRequired().HasMaxLength(256).HasColumnType("character varying(256)");
+                b.Property<string>("AuthenticationMethod").IsRequired().HasMaxLength(16).HasColumnType("character varying(16)");
+                b.Property<DateTime>("CreatedAt").HasColumnType("timestamp with time zone");
+                b.Property<DateTime>("ExpiresAt").HasColumnType("timestamp with time zone");
+                b.Property<DateTime?>("RevokedAt").HasColumnType("timestamp with time zone");
+                b.Property<DateTime?>("MfaVerifiedAt").HasColumnType("timestamp with time zone");
+                b.HasKey("Id"); b.HasIndex("UserId", "RevokedAt"); b.ToTable("auth_sessions");
+            });
+            modelBuilder.Entity("Fitmate.Domain.Identity.AdminLoginChallenge", b =>
+            {
+                b.Property<string>("TokenHash").HasMaxLength(64).HasColumnType("character varying(64)");
+                b.Property<Guid>("UserId").HasColumnType("uuid");
+                b.Property<string>("SecurityStamp").IsRequired().HasMaxLength(256).HasColumnType("character varying(256)");
+                b.Property<DateTime>("ExpiresAt").HasColumnType("timestamp with time zone");
+                b.Property<int>("Attempts").HasColumnType("integer");
+                b.Property<bool>("Consumed").HasColumnType("boolean");
+                b.HasKey("TokenHash"); b.HasIndex("ExpiresAt"); b.ToTable("admin_login_challenges");
             });
 #pragma warning restore 612, 618
         }

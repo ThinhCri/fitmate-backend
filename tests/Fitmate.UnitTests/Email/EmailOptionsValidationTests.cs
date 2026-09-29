@@ -72,6 +72,21 @@ public class EmailOptionsValidationTests
         Assert.Contains("FrontendBaseUrl", ex.Message);
     }
 
+    [Theory]
+    [InlineData("smtp-user", null)]
+    [InlineData(null, "smtp-password")]
+    public void ValidateForProduction_PartialSmtpCredentials_Throws(string? username, string? password)
+    {
+        var options = CreateValidOptions();
+        options.SmtpUsername = username;
+        options.SmtpPassword = password;
+
+        var ex = Assert.Throws<InvalidOperationException>(() => options.ValidateForProduction());
+
+        Assert.Contains("SmtpUsername", ex.Message);
+        Assert.Contains("SmtpPassword", ex.Message);
+    }
+
     private static EmailOptions CreateValidOptions() => new()
     {
         SmtpHost = "smtp.example.com",

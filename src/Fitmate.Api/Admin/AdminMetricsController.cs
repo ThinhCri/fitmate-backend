@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Fitmate.Api.Auth;
 using Fitmate.Application.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,15 +15,18 @@ namespace Fitmate.Api.Admin;
 public class AdminMetricsController : ControllerBase
 {
     private readonly IAdminMetricsService _svc;
-    private readonly Fitmate.Application.Outbox.IOutboxStore _outboxStore;
+    private readonly IAdminOutboxService _outbox;
+    private readonly ICurrentUserAccessor _current;
     private static readonly DateTime ProcessStartTimeUtc = DateTime.UtcNow;
 
     public AdminMetricsController(
         IAdminMetricsService svc,
-        Fitmate.Application.Outbox.IOutboxStore outboxStore)
+        IAdminOutboxService outbox,
+        ICurrentUserAccessor current)
     {
         _svc = svc;
-        _outboxStore = outboxStore;
+        _outbox = outbox;
+        _current = current;
     }
 
     [HttpGet("action-required")]
@@ -39,9 +43,7 @@ public class AdminMetricsController : ControllerBase
     [HttpGet("metrics/summary")]
     public async Task<IActionResult> GetMetricsSummary(CancellationToken ct)
     {
-        var pendingOutbox = await _outboxStore.GetPendingCountAsync(ct);
-        var deadLetterOutbox = await _outboxStore.GetDeadLetterCountAsync(ct);
-        var oldestPendingAge = await _outboxStore.GetOldestPendingAgeAsync(DateTime.UtcNow, ct);
+        var outbox = await _outbox.GetStatsAsync(_current.GetUserIdOrThrow(), ct);
 
         var uptime = DateTime.UtcNow - ProcessStartTimeUtc;
 
@@ -51,11 +53,11 @@ public class AdminMetricsController : ControllerBase
             uptime_seconds = (long)uptime.TotalSeconds,
             outbox = new
             {
-                pending_count = pendingOutbox,
-                dead_letter_count = deadLetterOutbox,
-                oldest_age_seconds = (long)(oldestPendingAge?.TotalSeconds ?? 0)
+                pending_count = outbox.PendingCount,
+                dead_letter_count = outbox.DeadLetterCount,
+                oldest_age_seconds = (long)outbox.OldestPendingAgeSeconds
             },
-            status = deadLetterOutbox > 0 ? "warning" : "healthy"
+            status = outbox.DeadLetterCount > 0 ? "warning" : "healthy"
         });
     }
 
@@ -65,13 +67,11 @@ public class AdminMetricsController : ControllerBase
     [HttpGet("metrics/prometheus")]
     public async Task<IActionResult> GetPrometheusMetrics(CancellationToken ct)
     {
-        var pendingOutbox = await _outboxStore.GetPendingCountAsync(ct);
-        var deadLetterOutbox = await _outboxStore.GetDeadLetterCountAsync(ct);
-        var oldestPendingAge = await _outboxStore.GetOldestPendingAgeAsync(DateTime.UtcNow, ct);
+        var outbox = await _outbox.GetStatsAsync(_current.GetUserIdOrThrow(), ct);
 
         Fitmate.Api.Observability.FitmateMetrics.UpdateOperationalGauges(
-            outboxQueueDepth: pendingOutbox,
-            outboxOldestAgeSeconds: oldestPendingAge?.TotalSeconds ?? 0,
+            outboxQueueDepth: outbox.PendingCount,
+            outboxOldestAgeSeconds: outbox.OldestPendingAgeSeconds,
             refundsPendingCount: 0,
             refundsOldestAgeSeconds: 0);
 

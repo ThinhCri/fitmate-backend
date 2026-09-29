@@ -142,4 +142,9 @@ public static class ErrorCodes
         public const string ConcurrentMutation = "FITMATE.OUTBOX.CONCURRENT_MUTATION";
         public const string FinancialReplayBlocked = "FITMATE.OUTBOX.FINANCIAL_REPLAY_BLOCKED";
     }
+
+    public static class Support
+    {
+        public const string TicketClosed = "FITMATE.SUPPORT.TICKET_CLOSED";
+    }
 }

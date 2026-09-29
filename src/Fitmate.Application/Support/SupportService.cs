@@ -1,4 +1,5 @@
 using Fitmate.Application.Outbox;
+using Fitmate.Domain.Common;
 using Fitmate.Domain.Support;
 
 namespace Fitmate.Application.Support;
@@ -20,11 +21,20 @@ public class SupportService : ISupportService
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Subject))
-            throw new ArgumentException("Subject is required.", nameof(request.Subject));
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Subject is required.",
+                new Dictionary<string, string[]> { ["subject"] = new[] { "required" } });
         if (string.IsNullOrWhiteSpace(request.Category))
-            throw new ArgumentException("Category is required.", nameof(request.Category));
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Category is required.",
+                new Dictionary<string, string[]> { ["category"] = new[] { "required" } });
         if (string.IsNullOrWhiteSpace(request.Message))
-            throw new ArgumentException("Initial message is required.", nameof(request.Message));
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Initial message is required.",
+                new Dictionary<string, string[]> { ["message"] = new[] { "required" } });
 
         var priority = SupportTicketPriority.Normal;
         if (!string.IsNullOrWhiteSpace(request.Priority) &&
@@ -40,6 +50,13 @@ public class SupportService : ISupportService
             priority,
             request.Message,
             request.AttachmentUrls);
+
+        if (request.BookingId.HasValue)
+        {
+            if (!await _store.CanLinkBookingAsync(request.BookingId.Value, userId, ct))
+                throw new Fitmate.Domain.Common.NotFoundException("BOOKING_NOT_FOUND", "Booking not found.");
+            ticket.LinkBooking(request.BookingId.Value);
+        }
 
         await _store.AddAsync(ticket, ct);
         await _store.SaveChangesAsync(ct);
@@ -76,7 +93,8 @@ public class SupportService : ISupportService
 
         SupportTicketStatus? status = null;
         if (!string.IsNullOrWhiteSpace(statusStr) &&
-            Enum.TryParse<SupportTicketStatus>(statusStr, true, out var parsedStatus))
+            Enum.TryParse<SupportTicketStatus>(statusStr, true, out var parsedStatus) &&
+            Enum.IsDefined(parsedStatus))
         {
             status = parsedStatus;
         }
@@ -97,6 +115,17 @@ public class SupportService : ISupportService
         var ticket = await _store.FindByIdAsync(ticketId, ct);
         if (ticket is null || ticket.UserId != userId)
             return null;
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Reply message is required.",
+                new Dictionary<string, string[]> { ["message"] = new[] { "required" } });
+
+        if (ticket.Status == SupportTicketStatus.Closed)
+            throw new ConflictException(
+                ErrorCodes.Support.TicketClosed,
+                "Ticket đã đóng, không thể trả lời thêm.");
 
         ticket.AddUserReply(userId, request.Message, request.AttachmentUrls);
         await _store.SaveChangesAsync(ct);
@@ -129,7 +158,8 @@ public class SupportService : ISupportService
 
         SupportTicketStatus? status = null;
         if (!string.IsNullOrWhiteSpace(statusStr) &&
-            Enum.TryParse<SupportTicketStatus>(statusStr, true, out var parsedStatus))
+            Enum.TryParse<SupportTicketStatus>(statusStr, true, out var parsedStatus) &&
+            Enum.IsDefined(parsedStatus))
         {
             status = parsedStatus;
         }
@@ -150,6 +180,17 @@ public class SupportService : ISupportService
         var ticket = await _store.FindByIdAsync(ticketId, ct);
         if (ticket is null)
             return null;
+
+        if (string.IsNullOrWhiteSpace(request.Message))
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Reply message is required.",
+                new Dictionary<string, string[]> { ["message"] = new[] { "required" } });
+
+        if (ticket.Status == SupportTicketStatus.Closed)
+            throw new ConflictException(
+                ErrorCodes.Support.TicketClosed,
+                "Ticket đã đóng, không thể trả lời thêm.");
 
         ticket.AddAdminReply(adminUserId, request.Message, request.AttachmentUrls);
         await _store.SaveChangesAsync(ct);
@@ -175,8 +216,11 @@ public class SupportService : ISupportService
         if (ticket is null)
             return null;
 
-        if (!Enum.TryParse<SupportTicketStatus>(request.Status, true, out var parsedStatus))
-            throw new ArgumentException($"Invalid ticket status '{request.Status}'.", nameof(request.Status));
+        if (!Enum.TryParse<SupportTicketStatus>(request.Status, true, out var parsedStatus) || !Enum.IsDefined(parsedStatus))
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                $"Invalid ticket status '{request.Status}'.",
+                new Dictionary<string, string[]> { ["status"] = new[] { "not a defined ticket status" } });
 
         ticket.ChangeStatus(parsedStatus);
         await _store.SaveChangesAsync(ct);

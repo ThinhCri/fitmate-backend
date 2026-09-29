@@ -80,7 +80,8 @@ public class RefreshTokenConfiguration : IEntityTypeConfiguration<RefreshToken>
         e.HasIndex(x => new { x.UserId, x.RevokedAt });
         e.Property(x => x.DeviceLabel).HasMaxLength(200);
         e.Property(x => x.ExpiresAt).IsRequired();
-        e.Property(x => x.RevokedAt);
+        e.Property(x => x.RevokedAt).IsConcurrencyToken();
+        e.Property(x => x.SessionId);
         e.Property(x => x.ReplacedByTokenHash).HasMaxLength(128);
     }
 }

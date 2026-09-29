@@ -25,6 +25,8 @@ public class SupportTicket
 {
     public Guid Id { get; private set; }
     public Guid UserId { get; private set; }
+    public Guid? BookingId { get; private set; }
+    public void LinkBooking(Guid bookingId) => BookingId = bookingId;
     public string Subject { get; private set; } = string.Empty;
     public string Category { get; private set; } = string.Empty;
     public SupportTicketPriority Priority { get; private set; } = SupportTicketPriority.Normal;

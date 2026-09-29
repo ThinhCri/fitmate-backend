@@ -93,13 +93,13 @@ public static class SeedUatDataCommand
 
         if (string.IsNullOrWhiteSpace(personaPassword))
         {
-            Console.Write("[seed-uat] Nhập mật khẩu khởi tạo cho các tài khoản UAT mới (tối thiểu 12 ký tự): ");
+            Console.Write($"[seed-uat] Nhập mật khẩu khởi tạo cho các tài khoản UAT mới ({PasswordPolicy.MinimumLength}-{PasswordPolicy.MaximumLength} ký tự): ");
             personaPassword = Console.ReadLine();
         }
 
-        if (string.IsNullOrWhiteSpace(personaPassword) || personaPassword.Length < 12)
+        if (!PasswordPolicy.IsAcceptable(personaPassword))
         {
-            Console.Error.WriteLine("[seed-uat] LỖI: Mật khẩu khởi tạo không hợp lệ. Độ dài bắt buộc >= 12 ký tự.");
+            Console.Error.WriteLine($"[seed-uat] LỖI: Mật khẩu khởi tạo không hợp lệ. Độ dài bắt buộc {PasswordPolicy.MinimumLength}-{PasswordPolicy.MaximumLength} ký tự.");
             return 1;
         }
 
@@ -113,7 +113,7 @@ public static class SeedUatDataCommand
         services.AddDbContext<FitmateDbContext>(opt => opt.UseNpgsql(connStr));
         services.AddIdentityCore<ApplicationUser>(opt =>
         {
-            opt.Password.RequiredLength = 12;
+            opt.Password.RequiredLength = PasswordPolicy.MinimumLength;
             opt.Password.RequireDigit = true;
             opt.Password.RequireUppercase = false;
             opt.Password.RequireLowercase = false;
@@ -185,7 +185,7 @@ public static class SeedUatDataCommand
                 UpdatedAt = DateTime.UtcNow
             };
 
-            var createRes = await userManager.CreateAsync(user, personaPassword);
+            var createRes = await userManager.CreateAsync(user, personaPassword!);
             if (!createRes.Succeeded)
             {
                 Console.Error.WriteLine($"[seed-uat] Lỗi tạo user '{spec.Email}': {string.Join("; ", createRes.Errors.Select(e => e.Description))}");

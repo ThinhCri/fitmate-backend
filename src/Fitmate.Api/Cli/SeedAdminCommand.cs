@@ -55,11 +55,11 @@ public static class SeedAdminCommand
         }
 
         // Doc password tu STDIN (khong echo).
-        Console.Write($"[seed-admin] Nhap password cho {email}: ");
+        Console.Write($"[seed-admin] Nhap password cho {email} (it nhat {PasswordPolicy.MinimumLength} ky tu): ");
         var password = Console.ReadLine();
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 12)
+        if (!PasswordPolicy.IsAcceptable(password))
         {
-            Console.Error.WriteLine("[seed-admin] Password phai >= 12 ky tu.");
+            Console.Error.WriteLine($"[seed-admin] Password phai {PasswordPolicy.MinimumLength}-{PasswordPolicy.MaximumLength} ky tu.");
             return 1;
         }
 
@@ -76,7 +76,14 @@ public static class SeedAdminCommand
         var services = new ServiceCollection();
         services.AddDbContext<FitmateDbContext>(opt =>
             opt.UseNpgsql(connStr));
-        services.AddIdentityCore<ApplicationUser>(opt => opt.Password.RequiredLength = 12)
+        services.AddIdentityCore<ApplicationUser>(opt =>
+        {
+            opt.Password.RequiredLength = PasswordPolicy.MinimumLength;
+            opt.Password.RequireDigit = true;
+            opt.Password.RequireUppercase = false;
+            opt.Password.RequireLowercase = false;
+            opt.Password.RequireNonAlphanumeric = false;
+        })
             .AddRoles<IdentityRole<Guid>>()
             .AddEntityFrameworkStores<FitmateDbContext>();
         services.AddLogging(b => b.AddConsole());
@@ -127,7 +134,7 @@ public static class SeedAdminCommand
             UpdatedAt = DateTime.UtcNow
         };
 
-        var createResult = await userManager.CreateAsync(admin, password);
+        var createResult = await userManager.CreateAsync(admin, password!);
         if (!createResult.Succeeded)
         {
             Console.Error.WriteLine($"[seed-admin] Tao admin that bai: {string.Join("; ", createResult.Errors.Select(e => e.Description))}");
@@ -156,7 +163,8 @@ public static class SeedAdminCommand
           BOOTSTRAP_ADMIN_EMAIL                             (optional fallback email)
 
         Input:
-          Password doc tu STDIN sau prompt; phai >= 12 ky tu.
+          Password doc tu STDIN sau prompt; phai {PasswordPolicy.MinimumLength}-{PasswordPolicy.MaximumLength} ky tu
+          (xem Fitmate.Domain.Common.PasswordPolicy).
 
         Implementation:
           ASP.NET Core Identity (UserManager + RoleManager); hash qua PasswordHasher PBKDF2.

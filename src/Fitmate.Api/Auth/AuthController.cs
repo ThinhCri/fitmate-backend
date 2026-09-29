@@ -19,6 +19,8 @@ namespace Fitmate.Api.Auth;
 [Route("api/v1/auth")]
 public class AuthController : ControllerBase
 {
+    private IAuthSessionService Sessions => HttpContext.RequestServices.GetRequiredService<IAuthSessionService>();
+    private IAdminLoginChallengeService Challenges => HttpContext.RequestServices.GetRequiredService<IAdminLoginChallengeService>();
     private readonly UserManager<ApplicationUser> _users;
     private readonly RoleManager<IdentityRole<Guid>> _roles;
     private readonly SignInManager<ApplicationUser> _signIn;
@@ -53,6 +55,7 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request, CancellationToken ct)
     {
+        if (!CookieRequestAllowed()) return Forbid();
         var validation = await _registerValidator.ValidateAsync(request, ct);
         if (!validation.IsValid)
             return BadRequest(ValidationProblem(validation));
@@ -93,7 +96,7 @@ public class AuthController : ControllerBase
         await _users.AddToRoleAsync(user, roleName);
 
         var issued = await IssueTokensAsync(user, roleName, null, ct);
-        return StatusCode(201, issued);
+        return StatusCode(201, ClientResponse(issued));
     }
 
     [HttpPost("login")]
@@ -101,6 +104,7 @@ public class AuthController : ControllerBase
     [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> Login([FromBody] LoginRequest request, CancellationToken ct)
     {
+        if (!CookieRequestAllowed()) return Forbid();
         var validation = await _loginValidator.ValidateAsync(request, ct);
         if (!validation.IsValid)
             return BadRequest(ValidationProblem(validation));
@@ -109,7 +113,7 @@ public class AuthController : ControllerBase
         if (user is null || user.IsDeleted)
             return MakeUnauthorized("Invalid email or password.");
 
-        if (user.Status == Domain.Common.UserStatus.Locked)
+        if (user.Status != Domain.Common.UserStatus.Active)
         {
             var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
             var prob = FitmateProblemDetails.Create(403, "Account locked",
@@ -130,16 +134,41 @@ public class AuthController : ControllerBase
         if (!signInResult.Succeeded)
             return MakeUnauthorized("Invalid email or password.");
 
-        var role = (await _users.GetRolesAsync(user)).FirstOrDefault() ?? "member";
+        var role = PreferredRole(await _users.GetRolesAsync(user));
+        if (role.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!user.TwoFactorEnabled)
+            {
+                // This token can only enroll MFA; it never carries the Admin role.
+                var setup = _jwt.Issue(new JwtTokenRequest(user.Id, user.Email!, "MfaSetup", user.FullName,
+                    user.SecurityStamp, "mfa_setup", 300));
+                return Accepted(new { mfaSetupRequired = true, setupToken = setup.AccessToken });
+            }
+            var challenge = await Challenges.CreateAsync(user.Id, user.SecurityStamp!, ct);
+            return Accepted(new { mfaRequired = true, challenge.ChallengeId, challenge.ExpiresIn });
+        }
         var issued = await IssueTokensAsync(user, role, request.DeviceLabel, ct);
-        return Ok(issued);
+        return Ok(ClientResponse(issued));
+    }
+
+    [HttpPost("/api/v1/admin/auth/login/verify")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthLimiter")]
+    public async Task<IActionResult> VerifyLogin([FromBody] VerifyAdminLoginRequest request, CancellationToken ct)
+    {
+        if (!CookieRequestAllowed()) return Forbid();
+        var id = await Challenges.VerifyAsync(request.ChallengeId, request.Code, request.UseRecoveryCode, ct);
+        var user = id.HasValue ? await _users.FindByIdAsync(id.Value.ToString()) : null;
+        if (user is null) return MakeUnauthorized("Invalid or expired verification challenge.");
+        return Ok(ClientResponse(await IssueTokensAsync(user, "Admin", "admin-web", ct)));
     }
 
     [HttpPost("refresh")]
     [AllowAnonymous]
     [EnableRateLimiting("AuthRefreshLimiter")]
-    public async Task<IActionResult> Refresh([FromBody] RefreshRequest? request, CancellationToken ct)
+    public async Task<IActionResult> Refresh([FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] RefreshRequest? request, CancellationToken ct)
     {
+        if (!CookieRequestAllowed(!string.IsNullOrWhiteSpace(request?.RefreshToken))) return Forbid();
         var rawToken = request?.RefreshToken;
         if (string.IsNullOrWhiteSpace(rawToken))
         {
@@ -164,45 +193,51 @@ public class AuthController : ControllerBase
             return MakeUnauthorized("Invalid or expired refresh token.");
         }
 
-        // Resolve userId from the Authorization header claims (caller sends access token too).
-        var userId = ResolveUserIdFromToken();
-        if (userId is null)
+        // Identity comes from the validated refresh session, never an expired access token.
+        var user = await _users.FindByIdAsync(rotated.UserId.ToString());
+        if (user is null || user.IsDeleted || user.Status != Domain.Common.UserStatus.Active || await _users.IsLockedOutAsync(user))
+        {
+            await _refresh.RevokeAsync(rotated.RawToken, ct);
+            ClearRefreshTokenCookie();
             return MakeUnauthorized("Invalid refresh token.");
+        }
 
-        var user = await _users.FindByIdAsync(userId.Value.ToString());
-        if (user is null)
-            return MakeUnauthorized("Invalid refresh token.");
-
-        var role = (await _users.GetRolesAsync(user)).FirstOrDefault() ?? "member";
-        var access = _jwt.Issue(new JwtTokenRequest(user.Id, user.Email ?? "", role, user.FullName));
+        var role = PreferredRole(await _users.GetRolesAsync(user));
+        var isAdmin = role.Equals("admin", StringComparison.OrdinalIgnoreCase);
+        var session = rotated.SessionId.HasValue
+            ? await Sessions.FindActiveAsync(rotated.SessionId.Value, user.Id, user.SecurityStamp!, ct) : null;
+        if (session is null || (isAdmin && (!user.TwoFactorEnabled || session.AuthenticationMethod != "mfa" || session.MfaVerifiedAt is null)))
+        {
+            await _refresh.RevokeAsync(rotated.RawToken, ct);
+            ClearRefreshTokenCookie();
+            return MakeUnauthorized("Admin MFA login is required.");
+        }
+        var access = _jwt.Issue(new JwtTokenRequest(user.Id, user.Email ?? "", role, user.FullName,
+            user.SecurityStamp, session.AuthenticationMethod, SessionId: session.Id));
 
         SetRefreshTokenCookie(rotated.RawToken, (int)(rotated.ExpiresAt - DateTime.UtcNow).TotalSeconds);
 
-        return Ok(new AuthResponse(
+        return Ok(ClientResponse(new AuthResponse(
             access.AccessToken,
             rotated.RawToken,
             access.ExpiresInSeconds,
-            ToUserSummary(user, role)));
+            ToUserSummary(user, role))));
     }
 
     [HttpPost("logout")]
     [Authorize]
-    public async Task<IActionResult> Logout([FromBody] LogoutRequest? request, CancellationToken ct)
+    public async Task<IActionResult> Logout([FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] LogoutRequest? request, CancellationToken ct)
     {
+        if (!CookieRequestAllowed(!string.IsNullOrWhiteSpace(request?.RefreshToken))) return Forbid();
         var rawToken = request?.RefreshToken ?? Request.Cookies["refresh_token"];
         if (!string.IsNullOrWhiteSpace(rawToken))
         {
             await _refresh.RevokeAsync(rawToken, ct);
         }
-        else
-        {
-            var userId = ResolveUserIdFromToken();
-            if (userId is not null)
-            {
-                await _refresh.RevokeAllForUserAsync(userId.Value, ct);
-            }
-        }
         ClearRefreshTokenCookie();
+        var actorId = ResolveUserIdFromToken();
+        if (actorId.HasValue && Guid.TryParse(User.FindFirstValue("sid"), out var sessionId))
+            await Sessions.RevokeAsync(sessionId, actorId.Value, ct);
         return NoContent();
     }
 
@@ -304,13 +339,18 @@ public class AuthController : ControllerBase
             return StatusCode(400, prob);
         }
 
+        await _refresh.RevokeAllForUserAsync(user.Id, ct);
+        ClearRefreshTokenCookie();
         return NoContent();
     }
 
     private async Task<AuthResponse> IssueTokensAsync(ApplicationUser user, string role, string? deviceLabel, CancellationToken ct)
     {
-        var access = _jwt.Issue(new JwtTokenRequest(user.Id, user.Email ?? "", role, user.FullName));
-        var refresh = await _refresh.IssueAsync(user.Id, deviceLabel, ct);
+        var isAdmin = role.Equals("admin", StringComparison.OrdinalIgnoreCase);
+        var session = await Sessions.CreateAsync(user.Id, user.SecurityStamp!, isAdmin, ct);
+        var access = _jwt.Issue(new JwtTokenRequest(user.Id, user.Email ?? "", role, user.FullName,
+            user.SecurityStamp, session.AuthenticationMethod, SessionId: session.Id));
+        var refresh = await _refresh.IssueForSessionAsync(user.Id, deviceLabel, session.Id, ct);
         SetRefreshTokenCookie(refresh.RawToken, (int)(refresh.ExpiresAt - DateTime.UtcNow).TotalSeconds);
         return new AuthResponse(
             access.AccessToken,
@@ -319,8 +359,19 @@ public class AuthController : ControllerBase
             ToUserSummary(user, role));
     }
 
+    private bool IsWeb => Request.Headers["X-Fitmate-Client"] == "admin-web";
+
+    // A custom header forces browser cross-origin preflight. CORS must allow only trusted origins.
+    private bool CookieRequestAllowed(bool nativeToken = false) => IsWeb ||
+        (!Request.Headers.ContainsKey("Origin") && (nativeToken || !Request.Cookies.ContainsKey("refresh_token")));
+
+    private object ClientResponse(AuthResponse response) => IsWeb
+        ? new { response.AccessToken, response.ExpiresIn, response.User }
+        : response;
+
     private void SetRefreshTokenCookie(string refreshToken, int expiresInSeconds)
     {
+        if (!IsWeb) return;
         var isDev = string.Equals(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"), "Development", StringComparison.OrdinalIgnoreCase);
         var cookieOptions = new CookieOptions
         {
@@ -335,6 +386,7 @@ public class AuthController : ControllerBase
 
     private void ClearRefreshTokenCookie()
     {
+        if (!IsWeb) return;
         Response.Cookies.Delete("refresh_token", new CookieOptions
         {
             Path = "/api/v1/auth"
@@ -343,6 +395,9 @@ public class AuthController : ControllerBase
 
     private static UserSummaryDto ToUserSummary(ApplicationUser user, string role) =>
         new(user.Id, user.Email ?? "", null, user.FullName, role);
+
+    private static string PreferredRole(IList<string> roles) =>
+        roles.FirstOrDefault(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase)) ?? roles.FirstOrDefault() ?? "member";
 
     private Guid? ResolveUserIdFromToken()
     {

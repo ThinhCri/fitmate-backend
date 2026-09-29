@@ -20,9 +20,10 @@ public record RegisterRequest(
     long? PricePerSessionVnd,
     string? Timezone);
 
-public record LoginRequest(string Email, string Password, string? DeviceLabel);
+public record LoginRequest(string Email, string Password, string? DeviceLabel, string? Code = null, bool UseRecoveryCode = false);
 
 public record RefreshRequest(string RefreshToken);
+public record VerifyAdminLoginRequest(string ChallengeId, string Code, bool UseRecoveryCode = false);
 
 public record ForgotPasswordRequest(string Email);
 

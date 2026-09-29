@@ -5,6 +5,7 @@ using Fitmate.Domain.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Fitmate.Api.Admin;
 
@@ -16,7 +17,8 @@ public record MfaDisableRequest(string CodeOrPassword);
 /// </summary>
 [ApiController]
 [Route("api/v1/admin/auth/mfa")]
-[Authorize(Roles = "Admin")]
+[Authorize(Roles = "Admin,MfaSetup")]
+[EnableRateLimiting("AuthLimiter")]
 public class AdminMfaController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _users;
@@ -41,6 +43,8 @@ public class AdminMfaController : ControllerBase
         if (user is null || user.IsDeleted || user.Status == Domain.Common.UserStatus.Locked)
             return Unauthorized();
 
+        if (user.TwoFactorEnabled) return Conflict(new { code = "MFA_ALREADY_ENABLED", detail = "An active authenticator secret cannot be retrieved." });
+        Response.Headers.CacheControl = "no-store";
         var unformattedKey = await _users.GetAuthenticatorKeyAsync(user);
         if (string.IsNullOrEmpty(unformattedKey))
         {
@@ -74,12 +78,15 @@ public class AdminMfaController : ControllerBase
         if (user is null || user.IsDeleted || user.Status == Domain.Common.UserStatus.Locked)
             return Unauthorized();
 
+        if (user.TwoFactorEnabled) return Conflict(new { code = "MFA_ALREADY_ENABLED" });
+        if (await _users.IsLockedOutAsync(user)) return Unauthorized();
         var sanitizedCode = request.Code.Replace(" ", string.Empty).Replace("-", string.Empty);
         var isValid = await _users.VerifyTwoFactorTokenAsync(
             user, _users.Options.Tokens.AuthenticatorTokenProvider, sanitizedCode);
 
         if (!isValid)
         {
+            await _users.AccessFailedAsync(user);
             var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
             var prob = FitmateProblemDetails.Create(400, "Invalid MFA code",
                 ErrorCodes.ValidationFailed, "invalid-mfa-code", "The two-factor authentication code is invalid or expired.", trace);
@@ -87,7 +94,10 @@ public class AdminMfaController : ControllerBase
         }
 
         await _users.SetTwoFactorEnabledAsync(user, true);
+        await _users.UpdateSecurityStampAsync(user);
+        await HttpContext.RequestServices.GetRequiredService<IRefreshTokenService>().RevokeAllForUserAsync(user.Id, ct);
         var recoveryCodes = await _users.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+        Response.Headers.CacheControl = "no-store";
 
         return Ok(new
         {
@@ -97,6 +107,7 @@ public class AdminMfaController : ControllerBase
     }
 
     [HttpPost("disable")]
+    [Authorize(Roles = "Admin")]
     public async Task<IActionResult> DisableMfa([FromBody] MfaDisableRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.CodeOrPassword))
@@ -116,9 +127,7 @@ public class AdminMfaController : ControllerBase
         var isTokenValid = await _users.VerifyTwoFactorTokenAsync(
             user, _users.Options.Tokens.AuthenticatorTokenProvider, sanitized);
 
-        var isPasswordValid = !isTokenValid && await _users.CheckPasswordAsync(user, request.CodeOrPassword);
-
-        if (!isTokenValid && !isPasswordValid)
+        if (!isTokenValid)
         {
             var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
             var prob = FitmateProblemDetails.Create(400, "Verification failed",
@@ -127,7 +136,23 @@ public class AdminMfaController : ControllerBase
         }
 
         await _users.SetTwoFactorEnabledAsync(user, false);
+        await _users.ResetAuthenticatorKeyAsync(user);
+        await _users.UpdateSecurityStampAsync(user);
+        await HttpContext.RequestServices.GetRequiredService<IRefreshTokenService>().RevokeAllForUserAsync(user.Id, ct);
         return Ok(new { message = "MFA disabled successfully." });
+    }
+
+    [HttpGet("status")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Status(CancellationToken ct)
+    {
+        var id = ResolveAdminUserId();
+        if (!id.HasValue) return Unauthorized();
+        await _authz.EnsureRoleAsync(id.Value, "Admin", ct);
+        var user = await _users.FindByIdAsync(id.Value.ToString());
+        if (user is null) return Unauthorized();
+        Response.Headers.CacheControl = "no-store";
+        return Ok(new { enabled = user.TwoFactorEnabled });
     }
 
     private Guid? ResolveAdminUserId()

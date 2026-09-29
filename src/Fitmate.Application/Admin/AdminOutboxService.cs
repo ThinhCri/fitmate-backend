@@ -1,4 +1,5 @@
 using Fitmate.Application.Outbox;
+using Fitmate.Application.Auth;
 using Fitmate.Domain.Common;
 
 namespace Fitmate.Application.Admin;
@@ -10,14 +11,17 @@ namespace Fitmate.Application.Admin;
 public class AdminOutboxService : IAdminOutboxService
 {
     private readonly IOutboxStore _outboxStore;
+    private readonly IAuthorizationGuard _authz;
 
-    public AdminOutboxService(IOutboxStore outboxStore)
+    public AdminOutboxService(IOutboxStore outboxStore, IAuthorizationGuard authz)
     {
         _outboxStore = outboxStore;
+        _authz = authz;
     }
 
-    public async Task<OutboxStatsDto> GetStatsAsync(CancellationToken ct = default)
+    public async Task<OutboxStatsDto> GetStatsAsync(Guid adminUserId, CancellationToken ct = default)
     {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
         var pendingCount = await _outboxStore.GetPendingCountAsync(ct);
         var deadLetterCount = await _outboxStore.GetDeadLetterCountAsync(ct);
         var oldestAge = await _outboxStore.GetOldestPendingAgeAsync(DateTime.UtcNow, ct);
@@ -28,8 +32,9 @@ public class AdminOutboxService : IAdminOutboxService
             OldestPendingAgeSeconds: oldestAge?.TotalSeconds ?? 0);
     }
 
-    public async Task<DeadLetterPagedResult> ListDeadLettersAsync(int page, int pageSize, string? typeFilter, CancellationToken ct = default)
+    public async Task<DeadLetterPagedResult> ListDeadLettersAsync(Guid adminUserId, int page, int pageSize, string? typeFilter, CancellationToken ct = default)
     {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
         var safePage = Math.Max(1, page);
         var safePageSize = Math.Clamp(pageSize, 1, 100);
 
@@ -49,10 +54,7 @@ public class AdminOutboxService : IAdminOutboxService
 
     public async Task<ReplayOutboxResult> ReplayAsync(Guid messageId, Guid adminUserId, string reason, CancellationToken ct = default)
     {
-        if (adminUserId == Guid.Empty)
-        {
-            throw new UnauthorizedAccessException("Yêu cầu quyền quản trị viên hợp lệ để thực hiện replay.");
-        }
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
 
         if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 5)
         {

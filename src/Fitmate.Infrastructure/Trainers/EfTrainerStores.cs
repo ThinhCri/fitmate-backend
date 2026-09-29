@@ -45,11 +45,24 @@ public class EfCertificateStore : ICertificateStore
     public Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct)
         => _db.Certificates.FirstOrDefaultAsync(c => c.Id == certId, ct);
 
-    public async Task<IReadOnlyList<Certificate>> ListByPtAsync(Guid ptUserId, CancellationToken ct)
-        => await _db.Certificates
-            .Where(c => c.PtUserId == ptUserId)
+    public async Task<(IReadOnlyList<Certificate> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct)
+    {
+        // Store assumes page≥1 + pageSize đã được Service chuẩn hoá. Defensive clamp here vẫn an toàn.
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 25;
+        if (pageSize > 100) pageSize = 100;
+
+        var query = _db.Certificates.AsNoTracking()
+            .Where(c => c.PtUserId == ptUserId);
+        var total = await query.CountAsync(ct);
+        var items = await query
             .OrderByDescending(c => c.CreatedAt)
+            .ThenBy(c => c.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync(ct);
+        return (items, total);
+    }
 
     public async Task<(IReadOnlyList<Certificate> Items, int Total)> ListPendingPagedAsync(int page, int pageSize, CancellationToken ct)
     {

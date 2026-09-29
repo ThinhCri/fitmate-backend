@@ -28,8 +28,8 @@ public record ReplayOutboxResult(
 
 public interface IAdminOutboxService
 {
-    Task<OutboxStatsDto> GetStatsAsync(CancellationToken ct = default);
-    Task<DeadLetterPagedResult> ListDeadLettersAsync(int page, int pageSize, string? typeFilter, CancellationToken ct = default);
+    Task<OutboxStatsDto> GetStatsAsync(Guid adminUserId, CancellationToken ct = default);
+    Task<DeadLetterPagedResult> ListDeadLettersAsync(Guid adminUserId, int page, int pageSize, string? typeFilter, CancellationToken ct = default);
     Task<ReplayOutboxResult> ReplayAsync(Guid messageId, Guid adminUserId, string reason, CancellationToken ct = default);
 }
 

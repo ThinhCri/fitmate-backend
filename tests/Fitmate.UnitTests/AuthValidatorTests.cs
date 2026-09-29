@@ -17,7 +17,7 @@ public class AuthValidatorTests
     public async Task RegisterRequest_Valid_Member()
     {
         var req = new RegisterRequest(
-            Email: "u@x.vn", Password: "Password123", FullName: "User",
+            Email: "u@x.vn", Password: "Password1234", FullName: "User",
             Role: "member", HeightCm: 170, WeightKg: 65, Gender: "male",
             Birthday: new DateOnly(2000, 1, 1), FitnessGoal: "giảm cân",
             TrainingDays: new List<string> { "mon" },

@@ -11,6 +11,8 @@ public interface IRefreshTokenService
 {
     /// <summary>Issue refresh token mới + lưu hash vào DB. Trả raw token cho client.</summary>
     Task<IssuedRefreshToken> IssueAsync(Guid userId, string? deviceLabel, CancellationToken ct);
+    Task<IssuedRefreshToken> IssueForSessionAsync(Guid userId, string? deviceLabel, Guid sessionId, CancellationToken ct)
+        => throw new NotSupportedException("Session-bound refresh tokens are required.");
 
     /// <summary>
     /// Xoay vòng: validate token raw, revoke token cũ + tạo token mới (rotation).
@@ -26,7 +28,7 @@ public interface IRefreshTokenService
     Task RevokeAllForUserAsync(Guid userId, CancellationToken ct);
 }
 
-public record IssuedRefreshToken(string RawToken, DateTime ExpiresAt);
+public record IssuedRefreshToken(string RawToken, DateTime ExpiresAt, Guid UserId = default, string? DeviceLabel = null, Guid? SessionId = null);
 
 public interface IRefreshTokenStore
 {
@@ -34,6 +36,7 @@ public interface IRefreshTokenStore
     Task<RefreshToken?> FindByHashAsync(string tokenHash, CancellationToken ct);
     Task RevokeAllForUserAsync(Guid userId, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
+    async Task<bool> TrySaveRotationAsync(CancellationToken ct) { await SaveChangesAsync(ct); return true; }
 }
 
 public class RefreshTokenService : IRefreshTokenService
@@ -53,16 +56,22 @@ public class RefreshTokenService : IRefreshTokenService
     }
 
     public async Task<IssuedRefreshToken> IssueAsync(Guid userId, string? deviceLabel, CancellationToken ct)
+        => await IssueCoreAsync(userId, deviceLabel, null, ct);
+
+    public Task<IssuedRefreshToken> IssueForSessionAsync(Guid userId, string? deviceLabel, Guid sessionId, CancellationToken ct)
+        => IssueCoreAsync(userId, deviceLabel, sessionId, ct);
+
+    private async Task<IssuedRefreshToken> IssueCoreAsync(Guid userId, string? deviceLabel, Guid? sessionId, CancellationToken ct)
     {
         var raw = GenerateSecureToken();
         var hash = _hasher.Hash(raw);
         var expires = Clock.UtcNow.AddSeconds(_options.RefreshTokenTtlSeconds);
 
-        var entity = RefreshToken.Create(userId, hash, expires, deviceLabel);
+        var entity = RefreshToken.Create(userId, hash, expires, deviceLabel, sessionId);
         await _store.AddAsync(entity, ct);
         await _store.SaveChangesAsync(ct);
 
-        return new IssuedRefreshToken(raw, expires);
+        return new IssuedRefreshToken(raw, expires, userId, deviceLabel, sessionId);
     }
 
     public async Task<IssuedRefreshToken?> RotateAsync(string rawToken, CancellationToken ct)
@@ -89,11 +98,11 @@ public class RefreshTokenService : IRefreshTokenService
         var newExpires = Clock.UtcNow.AddSeconds(_options.RefreshTokenTtlSeconds);
 
         existing.Revoke(replacedByHash: newHash);
-        var next = RefreshToken.Create(existing.UserId, newHash, newExpires, existing.DeviceLabel);
+        var next = RefreshToken.Create(existing.UserId, newHash, newExpires, existing.DeviceLabel, existing.SessionId);
         await _store.AddAsync(next, ct);
-        await _store.SaveChangesAsync(ct);
+        if (!await _store.TrySaveRotationAsync(ct)) return null;
 
-        return new IssuedRefreshToken(newRaw, newExpires);
+        return new IssuedRefreshToken(newRaw, newExpires, existing.UserId, existing.DeviceLabel, existing.SessionId);
     }
 
     public async Task RevokeAsync(string rawToken, CancellationToken ct)

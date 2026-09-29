@@ -14,6 +14,7 @@ using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
 using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Nutrition;
+using Fitmate.Domain.Payment;
 using Fitmate.Domain.Social;
 using Fitmate.Domain.Trainers;
 using Fitmate.Domain.Workout;
@@ -151,8 +152,6 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         var memberId = Guid.NewGuid();
         var ptId = Guid.NewGuid();
         var serviceId = Guid.NewGuid();
-        var paymentId = Guid.NewGuid();
-
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
 
@@ -188,14 +187,16 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         // 2. Tạo buổi hẹn: Paid -> Confirmed -> InProgress -> Completed
         var slotStart = DateTime.UtcNow.AddMinutes(-30);
         var appt = Appointment.CreateHold(memberId, ptId, serviceId, slotStart, slotStart.AddHours(7), 60, 400000);
-        appt.AttachPayment(paymentId, 400000, 0, 0.10m, 40000, 360000, "v1");
+        var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 400000, null);
+        payment.MarkPaid($"UAT-REVENUE-{Guid.NewGuid():N}");
+        appt.AttachPayment(payment.Id, 400000, 0, 0.10m, 40000, 360000, "v1");
         appt.ConfirmByPt();
         appt.StartByPt();
         appt.Status.Should().Be(BookingStatus.InProgress);
 
         appt.CompleteByPt();
         appt.Status.Should().Be(BookingStatus.Completed);
-        db.Appointments.Add(appt);
+        db.AddRange(appt, payment);
         await db.SaveChangesAsync();
 
         // 3. Đối soát doanh thu thực tế qua ITrainerRevenueService
@@ -380,61 +381,75 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
     {
         var adminId = Guid.NewGuid();
         var ptId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        var bankReference = $"VCB-UAT-{Guid.NewGuid():N}";
+        Guid appointmentId;
 
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
-            var adminRole = await db.Roles.FirstOrDefaultAsync(r => r.NormalizedName == "ADMIN");
-            if (adminRole == null)
-            {
-                adminRole = new Microsoft.AspNetCore.Identity.IdentityRole<Guid>("Admin") { NormalizedName = "ADMIN" };
-                db.Roles.Add(adminRole);
-                await db.SaveChangesAsync();
-            }
+            var sessionStart = DateTime.UtcNow.AddHours(-2);
+            var appointment = Appointment.CreateHold(
+                memberId, ptId, serviceId, sessionStart, sessionStart.AddHours(7), 60, 400_000);
+            var payment = Payment.CreatePending(appointment.Id, PaymentMethod.Payos, 400_000, null);
+            payment.MarkPaid($"PAYOS-UAT-{Guid.NewGuid():N}");
+            appointment.AttachPayment(payment.Id, 400_000, 0, 0.10m, 40_000, 360_000, "v1");
+            appointment.ConfirmByPt();
+            appointment.StartByPt();
+            appointment.CompleteByPt();
 
-            db.Users.Add(new ApplicationUser
-            {
-                Id = adminId,
-                UserName = $"admin_{adminId:N}@fitmate.local",
-                NormalizedUserName = $"ADMIN_{adminId:N}@FITMATE.LOCAL",
-                Email = $"admin_{adminId:N}@fitmate.local",
-                NormalizedEmail = $"ADMIN_{adminId:N}@FITMATE.LOCAL",
-                FullName = "UAT Admin Settlement",
-                Status = UserStatus.Active,
-                Timezone = "Asia/Ho_Chi_Minh",
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            });
-
-            db.UserRoles.Add(new Microsoft.AspNetCore.Identity.IdentityUserRole<Guid>
-            {
-                UserId = adminId,
-                RoleId = adminRole.Id
-            });
+            appointmentId = appointment.Id;
+            db.AddRange(appointment, payment);
             await db.SaveChangesAsync();
         }
 
-        using var scope2 = _factory.Services.CreateScope();
-        var revenueService = scope2.ServiceProvider.GetRequiredService<ITrainerRevenueService>();
+        var adminClient = _factory.CreateAuthenticatedClient(
+            role: "Admin",
+            userId: adminId,
+            includeFinanceTotp: true);
+        var confirmedAt = DateTime.UtcNow.AddMinutes(-5);
 
-        // 1. Quyết toán thu nhập thủ công cho PT với ReferenceNumber chuẩn ngân hàng
-        var settleReq = new TrainerSettlementRequest(
-            PtUserId: ptId,
-            AmountVnd: 1500000,
-            ReferenceNumber: "VCB-UAT-998822",
-            Note: "Quyết toán đợt UAT tuần 38");
+        var approveRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/admin/finance/manual-settlements/{appointmentId}/approve")
+        {
+            Content = JsonContent.Create(new ApproveSettlementRequest(
+                confirmedAt,
+                confirmedAt,
+                "private-session-record/uat-journey-09",
+                "private-payee-verification/uat-journey-09",
+                NoOpenDisputeConfirmed: true))
+        };
+        approveRequest.Headers.Add("Idempotency-Key", $"uat-settlement-approve-{appointmentId:N}");
+        var approveResponse = await adminClient.SendAsync(approveRequest);
+        var approveBody = await approveResponse.Content.ReadAsStringAsync();
+        approveResponse.StatusCode.Should().Be(HttpStatusCode.OK, "approve response was: {0}", approveBody);
 
-        var result = await revenueService.SettleTrainerAsync(adminId, settleReq, CancellationToken.None);
+        var transferredAt = DateTime.UtcNow;
+        var transferRequest = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"/api/v1/admin/finance/manual-settlements/{appointmentId}/record-transfer")
+        {
+            Content = JsonContent.Create(new RecordTransferRequest(
+                bankReference,
+                "private-bank-receipt/uat-journey-09",
+                transferredAt))
+        };
+        transferRequest.Headers.Add("Idempotency-Key", $"uat-settlement-transfer-{appointmentId:N}");
+        var transferResponse = await adminClient.SendAsync(transferRequest);
+        transferResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        result.Should().NotBeNull();
-        result.AmountVnd.Should().Be(1500000);
-        result.ReferenceNumber.Should().Be("VCB-UAT-998822");
-        result.PtUserId.Should().Be(ptId);
-
-        // 2. Chặn yêu cầu quyết toán thiếu ReferenceNumber hoặc số tiền <= 0
-        var invalidReq = new TrainerSettlementRequest(ptId, 0, "", null);
-        var invalidAction = () => revenueService.SettleTrainerAsync(adminId, invalidReq, CancellationToken.None);
-        await invalidAction.Should().ThrowAsync<ValidationException>();
+        using var verifyScope = _factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var settlement = await verifyDb.Set<ManualPtSettlement>().SingleAsync(s => s.AppointmentId == appointmentId);
+        settlement.Status.Should().Be("paid");
+        settlement.AmountVnd.Should().Be(360_000);
+        settlement.BankReference.Should().Be(bankReference);
+        (await verifyDb.AuditLogs.AnyAsync(a =>
+            a.TargetId == appointmentId && a.Action == "finance.settlement_approved")).Should().BeTrue();
+        (await verifyDb.AuditLogs.AnyAsync(a =>
+            a.TargetId == appointmentId && a.Action == "finance.trainer_settled")).Should().BeTrue();
     }
 
     [Fact]

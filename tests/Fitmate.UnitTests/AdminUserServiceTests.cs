@@ -77,6 +77,8 @@ public class AdminUserServiceTests
             Calls.Add((action, type, target, actor, reason));
             return Task.CompletedTask;
         }
+        public void Stage(string action, string type, Guid target, Guid actor, string? reason = null)
+            => Calls.Add((action, type, target, actor, reason));
     }
 
     private sealed class AllowAdmin : IAuthorizationGuard
@@ -111,7 +113,7 @@ public class AdminUserServiceTests
         var svc = NewService(store, audit, new AllowAdmin());
         for (var i = 0; i < 30; i++) store.Items[Guid.NewGuid()] = NewSummary(Guid.NewGuid(), $"user{i:D2}@fitmate.vn");
 
-        var (items, total) = await svc.ListAsync(
+        var (items, total) = await svc.ListAsync(Guid.NewGuid(),
             new AdminUserListQuery(null, null, null, 1, 25, "email:asc"),
             CancellationToken.None);
 
@@ -130,7 +132,7 @@ public class AdminUserServiceTests
         store.Items[Guid.NewGuid()] = NewSummary(Guid.NewGuid(), "b@x", locked: true);
         store.Items[Guid.NewGuid()] = NewSummary(Guid.NewGuid(), "c@x", locked: true);
 
-        var (items, total) = await svc.ListAsync(
+        var (items, total) = await svc.ListAsync(Guid.NewGuid(),
             new AdminUserListQuery(null, AdminUserStatusFilter.Locked, null, 1, 25, "createdAt:desc"),
             CancellationToken.None);
 
@@ -210,10 +212,20 @@ public class AdminUserServiceTests
     public async Task List_InvalidSort_Throws()
     {
         var svc = NewService(new InMemoryAdminUserStore(), new FakeAudit(), new AllowAdmin());
-        var act = () => svc.ListAsync(
+        var act = () => svc.ListAsync(Guid.NewGuid(),
             new AdminUserListQuery(null, null, null, 1, 25, "name:desc"),
             CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task List_NonAdmin_ThrowsForbidden()
+    {
+        var svc = NewService(new InMemoryAdminUserStore(), new FakeAudit(), new DenyAll());
+        var act = () => svc.ListAsync(Guid.NewGuid(),
+            new AdminUserListQuery(null, null, null, 1, 25, "createdAt:desc"),
+            CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
     }
 
     [Fact]

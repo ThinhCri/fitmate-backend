@@ -29,3 +29,26 @@ Health/chat chỉ owner/participant; case evidence do người có quyền cung 
 Certificate approved chỉ public metadata, không public scan/số cá nhân.
 Email/phone/birthday không search/feed public. Token device không echo; deep link re-authorize.
 Account lock/deletion/revoke kiểm cả phiên đã cấp. Admin list max100; chống mass assignment role/verified/fee.
+
+## Cert image preview ownership (2026-09-28)
+
+Prefix của storage key KHÔNG chứng minh ownership. Kiểm chuỗi cả 2 lớp:
+
+1. **Lúc upload** — `UploadsController` nhúng user id vào key: `{category}/{userIdN}_{file}_{random}{ext}`.
+   Key do hệ thống phát ra, không phải do client chọn.
+2. **Lúc submit** — `CertificatesController.Submit` kiểm key đó có scope đúng user hiện tại
+   không (`ImageKeyBelongsTo`); sai → 403 `CERT_IMAGE_NOT_OWNED`. Nếu bỏ bước này thì PT có
+   thể dán key của người khác và làm check "uploader == owner" ở bước 3 trở nên vô nghĩa.
+3. **Lúc preview** — `GET /admin/certificates/{id}/preview` kiểm cột `Certificate.ImageUploadedByUserId`
+   (người thực sự upload) thay vì suy đoán từ key:
+
+| Điều kiện | Kết quả | Lý do |
+|---|---|---|
+| `ImageStorageKey` null | 404 | Cert chưa có ảnh |
+| `ImageUploadedByUserId` null (dữ liệu trước 2026-09-28) | 404 | Không chứng minh được ai chủ; KHÔNG tự gán `= PtUserId` |
+| `ImageUploadedByUserId != PtUserId` | 403 | Ảnh không thuộc PT của cert này |
+| Khớp | 200 + audit `certificate.preview.viewed` | Signed URL TTL 300s |
+
+Admin review cert của PT khác vẫn được (list/approve/reject/revoke theo vai trò Admin); chỉ endpoint
+phát signed URL mới bị chặn. Backfill `ImageUploadedByUserId` chỉ khi operator có bằng chứng ai upload.
+Key cũ (trước khi nhúng user id) không submit lại được — không chứng minh được chủ sở hữu.

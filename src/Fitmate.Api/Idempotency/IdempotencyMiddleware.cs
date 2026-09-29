@@ -109,7 +109,8 @@ public class IdempotencyMiddleware
                         buffer.Position = 0;
                         await buffer.CopyToAsync(originalBody);
 
-                        // Chỉ store khi response là JSON 2xx/4xx (không retry với 5xx).
+                        // Chỉ store 2xx và 409 (xem ShouldStore). 400/422 cố tình KHÔNG lưu để
+                        // operator sửa payload rồi retry với cùng key vẫn tới được controller.
                         if (ShouldStore(context.Response.StatusCode))
                         {
                             try
@@ -154,8 +155,21 @@ public class IdempotencyMiddleware
         return Convert.ToHexString(SHA256.HashData(combined)).ToLowerInvariant();
     }
 
+    /// <summary>
+    /// Decide which responses should be persisted for idempotent replay.
+    /// </summary>
+    /// <remarks>
+    /// Only 2xx and hard conflicts (409) are cached. Validation responses
+    /// (400, 422) are NOT stored: retrying after the operator fixes the
+    /// request must reach the controller again. 401/403/429 are never
+    /// cached (auth or throttling; replay must not bypass them), and 5xx
+    /// responses are never cached either — a failed mutation is unknown
+    /// to the caller, so replaying it would report a success that never
+    /// happened. The client must re-check state before retrying.
+    /// </remarks>
     private static bool ShouldStore(int statusCode) =>
-        statusCode is >= 200 and < 500 and not 401 and not 403 and not 429;
+        statusCode is >= 200 and < 300
+        || statusCode == StatusCodes.Status409Conflict;
 
     private static async Task WriteReplayAsync(HttpContext context, int statusCode, string body)
     {

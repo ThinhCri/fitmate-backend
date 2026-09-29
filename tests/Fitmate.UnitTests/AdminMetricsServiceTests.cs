@@ -42,8 +42,12 @@ public class AdminMetricsServiceTests
 
     private static AdminMetricsService NewService(IAdminMetricsStore store, string? requiredRole = "Admin") => new(store, new RoleRequireAuthz { RequiredRole = requiredRole });
 
-    private static RecentAppointmentRow Row(BookingStatus status, DateTime createdAt, long amount = 500_000)
-        => new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), amount, status, createdAt);
+    private static RecentAppointmentRow Row(
+        BookingStatus status,
+        DateTime createdAt,
+        long amount = 500_000,
+        long platformFee = 50_000)
+        => new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), amount, platformFee, status, createdAt);
 
     [Fact]
     public async Task ActionRequired_AllCountsAggregated()

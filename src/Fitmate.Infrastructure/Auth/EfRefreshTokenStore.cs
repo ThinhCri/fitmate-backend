@@ -29,6 +29,8 @@ public class EfRefreshTokenStore : IRefreshTokenStore
 
     public async Task RevokeAllForUserAsync(Guid userId, CancellationToken ct)
     {
+        var sessions = await _db.Set<AuthSession>().Where(s => s.UserId == userId && s.RevokedAt == null).ToListAsync(ct);
+        foreach (var session in sessions) session.RevokedAt = DateTime.UtcNow;
         var activeTokens = await _db.RefreshTokens
             .Where(t => t.UserId == userId && t.RevokedAt == null)
             .ToListAsync(ct);
@@ -42,5 +44,10 @@ public class EfRefreshTokenStore : IRefreshTokenStore
     public Task SaveChangesAsync(CancellationToken ct)
     {
         return _db.SaveChangesAsync(ct);
+    }
+    public async Task<bool> TrySaveRotationAsync(CancellationToken ct)
+    {
+        try { await _db.SaveChangesAsync(ct); return true; }
+        catch (DbUpdateConcurrencyException) { _db.ChangeTracker.Clear(); return false; }
     }
 }

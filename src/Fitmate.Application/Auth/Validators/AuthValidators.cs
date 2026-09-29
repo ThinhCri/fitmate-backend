@@ -1,4 +1,5 @@
 using Fitmate.Application.Auth.Contracts;
+using Fitmate.Domain.Common;
 using FluentValidation;
 
 namespace Fitmate.Application.Auth.Validators;
@@ -14,8 +15,8 @@ public class RegisterRequestValidator : AbstractValidator<RegisterRequest>
 
         RuleFor(x => x.Password)
             .NotEmpty().WithMessage("Password is required")
-            .MinimumLength(8).WithMessage("Password must be at least 8 characters")
-            .MaximumLength(128);
+            .MinimumLength(PasswordPolicy.MinimumLength).WithMessage(PasswordPolicy.MinimumLengthMessage)
+            .MaximumLength(PasswordPolicy.MaximumLength);
 
         RuleFor(x => x.FullName)
             .NotEmpty().WithMessage("Full name is required")
@@ -104,8 +105,8 @@ public class ResetPasswordRequestValidator : AbstractValidator<ResetPasswordRequ
 
         RuleFor(x => x.NewPassword)
             .NotEmpty().WithMessage("New password is required")
-            .MinimumLength(8).WithMessage("Password must be at least 8 characters")
-            .MaximumLength(128);
+            .MinimumLength(PasswordPolicy.MinimumLength).WithMessage(PasswordPolicy.MinimumLengthMessage)
+            .MaximumLength(PasswordPolicy.MaximumLength);
 
         RuleFor(x => x.Email)
             .EmailAddress().WithMessage("Email must be a valid email address")
@@ -123,8 +124,8 @@ public class ChangePasswordRequestValidator : AbstractValidator<ChangePasswordRe
 
         RuleFor(x => x.NewPassword)
             .NotEmpty().WithMessage("New password is required")
-            .MinimumLength(8).WithMessage("New password must be at least 8 characters")
-            .MaximumLength(128)
+            .MinimumLength(PasswordPolicy.MinimumLength).WithMessage(PasswordPolicy.MinimumLengthMessage)
+            .MaximumLength(PasswordPolicy.MaximumLength)
             .NotEqual(x => x.CurrentPassword).WithMessage("New password must be different from current password");
     }
 }

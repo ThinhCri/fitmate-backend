@@ -49,6 +49,12 @@ public class MailKitEmailSender : IEmailSender
 
             if (!string.IsNullOrWhiteSpace(_options.SmtpUsername))
             {
+                if (string.IsNullOrWhiteSpace(_options.SmtpPassword))
+                {
+                    throw new TerminalOutboxException(
+                        "SMTP_CONFIG_ERROR: Email:SmtpPassword is required when Email:SmtpUsername is configured");
+                }
+
                 await client.AuthenticateAsync(_options.SmtpUsername, _options.SmtpPassword, ct);
             }
 

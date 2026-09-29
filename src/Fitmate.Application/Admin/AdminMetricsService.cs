@@ -42,6 +42,7 @@ public class AdminMetricsService : IAdminMetricsService
             MemberId: r.MemberId,
             PtUserId: r.PtUserId,
             ActualPaidVnd: r.ActualPaidVnd,
+            PlatformFeeVnd: r.PlatformFeeVnd,
             Status: r.Status.ToString(),
             CreatedAt: r.CreatedAt)).ToList();
 

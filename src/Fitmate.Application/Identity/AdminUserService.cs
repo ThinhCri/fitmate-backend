@@ -18,14 +18,16 @@ public class AdminUserService : IAdminUserService
         _authz = authz;
     }
 
-    public Task<(IReadOnlyList<AdminUserSummary> Items, int Total)> ListAsync(AdminUserListQuery query, CancellationToken ct)
+    public async Task<(IReadOnlyList<AdminUserSummary> Items, int Total)> ListAsync(Guid adminUserId, AdminUserListQuery query, CancellationToken ct)
     {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
         ValidateQuery(query);
-        return _store.ListPagedAsync(query, ct);
+        return await _store.ListPagedAsync(query, ct);
     }
 
-    public async Task<AdminUserSummary> GetAsync(Guid userId, CancellationToken ct)
+    public async Task<AdminUserSummary> GetAsync(Guid adminUserId, Guid userId, CancellationToken ct)
     {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
         var summary = await _store.FindSummaryAsync(userId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {userId} not found.");
         return summary;
@@ -95,9 +97,11 @@ public class AdminUserService : IAdminUserService
                 "role phải là member|pt|admin",
                 new Dictionary<string, string[]> { ["role"] = new[] { "member|pt|admin" } });
 
-        if (q.Page < 1) q = q with { Page = 1 };
-        if (q.PageSize is < 1) q = q with { PageSize = 25 };
-        if (q.PageSize > 100) q = q with { PageSize = 100 };
+        if (q.Page < 1 || q.Page > 100000 || q.PageSize < 1 || q.PageSize > 100)
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "page phải >= 1 và pageSize trong khoảng 1..100.",
+                new Dictionary<string, string[]> { ["pagination"] = new[] { "page 1..100000; pageSize 1..100" } });
 
         if (q.Sort is not ("createdAt:asc" or "createdAt:desc" or "email:asc" or "email:desc" or ""))
             throw new ValidationException(

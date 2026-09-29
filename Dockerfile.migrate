@@ -2,11 +2,11 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-# Pin dotnet-ef to match EF Core runtime version (10.0.0 in Fitmate.Infrastructure.csproj).
+# Pin dotnet-ef to match the EF Core 10 servicing version used by the application.
 ENV DOTNET_NOLOGO=1 \
     DOTNET_CLI_TELEMETRY_OPTOUT=1 \
     DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
-RUN dotnet tool install --global dotnet-ef --version 10.0.0
+RUN dotnet tool install --global dotnet-ef --version 10.0.12
 ENV PATH="$PATH:/root/.dotnet/tools"
 
 # Source-only restore (no solution COPY). Tests dir is excluded by .dockerignore so not copied.

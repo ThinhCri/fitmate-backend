@@ -69,7 +69,9 @@ public static class SeedPerfDataCommand
         services.AddDbContext<FitmateDbContext>(opt => opt.UseNpgsql(connStr));
         services.AddIdentityCore<ApplicationUser>(opt =>
         {
-            opt.Password.RequiredLength = 12;
+            // Perf/UAT personas dùng mật khẩu tự sinh để test load; giữ yêu cầu phức tạp
+            // hơn policy sản phẩm để dữ liệu test không trùng mẫu yếu của production.
+            opt.Password.RequiredLength = PasswordPolicy.MinimumLength;
             opt.Password.RequireDigit = true;
             opt.Password.RequireUppercase = true;
             opt.Password.RequireLowercase = true;

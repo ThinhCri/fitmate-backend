@@ -114,6 +114,8 @@ public class ModerationServiceTests
             Entries.Add((action, targetType, targetId, actorId, reason));
             return Task.CompletedTask;
         }
+        public void Stage(string action, string targetType, Guid targetId, Guid actorId, string? reason = null)
+            => Entries.Add((action, targetType, targetId, actorId, reason));
     }
 
     private sealed class InMemorySocialStore : ISocialStore
@@ -147,6 +149,7 @@ public class ModerationServiceTests
         public Task<Certificate?> FindByIdentityAsync(Guid ptUserId, string title, string issuedBy, string code, CancellationToken ct) => throw new NotImplementedException();
         public Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct) => Task.FromResult<Certificate?>(Certs.GetValueOrDefault(certId));
         public Task<IReadOnlyList<Certificate>> ListByPtAsync(Guid ptUserId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<(IReadOnlyList<Certificate> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct) => throw new NotImplementedException();
         public Task<(IReadOnlyList<Certificate> Items, int Total)> ListPendingPagedAsync(int page, int pageSize, CancellationToken ct) => throw new NotImplementedException();
         public Task AddAsync(Certificate cert, CancellationToken ct) => Task.CompletedTask;
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;

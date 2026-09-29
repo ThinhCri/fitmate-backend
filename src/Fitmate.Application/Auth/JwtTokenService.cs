@@ -23,7 +23,8 @@ public interface IJwtTokenService
     ClaimsPrincipal? Validate(string token);
 }
 
-public record JwtTokenRequest(Guid UserId, string Email, string Role, string FullName);
+public record JwtTokenRequest(Guid UserId, string Email, string Role, string FullName,
+    string? SecurityStamp = null, string? AuthenticationMethod = null, int? LifetimeSeconds = null, Guid? SessionId = null);
 
 public record JwtToken(string AccessToken, int ExpiresInSeconds);
 
@@ -41,7 +42,8 @@ public class JwtTokenService : IJwtTokenService
     public JwtToken Issue(JwtTokenRequest request)
     {
         var now = DateTime.UtcNow;
-        var expires = now.AddSeconds(_options.AccessTokenTtlSeconds);
+        var lifetime = request.LifetimeSeconds ?? _options.AccessTokenTtlSeconds;
+        var expires = now.AddSeconds(lifetime);
 
         var claims = new List<Claim>
         {
@@ -50,9 +52,12 @@ public class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(ClaimTypes.NameIdentifier, request.UserId.ToString()),
             new(ClaimTypes.Email, request.Email),
-            new(ClaimTypes.Role, request.Role),
+            new(ClaimTypes.Role, request.Role.Equals("admin", StringComparison.OrdinalIgnoreCase) ? "Admin" : request.Role),
             new("full_name", request.FullName),
         };
+        if (request.SecurityStamp is not null) claims.Add(new Claim("security_stamp", request.SecurityStamp));
+        if (request.AuthenticationMethod is not null) claims.Add(new Claim("amr", request.AuthenticationMethod));
+        if (request.SessionId.HasValue) claims.Add(new Claim("sid", request.SessionId.Value.ToString()));
 
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_options.SigningKey));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -66,7 +71,7 @@ public class JwtTokenService : IJwtTokenService
             signingCredentials: creds);
 
         var token = new JwtSecurityTokenHandler().WriteToken(jwt);
-        return new JwtToken(token, _options.AccessTokenTtlSeconds);
+        return new JwtToken(token, lifetime);
     }
 
     public ClaimsPrincipal? Validate(string token)

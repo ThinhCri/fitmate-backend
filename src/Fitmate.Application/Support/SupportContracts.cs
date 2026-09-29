@@ -7,7 +7,7 @@ public record CreateSupportTicketRequest(
     string Category,
     string? Priority,
     string Message,
-    List<string>? AttachmentUrls);
+    List<string>? AttachmentUrls, Guid? BookingId = null);
 
 public record ReplySupportTicketRequest(
     string Message,

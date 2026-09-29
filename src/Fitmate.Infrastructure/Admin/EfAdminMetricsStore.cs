@@ -40,6 +40,7 @@ public class EfAdminMetricsStore : IAdminMetricsStore
                 a.MemberId,
                 a.PtUserId,
                 a.ActualPaidVnd,
+                a.PlatformFeeVnd,
                 a.Status,
                 a.CreatedAt))
             .ToListAsync(ct);

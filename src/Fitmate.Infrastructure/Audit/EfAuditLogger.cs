@@ -18,14 +18,24 @@ public class EfAuditLogger : IAuditLogger
 
     public async Task LogAsync(string action, string targetType, Guid targetId, Guid actorId, string? reason = null, CancellationToken ct = default)
     {
-        var entry = AuditLog.Record(
+        var entry = Build(action, targetType, targetId, actorId, reason);
+        await _db.AuditLogs.AddAsync(entry, ct);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public void Stage(string action, string targetType, Guid targetId, Guid actorId, string? reason = null)
+    {
+        // Caller owns the SaveChangesAsync so it can run inside the same transaction
+        // as the business state change. See CertificateService.Revoke/Approve/Reject.
+        _db.AuditLogs.Add(Build(action, targetType, targetId, actorId, reason));
+    }
+
+    private static AuditLog Build(string action, string targetType, Guid targetId, Guid actorId, string? reason) =>
+        AuditLog.Record(
             actorId: actorId,
             actorRole: "Admin",
             action: action,
             targetType: targetType,
             targetId: targetId,
             reason: reason);
-        await _db.AuditLogs.AddAsync(entry, ct);
-        await _db.SaveChangesAsync(ct);
-    }
 }

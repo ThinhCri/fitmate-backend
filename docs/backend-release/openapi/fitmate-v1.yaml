@@ -4436,45 +4436,54 @@ components:
 
     ActionRequired:
       type: object
+      required: [pendingCertificates, pendingReports, pendingPayments, recentBookings]
       properties:
-        pending_certificates:
+        pendingCertificates:
           type: integer
-        pending_reports:
+        pendingReports:
           type: integer
-        pending_payments:
+        pendingPayments:
           type: integer
-        recent_bookings:
+        recentBookings:
           type: array
           items:
-            $ref: '#/components/schemas/Appointment'
+            $ref: '#/components/schemas/RecentBookingSummary'
+
+    RecentBookingSummary:
+      type: object
+      required: [appointmentId, memberId, ptUserId, actualPaidVnd, platformFeeVnd, status, createdAt]
+      properties:
+        appointmentId: {type: string, format: uuid}
+        memberId: {type: string, format: uuid}
+        ptUserId: {type: string, format: uuid}
+        actualPaidVnd: {type: integer, format: int64, description: Integer VND}
+        platformFeeVnd: {type: integer, format: int64, description: Integer VND}
+        status: {type: string}
+        createdAt: {type: string, format: date-time}
 
     AdminUserSummary:
       type: object
+      required: [id, role, isLocked, emailConfirmed, createdAtUtc]
       properties:
         id:
           type: string
+          format: uuid
         email:
           type: string
-        full_name:
+          nullable: true
+        fullName:
           type: string
+          nullable: true
         role:
           type: string
-          enum: [member, pt, admin]
-        status:
-          type: string
-          enum: [active, locked, pending_deletion]
-        is_verified:
+          enum: [Member, PT, Admin]
+        isLocked:
           type: boolean
-        certificate_status:
-          type: string
-          enum: [verified, pending, unverified, rejected]
-        created_at:
-          type: string
-          format: date-time
-        last_active_at:
+        emailConfirmed:
+          type: boolean
+        createdAtUtc:
           type: string
           format: date-time
-          nullable: true
 
     AuditLog:
       type: object

@@ -31,8 +31,8 @@ public sealed record AdminUserSummary(
 /// </summary>
 public interface IAdminUserService
 {
-    Task<(IReadOnlyList<AdminUserSummary> Items, int Total)> ListAsync(AdminUserListQuery query, CancellationToken ct);
-    Task<AdminUserSummary> GetAsync(Guid userId, CancellationToken ct);
+    Task<(IReadOnlyList<AdminUserSummary> Items, int Total)> ListAsync(Guid adminUserId, AdminUserListQuery query, CancellationToken ct);
+    Task<AdminUserSummary> GetAsync(Guid adminUserId, Guid userId, CancellationToken ct);
     Task<AdminUserSummary> SetLockAsync(Guid targetUserId, Guid adminUserId, bool locked, string reason, CancellationToken ct);
 }
 

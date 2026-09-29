@@ -5,6 +5,7 @@ using Fitmate.Api.Idempotency;
 using Fitmate.Api.Outbox;
 using Fitmate.Application.Idempotency;
 using Fitmate.Application.Outbox;
+using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Identity;
@@ -62,6 +63,8 @@ static int UnknownCommand(string cmd)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddScoped<AdminReviewService>();
+builder.Services.AddScoped<IAdminReviewStore, Fitmate.Infrastructure.Admin.EfAdminReviewStore>();
 
 // BE-822: Kestrel body size limit (10MB)
 builder.WebHost.ConfigureKestrel(serverOptions =>
@@ -129,7 +132,7 @@ builder.Services.AddDataProtection()
     .SetApplicationName("Fitmate.Api");
 builder.Services.AddIdentityCore<ApplicationUser>(opt =>
 {
-    opt.Password.RequiredLength = 12;
+    opt.Password.RequiredLength = PasswordPolicy.MinimumLength;
     opt.Password.RequireDigit = true;
     opt.Password.RequireUppercase = false;
     opt.Password.RequireLowercase = false;
@@ -157,6 +160,8 @@ builder.Services.AddScoped<IRefreshTokenService>(sp => new RefreshTokenService(
     sp.GetRequiredService<Fitmate.Application.Common.ITokenHasher>(),
     jwtOptions));
 builder.Services.AddScoped<Fitmate.Application.Auth.IRefreshTokenStore, Fitmate.Infrastructure.Auth.EfRefreshTokenStore>();
+builder.Services.AddScoped<IAuthSessionService, Fitmate.Infrastructure.Auth.EfAuthSessionService>();
+builder.Services.AddScoped<IAdminLoginChallengeService, Fitmate.Infrastructure.Auth.EfAdminLoginChallengeService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<Fitmate.Api.Auth.ICurrentUserAccessor, Fitmate.Api.Auth.HttpContextCurrentUserAccessor>();
 
@@ -377,6 +382,45 @@ builder.Services.AddHostedService<OutboxBackgroundService>();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(opt =>
     {
+        // Keep JWT wire claim names (sid, amr, security_stamp) unchanged.
+        // The default legacy inbound mapping rewrites sid and breaks server-side session lookup.
+        opt.MapInboundClaims = false;
+        opt.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var principal = context.Principal!;
+                var id = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var users = context.HttpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
+                var user = id is null ? null : await users.FindByIdAsync(id);
+                if (user is null || user.IsDeleted || user.Status != Fitmate.Domain.Common.UserStatus.Active ||
+                    await users.IsLockedOutAsync(user) ||
+                    principal.FindFirst("security_stamp")?.Value != user.SecurityStamp)
+                {
+                    context.Fail("Session revoked or account inactive.");
+                    return;
+                }
+                var method = principal.FindFirst("amr")?.Value ?? principal.FindFirst(System.Security.Claims.ClaimTypes.AuthenticationMethod)?.Value;
+                if (!principal.IsInRole("MfaSetup"))
+                {
+                    var sessions = context.HttpContext.RequestServices.GetRequiredService<IAuthSessionService>();
+                    var active = Guid.TryParse(principal.FindFirst("sid")?.Value, out var sid)
+                        ? await sessions.FindActiveAsync(sid, user.Id, user.SecurityStamp!, context.HttpContext.RequestAborted) : null;
+                    if (active is null || active.AuthenticationMethod != method) { context.Fail("Session revoked."); return; }
+                    var roles = await users.GetRolesAsync(user);
+                    if (principal.IsInRole("Admin") && !roles.Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase)))
+                    { context.Fail("Role revoked."); return; }
+                }
+                if (principal.IsInRole("Admin") && (!user.TwoFactorEnabled || method != "mfa"))
+                    context.Fail("Admin MFA required.");
+                if (principal.IsInRole("MfaSetup") && user.TwoFactorEnabled)
+                    context.Fail("Enrollment session has ended.");
+                if (principal.IsInRole("MfaSetup") &&
+                    context.Request.Path != "/api/v1/admin/auth/mfa/setup" &&
+                    context.Request.Path != "/api/v1/admin/auth/mfa/verify")
+                    context.Fail("Enrollment token cannot access application data.");
+            }
+        };
         opt.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
@@ -419,7 +463,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
             var parts = network.Split('/');
             if (parts.Length == 2 && System.Net.IPAddress.TryParse(parts[0], out var ip) && int.TryParse(parts[1], out var prefix))
             {
-                options.KnownNetworks.Add(new IPNetwork(ip, prefix));
+                options.KnownIPNetworks.Add(new System.Net.IPNetwork(ip, prefix));
             }
         }
     }
@@ -559,7 +603,7 @@ builder.Services.AddControllers()
             var problem = FitmateProblemDetails.Create(
                 status: 400,
                 title: "Validation failed",
-                code: ErrorCodes.ValidationFailed,
+                code: Fitmate.Api.Errors.ErrorCodes.ValidationFailed,
                 typeSlug: "validation",
                 detail: "One or more fields failed validation.",
                 traceId: FitmateProblemDetails.ResolveTraceId(ctx.HttpContext),
@@ -621,10 +665,11 @@ app.UseExceptionHandler(handler =>
                 de.Code,
                 TypeSlugForCode(de.Code),
                 de.Errors),
-            ArgumentException => (400, "Bad request", ErrorCodes.GeneralBadRequest, "bad-request", (IReadOnlyDictionary<string, string[]>?)null),
-            KeyNotFoundException => (404, "Resource not found", ErrorCodes.GeneralNotFound, "not-found", null),
-            UnauthorizedAccessException => (401, "Unauthorized", ErrorCodes.AuthUnauthorized, "unauthorized", null),
-            _ => (500, "Internal server error", ErrorCodes.GeneralInternal, "internal", null)
+            // BE-080 wire codes: namespace Api.Errors, không phải domain ErrorCodes.
+            ArgumentException => (400, "Bad request", Fitmate.Api.Errors.ErrorCodes.GeneralBadRequest, "bad-request", (IReadOnlyDictionary<string, string[]>?)null),
+            KeyNotFoundException => (404, "Resource not found", Fitmate.Api.Errors.ErrorCodes.GeneralNotFound, "not-found", null),
+            UnauthorizedAccessException => (401, "Unauthorized", Fitmate.Api.Errors.ErrorCodes.AuthUnauthorized, "unauthorized", null),
+            _ => (500, "Internal server error", Fitmate.Api.Errors.ErrorCodes.GeneralInternal, "internal", null)
         };
 
         context.Response.StatusCode = status;
@@ -682,12 +727,25 @@ app.UseAuthorization();
 // SeedAdminCommand đã seed khi chạy CLI; với web host cần đảm bảo khi role được dùng trong [Authorize(Roles=...)].
 using (var scope = app.Services.CreateScope())
 {
+    var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
     var roleManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.RoleManager<Microsoft.AspNetCore.Identity.IdentityRole<Guid>>>();
-    foreach (var roleName in Fitmate.Api.Cli.SeedAdminCommand.RoleNames)
+    var roleSeedStrategy = db.Database.CreateExecutionStrategy();
+    await roleSeedStrategy.ExecuteAsync(async () =>
     {
-        if (!await roleManager.RoleExistsAsync(roleName))
-            await roleManager.CreateAsync(new Microsoft.AspNetCore.Identity.IdentityRole<Guid> { Name = roleName });
-    }
+        await using var roleSeedTransaction = await db.Database.BeginTransactionAsync();
+        await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtextextended('fitmate-role-seed', 0))");
+        foreach (var roleName in Fitmate.Api.Cli.SeedAdminCommand.RoleNames)
+        {
+            if (!await roleManager.RoleExistsAsync(roleName))
+            {
+                var result = await roleManager.CreateAsync(new Microsoft.AspNetCore.Identity.IdentityRole<Guid> { Name = roleName });
+                if (!result.Succeeded)
+                    throw new InvalidOperationException(
+                        $"Unable to seed role '{roleName}': {string.Join("; ", result.Errors.Select(e => e.Description))}");
+            }
+        }
+        await roleSeedTransaction.CommitAsync();
+    });
 }
 
 // BE-070: Idempotency middleware (DEC-011). Áp dụng cho mọi mutation có Idempotency-Key header.

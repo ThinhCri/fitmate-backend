@@ -82,13 +82,18 @@ public class AdminFinanceService : IAdminFinanceService
         var rows = await _store.ListLedgerAsync(type, skip, pageSize, ct);
         var total = await _store.CountLedgerAsync(type, ct);
 
-        var items = rows.Select(r => new LedgerEntry(
-            Id: r.Id,
-            Type: ParseType(r.Type),
-            AmountVnd: r.AmountVnd,
-            AppointmentId: r.AppointmentId,
-            PaymentId: r.PaymentId,
-            OccurredAt: r.OccurredAt)).ToList();
+        // Row có type không nhận diện được (dữ liệu legacy) bị bỏ qua thay vì làm hỏng cả trang.
+        var items = rows
+            .Select(r => (Row: r, Parsed: ParseType(r.Type)))
+            .Where(x => x.Parsed.HasValue)
+            .Select(x => new LedgerEntry(
+                Id: x.Row.Id,
+                Type: x.Parsed!.Value,
+                AmountVnd: x.Row.AmountVnd,
+                AppointmentId: x.Row.AppointmentId,
+                PaymentId: x.Row.PaymentId,
+                OccurredAt: x.Row.OccurredAt))
+            .ToList();
 
         return new LedgerPage(items, total, page, pageSize);
     }
@@ -115,13 +120,15 @@ public class AdminFinanceService : IAdminFinanceService
         _ => "all"
     };
 
-    private static LedgerEntryType ParseType(string t) => t switch
+    // Type đến từ DB, không phải input người dùng: enum không nhận diện được thì
+    // bỏ dòng đó khỏi kết quả thay vì ném exception (⇒ 500 cho cả request).
+    private static LedgerEntryType? ParseType(string t) => t switch
     {
         "platform_fee" => LedgerEntryType.PlatformFee,
         "trainer_share" => LedgerEntryType.TrainerShare,
         "refund" => LedgerEntryType.Refund,
         "payout" => LedgerEntryType.Payout,
-        _ => throw new InvalidOperationException($"Unknown ledger type '{t}'.")
+        _ => null
     };
 
     public async Task<RefundView> ProcessRefundAsync(Guid adminUserId, CreateRefundRequest request, CancellationToken ct)

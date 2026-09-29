@@ -1,292 +1,373 @@
-using Fitmate.Application.Support;
+﻿using Fitmate.Application.Support;
+using Fitmate.Domain.Common;
 using Fitmate.Domain.Support;
 using FluentAssertions;
 
 namespace Fitmate.UnitTests;
 
+/// <summary>
+/// R08: SupportService pháº£i tráº£ ValidationException (400 + errors map) chá»© khÃ´ng pháº£i
+/// ArgumentException (500) khi input ngÆ°á»i dÃ¹ng rá»—ng / sai enum. NgoÃ i ra kiá»ƒm tra
+/// pagination clamp vÃ  reply/transition Ä‘á»ƒ báº£o Ä‘áº£m service giá»¯ há»£p Ä‘á»“ng vá»›i controller.
+/// </summary>
 public class SupportServiceTests
 {
-    private sealed class InMemorySupportTicketStore : ISupportTicketStore
+    private sealed class InMemoryStore : ISupportTicketStore
     {
         public Dictionary<Guid, SupportTicket> Items { get; } = new();
+        public List<SupportTicket> Added { get; } = new();
+        public (IReadOnlyList<SupportTicket> Items, int Total) LastListResult { get; set; }
+            = (Array.Empty<SupportTicket>(), 0);
+        public (Guid UserId, SupportTicketStatus? Status, int Page, int PageSize) LastUserFilter { get; private set; }
+        public (SupportTicketStatus? Status, string? Category, int Page, int PageSize) LastAdminFilter { get; private set; }
+        public Guid? LastLinkedBookingId { get; private set; }
 
-        public Task<SupportTicket?> FindByIdAsync(Guid id, CancellationToken ct)
+        public Task<bool> CanLinkBookingAsync(Guid bookingId, Guid actorId, CancellationToken ct)
         {
-            return Task.FromResult(Items.GetValueOrDefault(id));
+            LastLinkedBookingId = bookingId;
+            return Task.FromResult(true);
         }
 
-        public Task<(IReadOnlyList<SupportTicket> Items, int Total)> ListByUserPagedAsync(
-            Guid userId,
-            SupportTicketStatus? status,
-            int page,
-            int pageSize,
-            CancellationToken ct)
-        {
-            var query = Items.Values.Where(x => x.UserId == userId);
-            if (status.HasValue)
-                query = query.Where(x => x.Status == status.Value);
+        public Task<SupportTicket?> FindByIdAsync(Guid id, CancellationToken ct)
+            => Task.FromResult(Items.GetValueOrDefault(id));
 
-            var list = query.OrderByDescending(x => x.CreatedAt).ToList();
-            var paged = list.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-            return Task.FromResult(((IReadOnlyList<SupportTicket>)paged, list.Count));
+        public Task<(IReadOnlyList<SupportTicket> Items, int Total)> ListByUserPagedAsync(
+            Guid userId, SupportTicketStatus? status, int page, int pageSize, CancellationToken ct)
+        {
+            LastUserFilter = (userId, status, page, pageSize);
+            return Task.FromResult(LastListResult);
         }
 
         public Task<(IReadOnlyList<SupportTicket> Items, int Total)> ListAdminPagedAsync(
-            SupportTicketStatus? status,
-            string? category,
-            int page,
-            int pageSize,
-            CancellationToken ct)
+            SupportTicketStatus? status, string? category, int page, int pageSize, CancellationToken ct)
         {
-            var query = Items.Values.AsQueryable();
-            if (status.HasValue)
-                query = query.Where(x => x.Status == status.Value);
-            if (!string.IsNullOrWhiteSpace(category))
-                query = query.Where(x => x.Category == category.Trim().ToLowerInvariant());
-
-            var list = query.OrderByDescending(x => x.CreatedAt).ToList();
-            var paged = list.Skip((page - 1) * pageSize).Take(pageSize).ToList();
-            return Task.FromResult(((IReadOnlyList<SupportTicket>)paged, list.Count));
+            LastAdminFilter = (status, category, page, pageSize);
+            return Task.FromResult(LastListResult);
         }
 
         public Task AddAsync(SupportTicket ticket, CancellationToken ct)
         {
             Items[ticket.Id] = ticket;
+            Added.Add(ticket);
             return Task.CompletedTask;
         }
 
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
+    private static readonly Guid UserId = Guid.NewGuid();
+    private static readonly Guid AdminId = Guid.NewGuid();
+
+    private static CreateSupportTicketRequest ValidRequest(
+        string subject = "KhÃ´ng Ä‘Äƒng nháº­p Ä‘Æ°á»£c",
+        string category = "Account",
+        string message = "TÃ´i khÃ´ng nháº­n Ä‘Æ°á»£c mÃ£ xÃ¡c thá»±c.") =>
+        new(subject, category, Priority: null, message, AttachmentUrls: null);
+
+    // ---------- Create: validation ----------
+
     [Fact]
-    public async Task CreateTicket_WithValidData_CreatesTicketInOpenStatus()
+    public async Task CreateTicket_BlankSubject_ThrowsValidation_WithSubjectField()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var userId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var req = new CreateSupportTicketRequest(
-            Subject: "Payment issue",
-            Category: "billing",
-            Priority: "High",
-            Message: "I was double charged.",
-            AttachmentUrls: new List<string> { "https://cdn.fitmate.vn/receipt.png" });
+        var act = () => sut.CreateTicketAsync(UserId, ValidRequest(subject: "   "), CancellationToken.None);
 
-        var result = await svc.CreateTicketAsync(userId, req, CancellationToken.None);
-
-        result.Should().NotBeNull();
-        result.UserId.Should().Be(userId);
-        result.Subject.Should().Be("Payment issue");
-        result.Category.Should().Be("billing");
-        result.Priority.Should().Be("High");
-        result.Status.Should().Be("Open");
-        result.Messages.Should().HaveCount(1);
-        result.Messages[0].Content.Should().Be("I was double charged.");
-        result.Messages[0].IsAdmin.Should().BeFalse();
-        result.Messages[0].AttachmentUrls.Should().Contain("https://cdn.fitmate.vn/receipt.png");
+        var ex = await act.Should().ThrowAsync<ValidationException>();
+        ex.Which.HttpStatus.Should().Be(400);
+        ex.Which.Code.Should().Be(ErrorCodes.Validation.FieldInvalid);
+        ex.Which.Errors.Should().ContainKey("subject");
+        store.Added.Should().BeEmpty("validation pháº£i cháº·n trÆ°á»›c khi ghi vÃ o store");
     }
 
     [Fact]
-    public async Task CreateTicket_WithMissingSubject_ThrowsArgumentException()
+    public async Task CreateTicket_BlankCategory_ThrowsValidation_WithCategoryField()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var req = new CreateSupportTicketRequest("", "billing", "Normal", "Msg", null);
+        var act = () => sut.CreateTicketAsync(UserId, ValidRequest(category: ""), CancellationToken.None);
 
-        var act = () => svc.CreateTicketAsync(Guid.NewGuid(), req, CancellationToken.None);
-        await act.Should().ThrowAsync<ArgumentException>();
+        var ex = await act.Should().ThrowAsync<ValidationException>();
+        ex.Which.HttpStatus.Should().Be(400);
+        ex.Which.Errors.Should().ContainKey("category");
+        store.Added.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task GetTicket_ByOwner_ReturnsDetail()
+    public async Task CreateTicket_BlankMessage_ThrowsValidation_WithMessageField()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var ownerId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            ownerId,
-            new CreateSupportTicketRequest("Subj", "tech", "Normal", "Help", null),
-            CancellationToken.None);
+        var act = () => sut.CreateTicketAsync(UserId, ValidRequest(message: "\t\n"), CancellationToken.None);
 
-        var fetched = await svc.GetTicketAsync(created.Id, ownerId, isAdmin: false, CancellationToken.None);
-
-        fetched.Should().NotBeNull();
-        fetched!.Id.Should().Be(created.Id);
+        var ex = await act.Should().ThrowAsync<ValidationException>();
+        ex.Which.HttpStatus.Should().Be(400);
+        ex.Which.Errors.Should().ContainKey("message");
+        store.Added.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task GetTicket_ByNonOwner_ReturnsNull_ForIdorProtection()
+    public async Task CreateTicket_ValidRequest_PersistsAndReturnsDetail()
     {
-        // DoD: "Ticket người khác 404"
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var ownerId = Guid.NewGuid();
-        var strangerId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            ownerId,
-            new CreateSupportTicketRequest("Private Issue", "account", "Urgent", "Secret", null),
-            CancellationToken.None);
+        var dto = await sut.CreateTicketAsync(UserId, ValidRequest(), CancellationToken.None);
 
-        var fetched = await svc.GetTicketAsync(created.Id, strangerId, isAdmin: false, CancellationToken.None);
+        store.Added.Should().ContainSingle();
+        dto.Id.Should().Be(store.Added[0].Id);
+        dto.UserId.Should().Be(UserId);
+        dto.Subject.Should().Be("KhÃ´ng Ä‘Äƒng nháº­p Ä‘Æ°á»£c");
+        dto.Status.Should().Be(SupportTicketStatus.Open.ToString());
+        dto.Messages.Should().HaveCount(1, "ticket má»›i pháº£i cÃ³ message khá»Ÿi táº¡o");
+        dto.Messages[0].Content.Should().Be("TÃ´i khÃ´ng nháº­n Ä‘Æ°á»£c mÃ£ xÃ¡c thá»±c.");
+    }
 
-        fetched.Should().BeNull(); // Controller will map null to 404 Not Found!
+    // ---------- Admin status transition ----------
+
+    [Fact]
+    public async Task AdminChangeStatus_InvalidStatus_ThrowsValidation_NotArgumentException()
+    {
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        store.Items[id] = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        var sut = new SupportService(store);
+
+        var act = () => sut.AdminChangeStatusAsync(id, new AdminChangeStatusRequest("banana"), CancellationToken.None);
+
+        var ex = await act.Should().ThrowAsync<ValidationException>();
+        ex.Which.HttpStatus.Should().Be(400);
+        ex.Which.Code.Should().Be(ErrorCodes.Validation.FieldInvalid);
+        ex.Which.Errors.Should().ContainKey("status");
+        ex.Which.Message.Should().Contain("banana", "message pháº£i nÃªu rÃµ giÃ¡ trá»‹ sai");
     }
 
     [Fact]
-    public async Task GetTicket_ByAdmin_ReturnsDetailEvenIfNonOwner()
+    public async Task AdminChangeStatus_OutOfRangeNumericEnum_ThrowsValidation()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var ownerId = Guid.NewGuid();
-        var adminId = Guid.NewGuid();
+        // "99" parse Ä‘Æ°á»£c thÃ nh enum (long) nhÆ°ng khÃ´ng pháº£i giÃ¡ trá»‹ Ä‘á»‹nh nghÄ©a.
+        // LÆ°u Ã½: "2" lÃ  InProgress â€” há»£p lá»‡, khÃ´ng dÃ¹ng lÃ m case Ã¢m.
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        store.Items[id] = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            ownerId,
-            new CreateSupportTicketRequest("Subj", "tech", "Normal", "Msg", null),
-            CancellationToken.None);
+        var act = () => sut.AdminChangeStatusAsync(id, new AdminChangeStatusRequest("99"), CancellationToken.None);
 
-        var fetched = await svc.GetTicketAsync(created.Id, adminId, isAdmin: true, CancellationToken.None);
-
-        fetched.Should().NotBeNull();
-        fetched!.Id.Should().Be(created.Id);
+        var assertion = await act.Should().ThrowAsync<ValidationException>();
+        assertion.Which.HttpStatus.Should().Be(400);
+        assertion.Which.Errors.Should().ContainKey("status");
     }
 
     [Fact]
-    public async Task UserReplyTicket_AppendsMessageAndSetsStatusToOpen()
+    public async Task AdminChangeStatus_NumericValueMatchingDefinedEnum_IsAccepted()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var userId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        store.Items[id] = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            userId,
-            new CreateSupportTicketRequest("Question", "general", "Low", "First msg", null),
-            CancellationToken.None);
+        var dto = await sut.AdminChangeStatusAsync(id, new AdminChangeStatusRequest("2"), CancellationToken.None);
 
-        var replied = await svc.UserReplyTicketAsync(
-            created.Id,
-            userId,
-            new ReplySupportTicketRequest("Second msg", null),
-            CancellationToken.None);
-
-        replied.Should().NotBeNull();
-        replied!.Messages.Should().HaveCount(2);
-        replied.Messages[1].Content.Should().Be("Second msg");
-        replied.Status.Should().Be("Open");
+        dto!.Status.Should().Be(SupportTicketStatus.InProgress.ToString());
     }
 
     [Fact]
-    public async Task AdminReplyTicket_AppendsAdminMessageAndSetsStatusToWaitingForUser()
+    public async Task AdminChangeStatus_ValidStatus_PersistsTransition()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var userId = Guid.NewGuid();
-        var adminId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        store.Items[id] = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            userId,
-            new CreateSupportTicketRequest("Question", "general", "Low", "First msg", null),
-            CancellationToken.None);
+        var dto = await sut.AdminChangeStatusAsync(
+            id, new AdminChangeStatusRequest("Resolved"), CancellationToken.None);
 
-        var replied = await svc.AdminReplyTicketAsync(
-            created.Id,
-            adminId,
-            new ReplySupportTicketRequest("Admin response", null),
-            CancellationToken.None);
-
-        replied.Should().NotBeNull();
-        replied!.Messages.Should().HaveCount(2);
-        replied.Messages[1].IsAdmin.Should().BeTrue();
-        replied.Messages[1].Content.Should().Be("Admin response");
-        replied.Status.Should().Be("WaitingForUser");
+        dto!.Status.Should().Be(SupportTicketStatus.Resolved.ToString());
+        store.Items[id].Status.Should().Be(SupportTicketStatus.Resolved);
     }
 
     [Fact]
-    public async Task UserCloseTicket_ByOwner_SetsClosedStatus()
+    public async Task AdminChangeStatus_UnknownTicket_ReturnsNull()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var userId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            userId,
-            new CreateSupportTicketRequest("Issue", "general", "Low", "Help", null),
-            CancellationToken.None);
+        var dto = await sut.AdminChangeStatusAsync(Guid.NewGuid(), new AdminChangeStatusRequest("Closed"), CancellationToken.None);
 
-        var success = await svc.UserCloseTicketAsync(created.Id, userId, CancellationToken.None);
-        success.Should().BeTrue();
+        dto.Should().BeNull();
+    }
 
-        var fetched = await svc.GetTicketAsync(created.Id, userId, isAdmin: false, CancellationToken.None);
-        fetched!.Status.Should().Be("Closed");
-        fetched.ClosedAt.Should().NotBeNull();
+    // ---------- Pagination clamp + status filter ----------
+
+    [Fact]
+    public async Task ListAdmin_ClampsPagination_BeforeStoreCall()
+    {
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
+
+        // page=0, pageSize=0 â†’ pháº£i clamp thÃ nh (1, 20) trÆ°á»›c khi gá»i store.
+        var result = await sut.ListAdminTicketsAsync(null, null, 0, 0, CancellationToken.None);
+
+        result.Page.Should().Be(1);
+        result.PageSize.Should().Be(20);
+        store.LastAdminFilter.Page.Should().Be(1);
+        store.LastAdminFilter.PageSize.Should().Be(20);
+        store.LastAdminFilter.Status.Should().BeNull();
+        store.LastAdminFilter.Category.Should().BeNull();
     }
 
     [Fact]
-    public async Task ReplyTicket_OnClosedTicket_ThrowsInvalidOperationException()
+    public async Task ListAdmin_PageSizeAboveMax_IsClampedTo100()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var userId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            userId,
-            new CreateSupportTicketRequest("Issue", "general", "Low", "Help", null),
-            CancellationToken.None);
+        var result = await sut.ListAdminTicketsAsync(null, null, 1, 5000, CancellationToken.None);
 
-        await svc.UserCloseTicketAsync(created.Id, userId, CancellationToken.None);
-
-        var act = () => svc.UserReplyTicketAsync(
-            created.Id,
-            userId,
-            new ReplySupportTicketRequest("Reply to closed", null),
-            CancellationToken.None);
-
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        result.PageSize.Should().Be(100);
+        result.Page.Should().Be(1);
     }
 
     [Fact]
-    public async Task AdminChangeStatus_WithValidStatus_UpdatesStatusAndTimestamp()
+    public async Task ListAdmin_EmptyResult_ReturnsEmptyItemsNotNull()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var userId = Guid.NewGuid();
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var created = await svc.CreateTicketAsync(
-            userId,
-            new CreateSupportTicketRequest("Issue", "technical", "Normal", "Bug report", null),
-            CancellationToken.None);
+        var result = await sut.ListAdminTicketsAsync(null, null, 1, 25, CancellationToken.None);
 
-        var updated = await svc.AdminChangeStatusAsync(
-            created.Id,
-            new AdminChangeStatusRequest("Resolved"),
-            CancellationToken.None);
-
-        updated.Should().NotBeNull();
-        updated!.Status.Should().Be("Resolved");
-        updated.ResolvedAt.Should().NotBeNull();
+        result.Items.Should().NotBeNull();
+        result.Items.Should().BeEmpty();
+        result.Page.Should().Be(1);
+        result.PageSize.Should().Be(25);
     }
 
     [Fact]
-    public async Task ListMyTickets_WithStatusFilter_ReturnsFilteredTickets()
+    public async Task ListAdmin_UndefinedEnumStatus_IsIgnored_NotSilentlyEmptyList()
     {
-        var store = new InMemorySupportTicketStore();
-        var svc = new SupportService(store);
-        var userId = Guid.NewGuid();
+        // status="99" parse Ä‘Æ°á»£c thÃ nh enum nhÆ°ng khÃ´ng pháº£i giÃ¡ trá»‹ Ä‘á»‹nh nghÄ©a.
+        // TrÆ°á»›c khi sá»­a, store nháº­n Status=99 â†’ 0 dÃ²ng, admin tÆ°á»Ÿng khÃ´ng cÃ³ ticket.
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
 
-        var t1 = await svc.CreateTicketAsync(userId, new CreateSupportTicketRequest("T1", "cat", "Low", "M1", null), CancellationToken.None);
-        var t2 = await svc.CreateTicketAsync(userId, new CreateSupportTicketRequest("T2", "cat", "Low", "M2", null), CancellationToken.None);
-        await svc.UserCloseTicketAsync(t2.Id, userId, CancellationToken.None);
+        await sut.ListAdminTicketsAsync("99", null, 1, 25, CancellationToken.None);
 
-        var openOnly = await svc.ListMyTicketsAsync(userId, "Open", 1, 10, CancellationToken.None);
-        openOnly.Total.Should().Be(1);
-        openOnly.Items.Should().ContainSingle(x => x.Id == t1.Id);
+        store.LastAdminFilter.Status.Should().BeNull("enum khÃ´ng Ä‘á»‹nh nghÄ©a pháº£i bá»‹ bá» qua, khÃ´ng lá»c sai");
+    }
 
-        var closedOnly = await svc.ListMyTicketsAsync(userId, "Closed", 1, 10, CancellationToken.None);
-        closedOnly.Total.Should().Be(1);
-        closedOnly.Items.Should().ContainSingle(x => x.Id == t2.Id);
+    [Fact]
+    public async Task ListMy_ValidStatus_IsForwardedToStore()
+    {
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
+
+        await sut.ListMyTicketsAsync(UserId, "resolved", 2, 50, CancellationToken.None);
+
+        store.LastUserFilter.UserId.Should().Be(UserId);
+        store.LastUserFilter.Status.Should().Be(SupportTicketStatus.Resolved);
+        store.LastUserFilter.Page.Should().Be(2);
+        store.LastUserFilter.PageSize.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task ListMy_UndefinedEnumStatus_IsIgnored()
+    {
+        var store = new InMemoryStore();
+        var sut = new SupportService(store);
+
+        await sut.ListMyTicketsAsync(UserId, "7", 1, 20, CancellationToken.None);
+
+        store.LastUserFilter.Status.Should().BeNull();
+    }
+
+    // ---------- Reply paths ----------
+
+    [Fact]
+    public async Task UserReply_BlankMessage_ThrowsValidation()
+    {
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        store.Items[id] = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        var sut = new SupportService(store);
+
+        var act = () => sut.UserReplyTicketAsync(id, UserId, new ReplySupportTicketRequest("  ", null), CancellationToken.None);
+
+        var ex = await act.Should().ThrowAsync<ValidationException>();
+        ex.Which.HttpStatus.Should().Be(400);
+        ex.Which.Errors.Should().ContainKey("message");
+    }
+
+    [Fact]
+    public async Task UserReply_ClosedTicket_ThrowsConflict_NotInvalidOperation()
+    {
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        var ticket = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        ticket.CloseByUser(UserId);
+        store.Items[id] = ticket;
+        var sut = new SupportService(store);
+
+        var act = () => sut.UserReplyTicketAsync(id, UserId, new ReplySupportTicketRequest("Xin há»— trá»£ thÃªm", null), CancellationToken.None);
+
+        var ex = await act.Should().ThrowAsync<ConflictException>();
+        ex.Which.HttpStatus.Should().Be(409);
+        ex.Which.Code.Should().Be(ErrorCodes.Support.TicketClosed);
+    }
+
+    [Fact]
+    public async Task AdminReply_ClosedTicket_ThrowsConflict_NotInvalidOperation()
+    {
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        var ticket = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        ticket.CloseByUser(UserId);
+        store.Items[id] = ticket;
+        var sut = new SupportService(store);
+
+        var act = () => sut.AdminReplyTicketAsync(id, AdminId, new ReplySupportTicketRequest("ÄÃ£ xá»­ lÃ½", null), CancellationToken.None);
+
+        var ex = await act.Should().ThrowAsync<ConflictException>();
+        ex.Which.HttpStatus.Should().Be(409);
+        ex.Which.Code.Should().Be(ErrorCodes.Support.TicketClosed);
+    }
+
+    [Fact]
+    public async Task UserReply_OtherOwnerTicket_ReturnsNull_NotLeak()
+    {
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        store.Items[id] = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        var other = Guid.NewGuid();
+        var sut = new SupportService(store);
+
+        var dto = await sut.UserReplyTicketAsync(id, other, new ReplySupportTicketRequest("Xin má»Ÿ", null), CancellationToken.None);
+
+        dto.Should().BeNull("IDOR: ticket cá»§a ngÆ°á»i khÃ¡c pháº£i tráº£ 404 chá»© khÃ´ng pháº£i 403");
+    }
+
+    [Fact]
+    public async Task GetTicket_NonAdminOtherOwner_ReturnsNull()
+    {
+        var store = new InMemoryStore();
+        var id = Guid.NewGuid();
+        store.Items[id] = SupportTicket.Create(
+            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+        var sut = new SupportService(store);
+
+        var dto = await sut.GetTicketAsync(id, Guid.NewGuid(), isAdmin: false, CancellationToken.None);
+
+        dto.Should().BeNull();
     }
 }
-

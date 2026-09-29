@@ -9,7 +9,7 @@ public sealed record ApproveSettlementRequest(DateTime CustomerConfirmedAt, Date
     string SessionEvidenceReference, string PayeeEvidenceReference, bool NoOpenDisputeConfirmed);
 public sealed record RecordTransferRequest(string BankReference, string EvidenceReference, DateTime TransferredAt);
 public sealed record SettlementHoldRequest(string Reason);
-public sealed record SettlementContext(Appointment Appointment, Payment Payment, ManualPtSettlement Settlement, bool HasPendingRefund);
+public sealed record SettlementContext(Appointment Appointment, Payment Payment, ManualPtSettlement Settlement, bool HasPendingRefund, bool HasOpenDispute = false);
 public sealed record SettlementPage(IReadOnlyList<ManualPtSettlement> Items, int Total, int Page, int PageSize);
 public sealed record ConfirmManualRefundRequest(string BankReference, string EvidenceReference, DateTime TransferredAt);
 public sealed record ManualRefundPage(IReadOnlyList<RefundView> Items, int Total, int Page, int PageSize);
@@ -99,7 +99,7 @@ public sealed class ManualSettlementService(IManualSettlementStore store, IAutho
     {
         if (context.Appointment.Status != BookingStatus.Completed ||
             context.Appointment.SlotStartUtc.AddMinutes(context.Appointment.DurationMinutes) > DateTime.UtcNow ||
-            context.Payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded) || context.HasPendingRefund ||
+            context.Payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded) || context.HasPendingRefund || context.HasOpenDispute ||
             context.Appointment.PaymentId != context.Payment.Id || context.Payment.AmountVnd <= 0 ||
             context.Appointment.ActualPaidVnd != context.Payment.AmountVnd ||
             context.Appointment.PlatformFeeVnd + context.Appointment.TrainerShareVnd != context.Payment.AmountVnd)

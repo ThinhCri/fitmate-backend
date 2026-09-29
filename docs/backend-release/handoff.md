@@ -1363,4 +1363,33 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
   - Added unit tests in `AvailabilityServiceTests.cs` (5 new tests covering scoped replacement, boundary validation, batch overlap rejection, held/booked conflict rejection, and authoritative listing).
   - Test evidence: 711 unit tests passing in `Fitmate.UnitTests` (100% pass, 0 fail).
 
+## 2026-09-29 — Admin demo static repair (unverified)
+
+- Hardened Admin user list/detail authorization in `AdminUserService`; invalid pagination is rejected before the store call.
+- Hardened pending certificate list authorization in `CertificateService` and normalized its page/page-size response.
+- Hardened Outbox stats/list/replay with Application-layer Admin authorization. Admin metrics now reads Outbox state through that guarded service.
+- Invalid Admin booking status filters now return a validation error instead of silently returning all bookings.
+- Added `http://localhost:5174` to the example/local CORS origins for the active Admin Vite port. The local `.env` edit remains ignored and must never be staged.
+- No build, tests, Docker, migration, or runtime smoke was executed in this pass. Status is **IMPLEMENTED_UNVERIFIED** pending the operator commands in the Admin Web demo-readiness handoff.
+- Two Admin schema migrations remain pending for the target database: `20260928120000_AdminSessionSecurity` and `20260928130000_CertificateOwnership`.
+- The untracked `AI/` bundle is outside this Admin demo patch. Do not use broad `git add .` in the BE repository; stage reviewed paths explicitly so model weights and local artifacts are not pushed accidentally.
+
+## 2026-09-29 — Admin verification build repair (awaiting rerun)
+
+- Operator build reached all production projects but failed while compiling `AdminMetricsServiceTests`: its `RecentAppointmentRow` fixture still used the pre-`platformFeeVnd` constructor. The fixture now supplies a platform fee.
+- Updated the direct vulnerable dependencies reported by NuGet audit: `Microsoft.AspNetCore.DataProtection` `10.0.0` -> `10.0.12` and `MailKit` `4.10.0` -> `4.18.1`. Data Protection `10.0.12` also requires the patched `System.Security.Cryptography.Xml` `10.0.12`; MailKit `4.18.1` requires the matching patched MimeKit dependency. All direct Microsoft runtime/EF package references and `dotnet-ef` pins were aligned to `10.0.12` to avoid a mixed servicing graph; Npgsql remains on its compatible `10.0.0` provider release.
+- Removed current compiler warnings in the two seed commands by preserving their validated non-null password invariant, and migrated forwarded-network configuration to the .NET 10 `KnownIPNetworks` API.
+- No command was rerun by the agent. The operator must rerun restore/build/unit/integration tests and confirm the NuGet audit warnings are gone.
+- A production deployment of the Data Protection fix still requires the documented Data Protection key-ring rotation procedure; do not delete or rotate local/shared keys as part of a build check.
+- First operator rerun confirmed restore succeeds and all NuGet vulnerability warnings are gone. The next compile exposed an expression-tree-incompatible assertion and nullable SMTP password warning; the assertion now uses separate strongly typed checks, and SMTP configuration now fails closed when only one credential half is supplied. Awaiting the next operator rerun.
+- The subsequent integration run reached 45 tests: 26 passed and 19 failed. Failures reduced to three shared fixture defects rather than 19 independent business failures: legacy synthetic JWTs lacked persisted auth sessions (401), parallel WebApplicationFactory hosts raced while seeding Identity roles (`RoleNameIndex`), and UAT journey 04 persisted an Appointment with an orphan `PaymentId`.
+- Integration authentication now creates/updates the Identity user, assigns its role, establishes the security stamp/MFA state, persists an `AuthSession`, and issues a JWT containing matching `sid`, `security_stamp`, and `amr` claims. Shared PostgreSQL integration tests are serialized, the revenue journey now persists its Payment ledger row, and production role bootstrap now uses a PostgreSQL transaction advisory lock to be safe across concurrent API instances.
+- The remaining UAT Journey 09 test no longer invokes the retired aggregate PT payout method. It now exercises the production manual settlement workflow for one completed and paid appointment: admin MFA step-up, evidence approval, transfer recording, settlement persistence, and both audit actions. The integration fixture computes a current RFC 6238 authenticator code from its isolated test user's key; production MFA behavior is not bypassed.
+- Verification completed on 2026-09-29:
+  - `dotnet build tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --no-restore --verbosity minimal /m:1` -> **PASS**, 0 warnings, 0 errors.
+  - `dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --no-build --no-restore --logger "console;verbosity=minimal"` run 1 -> **45/45 PASS**, 0 skipped (12 s).
+  - Same integration command run 2 -> **45/45 PASS**, 0 skipped (9 s).
+  - Same integration command run 3 -> **45/45 PASS**, 0 skipped (9 s).
+- Integration status is **VERIFIED** for this working tree. Full solution/unit verification and runtime/Admin Web smoke remain separate release gates.
+
 

@@ -8,6 +8,7 @@ public class RefreshToken : AuditableEntity
     public Guid UserId { get; private set; }
     public string TokenHash { get; private set; } = null!;
     public string? DeviceLabel { get; private set; }
+    public Guid? SessionId { get; private set; }
     public DateTime ExpiresAt { get; private set; }
     public DateTime? RevokedAt { get; private set; }
     public string? ReplacedByTokenHash { get; private set; }
@@ -16,13 +17,14 @@ public class RefreshToken : AuditableEntity
 
     private RefreshToken() { }
 
-    public static RefreshToken Create(Guid userId, string tokenHash, DateTime expiresAt, string? deviceLabel = null) => new()
+    public static RefreshToken Create(Guid userId, string tokenHash, DateTime expiresAt, string? deviceLabel = null, Guid? sessionId = null) => new()
     {
         Id = Guid.NewGuid(),
         UserId = userId,
         TokenHash = tokenHash,
         ExpiresAt = expiresAt,
         DeviceLabel = deviceLabel,
+        SessionId = sessionId,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };

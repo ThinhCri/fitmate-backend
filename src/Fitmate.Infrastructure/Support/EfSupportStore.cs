@@ -7,6 +7,13 @@ namespace Fitmate.Infrastructure.Support;
 
 public class EfSupportTicketStore : ISupportTicketStore
 {
+    public async Task<bool> CanLinkBookingAsync(Guid bookingId, Guid actorId, CancellationToken ct)
+    {
+        if (await _db.Appointments.AnyAsync(a => a.Id == bookingId && (a.MemberId == actorId || a.PtUserId == actorId), ct)) return true;
+        return await (from ur in _db.UserRoles join role in _db.Roles on ur.RoleId equals role.Id
+                      where ur.UserId == actorId && role.NormalizedName == "ADMIN" select ur).AnyAsync(ct)
+            && await _db.Appointments.AnyAsync(a => a.Id == bookingId, ct);
+    }
     private readonly FitmateDbContext _db;
 
     public EfSupportTicketStore(FitmateDbContext db)
@@ -86,7 +93,14 @@ public class EfSupportTicketStore : ISupportTicketStore
 
     public async Task SaveChangesAsync(CancellationToken ct)
     {
+        var ids = _db.ChangeTracker.Entries<SupportTicket>().Where(e => e.Entity.BookingId.HasValue)
+            .Select(e => e.Entity.BookingId!.Value).Distinct().OrderBy(x => x).ToList();
+        if (!_db.Database.IsNpgsql() || ids.Count == 0) { await _db.SaveChangesAsync(ct); return; }
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+        foreach (var id in ids)
+            await _db.Appointments.FromSqlInterpolated($"SELECT * FROM appointments WHERE id = {id} FOR UPDATE").LoadAsync(ct);
         await _db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 }
 

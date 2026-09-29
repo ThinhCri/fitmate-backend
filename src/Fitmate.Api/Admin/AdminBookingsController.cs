@@ -52,6 +52,12 @@ public class AdminBookingsController : ControllerBase
     private static BookingStatus? ParseStatus(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        return Enum.TryParse<BookingStatus>(raw, ignoreCase: true, out var s) ? s : null;
+        if (Enum.TryParse<BookingStatus>(raw, ignoreCase: true, out var status) && Enum.IsDefined(status))
+            return status;
+
+        throw new ValidationException(
+            ErrorCodes.Validation.FieldInvalid,
+            "Trạng thái lịch đặt không hợp lệ.",
+            new Dictionary<string, string[]> { ["status"] = new[] { "unknown booking status" } });
     }
 }

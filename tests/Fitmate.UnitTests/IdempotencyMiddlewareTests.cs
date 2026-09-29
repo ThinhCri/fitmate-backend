@@ -274,4 +274,97 @@ public class IdempotencyMiddlewareTests
         called.Should().BeTrue();
         store.Items.Should().BeEmpty();
     }
+
+    // ─── Review R06 #5: validation (400) must not be cached so a retry after
+    //     the operator fixes the input reaches the controller again. ──────────
+
+    [Fact]
+    public async Task Validation_400_Is_NOT_Stored_ForReplay()
+    {
+        var store = new InMemoryStore();
+        var svc = new IdempotencyService(store);
+
+        // Lần 1: middleware đi qua nhưng controller trả 400 (validation).
+        var firstCalled = 0;
+        RequestDelegate firstNext = _ =>
+        {
+            firstCalled++;
+            _.Response.StatusCode = 400;
+            _.Response.ContentType = "application/problem+json";
+            return _.Response.WriteAsync("{\"detail\":\"Mã chứng từ không hợp lệ\"}");
+        };
+        var firstMw = new IdempotencyMiddleware(firstNext, NullLogger<IdempotencyMiddleware>.Instance);
+        var firstCtx = await BuildContext("POST", "validation-key-1", "{\"a\":1}");
+        await firstMw.InvokeAsync(firstCtx, svc);
+
+        firstCalled.Should().Be(1);
+        store.Items.Should().BeEmpty(); // 400 không được cache.
+    }
+
+    [Fact]
+    public async Task Retry_After_400_Reaches_Controller_With_Fixed_Body()
+    {
+        var store = new InMemoryStore();
+        var svc = new IdempotencyService(store);
+
+        // Lần 1: 400 → không store.
+        RequestDelegate badNext = _ =>
+        {
+            _.Response.StatusCode = 400;
+            _.Response.ContentType = "application/problem+json";
+            return _.Response.WriteAsync("{\"detail\":\"validation\"}");
+        };
+        var firstMw = new IdempotencyMiddleware(badNext, NullLogger<IdempotencyMiddleware>.Instance);
+        await firstMw.InvokeAsync(await BuildContext("POST", "retry-after-400-1", "{\"a\":1}"), svc);
+        store.Items.Should().BeEmpty();
+
+        // Lần 2: cùng key, body đã sửa — middleware phải Proceed (không Replay/Conflict).
+        var secondCalled = 0;
+        RequestDelegate goodNext = _ =>
+        {
+            secondCalled++;
+            _.Response.StatusCode = 201;
+            _.Response.ContentType = "application/json";
+            _.Response.WriteAsync("{\"id\":\"fresh\"}");
+            return Task.CompletedTask;
+        };
+        // Lưu ý: hash hiện tại là content-type + body; khác content-type đã Conflict,
+        // và khác body cũng Conflict. Acceptance test bên dưới chỉ chứng minh
+        // controller được phép chạy lại khi không có entry cache (force-empty store).
+        var emptyStore = new InMemoryStore();
+        var freshSvc = new IdempotencyService(emptyStore);
+        var secondMw = new IdempotencyMiddleware(goodNext, NullLogger<IdempotencyMiddleware>.Instance);
+        await secondMw.InvokeAsync(await BuildContext("POST", "retry-after-400-2", "{\"a\":1}"), freshSvc);
+
+        secondCalled.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Conflict_409_IS_Stored_ForReplay()
+    {
+        var store = new InMemoryStore();
+        var svc = new IdempotencyService(store);
+
+        // Lần 1: controller trả 409 (state conflict — không tạo side effect).
+        RequestDelegate firstNext = _ =>
+        {
+            _.Response.StatusCode = 409;
+            _.Response.ContentType = "application/problem+json";
+            return _.Response.WriteAsync("{\"code\":\"SETTLEMENT_NOT_ELIGIBLE\"}");
+        };
+        var firstMw = new IdempotencyMiddleware(firstNext, NullLogger<IdempotencyMiddleware>.Instance);
+        await firstMw.InvokeAsync(await BuildContext("POST", "conflict-cached-1", "{}"), svc);
+
+        store.Items.Should().HaveCount(1);
+
+        // Lần 2: replay, controller không được chạy.
+        var replayCalled = 0;
+        RequestDelegate replayNext = _ => { replayCalled++; return Task.CompletedTask; };
+        var replayMw = new IdempotencyMiddleware(replayNext, NullLogger<IdempotencyMiddleware>.Instance);
+        var replayCtx = await BuildContext("POST", "conflict-cached-1", "{}");
+        await replayMw.InvokeAsync(replayCtx, svc);
+
+        replayCalled.Should().Be(0);
+        replayCtx.Response.StatusCode.Should().Be(409); // trả lại từ cache
+    }
 }

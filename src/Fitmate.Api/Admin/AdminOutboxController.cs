@@ -1,4 +1,4 @@
-using System.Security.Claims;
+using Fitmate.Api.Auth;
 using Fitmate.Application.Admin;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,10 +17,12 @@ public record ReplayOutboxRequest(string Reason);
 public class AdminOutboxController : ControllerBase
 {
     private readonly IAdminOutboxService _outboxService;
+    private readonly ICurrentUserAccessor _current;
 
-    public AdminOutboxController(IAdminOutboxService outboxService)
+    public AdminOutboxController(IAdminOutboxService outboxService, ICurrentUserAccessor current)
     {
         _outboxService = outboxService;
+        _current = current;
     }
 
     /// <summary>
@@ -29,7 +31,7 @@ public class AdminOutboxController : ControllerBase
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats(CancellationToken ct)
     {
-        var stats = await _outboxService.GetStatsAsync(ct);
+        var stats = await _outboxService.GetStatsAsync(_current.GetUserIdOrThrow(), ct);
         return Ok(new
         {
             pending_count = stats.PendingCount,
@@ -48,7 +50,7 @@ public class AdminOutboxController : ControllerBase
         [FromQuery] string? type = null,
         CancellationToken ct = default)
     {
-        var result = await _outboxService.ListDeadLettersAsync(page, pageSize, type, ct);
+        var result = await _outboxService.ListDeadLettersAsync(_current.GetUserIdOrThrow(), page, pageSize, type, ct);
         return Ok(result);
     }
 
@@ -61,7 +63,7 @@ public class AdminOutboxController : ControllerBase
         [FromBody] ReplayOutboxRequest request,
         CancellationToken ct)
     {
-        var adminId = GetUserId();
+        var adminId = _current.GetUserIdOrThrow();
         var result = await _outboxService.ReplayAsync(id, adminId, request?.Reason ?? string.Empty, ct);
 
         return Ok(new
@@ -74,9 +76,4 @@ public class AdminOutboxController : ControllerBase
         });
     }
 
-    private Guid GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-        return Guid.TryParse(sub, out var id) ? id : Guid.Empty;
-    }
 }

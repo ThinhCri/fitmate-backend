@@ -49,6 +49,12 @@ public class EmailOptions
         if (string.IsNullOrWhiteSpace(FrontendBaseUrl))
             throw new InvalidOperationException("Email:FrontendBaseUrl is required in Production.");
 
+        var hasUsername = !string.IsNullOrWhiteSpace(SmtpUsername);
+        var hasPassword = !string.IsNullOrWhiteSpace(SmtpPassword);
+        if (hasUsername != hasPassword)
+            throw new InvalidOperationException(
+                "Email:SmtpUsername and Email:SmtpPassword must either both be configured or both be omitted.");
+
         if (!Uri.TryCreate(FrontendBaseUrl, UriKind.Absolute, out var uri)
             || (uri.Scheme != "https" && uri.Scheme != "http"))
             throw new InvalidOperationException(

@@ -16,5 +16,6 @@ public sealed record RecentAppointmentRow(
     Guid MemberId,
     Guid PtUserId,
     long ActualPaidVnd,
+    long PlatformFeeVnd,
     BookingStatus Status,
     DateTime CreatedAt);

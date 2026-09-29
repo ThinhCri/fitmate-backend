@@ -20,7 +20,11 @@ public interface ICertificateStore
 {
     Task<Certificate?> FindByIdentityAsync(Guid ptUserId, string title, string issuedBy, string code, CancellationToken ct);
     Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct);
-    Task<IReadOnlyList<Certificate>> ListByPtAsync(Guid ptUserId, CancellationToken ct);
+    /// <summary>
+    /// Lists every certificate belonging to a PT. Bounded to <paramref name="pageSize"/>.
+    /// Used by admin preview/list screens where the count can grow unbounded.
+    /// </summary>
+    Task<(IReadOnlyList<Certificate> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct);
     Task<(IReadOnlyList<Certificate> Items, int Total)> ListPendingPagedAsync(int page, int pageSize, CancellationToken ct);
     Task AddAsync(Certificate cert, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);

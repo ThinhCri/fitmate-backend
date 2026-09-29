@@ -21,15 +21,62 @@ public class AdminCertificatesController : ControllerBase
         _certs = certs;
     }
 
+    /// <summary>
+    /// Admin xem certificate của một PT, phân trang server-side. Bounded 1..100 theo <paramref name="pageSize"/>.
+    /// </summary>
+    [HttpGet("trainer/{ptUserId:guid}")]
+    public async Task<IActionResult> ListTrainer(Guid ptUserId, [FromServices] ICurrentUserAccessor current,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+    {
+        var pageResult = await _certs.ListTrainerForAdminAsync(ptUserId, current.GetUserIdOrThrow(), page, pageSize, ct);
+        return Ok(new AdminCertificatePage(pageResult.Items, pageResult.Total, pageResult.Page, pageResult.PageSize));
+    }
+
+    [HttpGet("{id:guid}/preview")]
+    public async Task<IActionResult> Preview(Guid id, [FromServices] ICurrentUserAccessor current,
+        [FromServices] Fitmate.Application.Storage.ISignedUrlService urls,
+        [FromServices] IAuditLogger audit, CancellationToken ct)
+    {
+        var adminId = current.GetUserIdOrThrow();
+        var cert = await _certs.GetForAdminAsync(id, adminId, ct);
+        if (cert.ImageStorageKey is null) return NotFound();
+        if (!cert.ImageStorageKey.StartsWith("certificates/", StringComparison.Ordinal))
+            return NotFound();
+
+        // CERT-02: prefix storage key KHÔNG chứng minh ownership.
+        //   - NULL ImageUploadedByUserId = dữ liệu trước migration 20260928130000. Không suy đoán
+        //     chủ sở hữu (không tự gán = PtUserId). Trả 404 để không tiết lộ sự tồn tại của
+        //     tài nguyên mà ta không chứng minh được quyền.
+        //   - Có chủ upload nhưng khác PT sở hữu cert → 403 (admin cố truy cập chứng chỉ
+        //     được upload bởi tài khoản khác).
+        if (!cert.ImageUploadedByUserId.HasValue) return NotFound();
+        if (cert.ImageUploadedByUserId.Value != cert.PtUserId) return Forbid();
+
+        var url = urls.CreatePresignedReadUrl(cert.ImageStorageKey, TimeSpan.FromMinutes(5));
+        await audit.LogAsync("certificate.preview", "Certificate", id, adminId, null, ct);
+        Response.Headers.CacheControl = "no-store";
+        return Ok(new { url = url.ToString() });
+    }
+
+    [HttpPost("{id:guid}/revoke")]
+    public async Task<IActionResult> Revoke(Guid id, [FromServices] ICurrentUserAccessor current,
+        [FromBody] RejectCertificateRequest body, CancellationToken ct) =>
+        Ok(await _certs.RevokeAsync(id, current.GetUserIdOrThrow(), body.Reason, ct));
+
     /// <summary>List certificate Pending, phân trang.</summary>
     [HttpGet]
     public async Task<ActionResult<AdminCertificatePage>> ListPending(
+        [FromServices] ICurrentUserAccessor current,
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 50,
         CancellationToken ct = default)
     {
-        var (items, total) = await _certs.ListPendingAsync(page, pageSize, ct);
-        return Ok(new AdminCertificatePage(items, total, page, pageSize));
+        var normalizedPage = page < 1 ? 1 : page;
+        var normalizedPageSize = pageSize < 1 ? 50 : Math.Min(pageSize, 100);
+        var (items, total) = await _certs.ListPendingAsync(current.GetUserIdOrThrow(), normalizedPage, normalizedPageSize, ct);
+        return Ok(new AdminCertificatePage(items, total, normalizedPage, normalizedPageSize));
     }
 
     /// <summary>Approve certificate Pending.</summary>
