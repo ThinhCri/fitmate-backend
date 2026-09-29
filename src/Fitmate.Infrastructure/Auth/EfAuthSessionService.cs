@@ -48,27 +48,35 @@ public sealed class EfAdminLoginChallengeService(FitmateDbContext db, UserManage
     public async Task<Guid?> VerifyAsync(string challengeId, string code, bool recoveryCode, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(challengeId) || challengeId.Length > 128 || string.IsNullOrWhiteSpace(code) || code.Length > 100) return null;
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var hash = Hash(challengeId);
-        // Serialize factor consumption across instances, including one-use recovery codes.
-        var challenge = await db.Set<AdminLoginChallenge>().FromSqlInterpolated(
-            $"SELECT * FROM admin_login_challenges WHERE \"TokenHash\" = {hash} FOR UPDATE").SingleOrDefaultAsync(ct);
-        if (challenge is null || challenge.Consumed || challenge.Attempts >= 5 || challenge.ExpiresAt <= DateTime.UtcNow) return null;
-        challenge.Attempts++;
-        var user = await users.FindByIdAsync(challenge.UserId.ToString());
-        var valid = user is not null && !user.IsDeleted && user.Status == UserStatus.Active && user.TwoFactorEnabled &&
-            user.SecurityStamp == challenge.SecurityStamp && !await users.IsLockedOutAsync(user) &&
-            (await users.GetRolesAsync(user)).Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase));
-        if (valid)
+        var strategy = db.Database.CreateExecutionStrategy();
+
+        return await strategy.ExecuteAsync<Guid?>(async () =>
         {
-            valid = recoveryCode
-                ? (await users.RedeemTwoFactorRecoveryCodeAsync(user!, code.Trim())).Succeeded
-                : await users.VerifyTwoFactorTokenAsync(user!, users.Options.Tokens.AuthenticatorTokenProvider, code.Trim());
-        }
-        if (valid) { challenge.Consumed = true; await users.ResetAccessFailedCountAsync(user!); }
-        else if (user is not null) await users.AccessFailedAsync(user);
-        await db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
-        return valid ? challenge.UserId : null;
+            await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+            // Serialize factor consumption across instances, including one-use recovery codes.
+            var challenge = await db.Set<AdminLoginChallenge>().FromSqlInterpolated(
+                $"SELECT * FROM admin_login_challenges WHERE \"TokenHash\" = {hash} FOR UPDATE").SingleOrDefaultAsync(ct);
+            if (challenge is null || challenge.Consumed || challenge.Attempts >= 5 || challenge.ExpiresAt <= DateTime.UtcNow) return null;
+
+            challenge.Attempts++;
+            var user = await users.FindByIdAsync(challenge.UserId.ToString());
+            var valid = user is not null && !user.IsDeleted && user.Status == UserStatus.Active && user.TwoFactorEnabled &&
+                user.SecurityStamp == challenge.SecurityStamp && !await users.IsLockedOutAsync(user) &&
+                (await users.GetRolesAsync(user)).Any(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase));
+            if (valid)
+            {
+                valid = recoveryCode
+                    ? (await users.RedeemTwoFactorRecoveryCodeAsync(user!, code.Trim())).Succeeded
+                    : await users.VerifyTwoFactorTokenAsync(user!, users.Options.Tokens.AuthenticatorTokenProvider, code.Trim());
+            }
+
+            if (valid) { challenge.Consumed = true; await users.ResetAccessFailedCountAsync(user!); }
+            else if (user is not null) await users.AccessFailedAsync(user);
+            await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return valid ? challenge.UserId : null;
+        });
     }
 }

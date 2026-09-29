@@ -390,7 +390,11 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             OnTokenValidated = async context =>
             {
                 var principal = context.Principal!;
-                var id = principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                // MapInboundClaims is disabled so wire claim names stay stable.
+                // Resolve the JWT-native `sub` claim first; keep the legacy URI
+                // fallback for tokens issued before the mapping was hardened.
+                var id = principal.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub)?.Value
+                    ?? principal.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                 var users = context.HttpContext.RequestServices.GetRequiredService<UserManager<ApplicationUser>>();
                 var user = id is null ? null : await users.FindByIdAsync(id);
                 if (user is null || user.IsDeleted || user.Status != Fitmate.Domain.Common.UserStatus.Active ||
@@ -429,6 +433,8 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateIssuerSigningKey = true,
             ValidIssuer = jwtOptions.Issuer,
             ValidAudience = jwtOptions.Audience,
+            NameClaimType = System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Sub,
+            RoleClaimType = "role",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey)),
             ClockSkew = TimeSpan.FromSeconds(30)
         };

@@ -1408,4 +1408,19 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - First rerun built all four .NET 10 projects with 0 warnings and 0 errors, then `dotnet watch` encountered a Windows `obj\\Debug` path inside the Linux bind mount. The override now masks every project `bin`/`obj` directory with container-only anonymous volumes. Rerun with renewed anonymous volumes before runtime verification.
 - Verification after `docker compose up --build --force-recreate --renew-anon-volumes api`: all four projects built with 0 warnings and 0 errors; role bootstrap and outbox queries reached PostgreSQL; Kestrel listened on `http://[::]:5116`; `GET http://127.0.0.1:5116/health/live` returned HTTP 200. The `dotnet watch` static-web-assets read message and failed in-container browser launch are non-fatal tooling diagnostics; the application remains running.
 
+## 2026-09-29 — Raw JWT claim mapping repair (awaiting MFA rerun)
+
+- Admin MFA enrollment repeatedly failed immediately after a fresh login even though the local Admin was Active, not locked, and had MFA disabled.
+- Root cause: JWT bearer validation disabled inbound claim mapping to preserve wire claims such as `sid`, but `OnTokenValidated` still resolved only the legacy `ClaimTypes.NameIdentifier`, and authorization retained the legacy role claim type. Raw setup tokens therefore carried valid `sub`/`role` claims but were rejected before `AdminMfaController`.
+- JWT validation now resolves the raw `sub` claim with a legacy fallback and explicitly sets `NameClaimType = "sub"` and `RoleClaimType = "role"`. Operator must log in again to obtain a fresh setup token and rerun MFA setup/verification.
+
+## 2026-09-29 — Admin MFA challenge verification repair (awaiting runtime rerun)
+
+- Applied the four pending migrations through the migration bundle, including `20260928120000_AdminSessionSecurity` and `20260928130000_CertificateOwnership`. The local database now contains the Admin login challenge/session tables and certificate ownership columns.
+- Diagnosed `POST /api/v1/admin/auth/login/verify` HTTP 500: `EfAdminLoginChallengeService.VerifyAsync` opened a user transaction directly while PostgreSQL used `NpgsqlRetryingExecutionStrategy`.
+- The complete row-lock, factor verification, failed-attempt update, and commit operation now runs through `Database.CreateExecutionStrategy().ExecuteAsync<Guid?>`, preserving the existing one-use challenge and recovery-code guarantees.
+- The SDK container compiled all four production projects with **0 warnings and 0 errors**. The API still requires `docker compose up -d --build --force-recreate --renew-anon-volumes api` because a container restart retained stale anonymous `obj` volumes; the operator declined that recreate during this pass, so the fixed `/verify` request has not yet received a runtime response.
+- Admin Web now renders password login and MFA challenge as separate stages. During the MFA stage the password field is absent, only the Authenticator/recovery-code input is submitted, and returning to password login clears the challenge state. Web `typecheck` and `lint` both pass.
+- The first successful MFA login then exposed a separate wire-claim mismatch: `JwtTokenService` emitted the legacy .NET role URI while JWT bearer validation intentionally expected the raw `role` claim. This authenticated the access token but made every `AdminOnly` policy return 403. Token issuance now emits `role` directly and its wire-format unit assertion was updated. A fresh login is required after the API rebuild because already-issued access tokens retain their original claims.
+
 

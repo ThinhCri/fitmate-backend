@@ -34,7 +34,7 @@ public class JwtTokenServiceTests
         parsed.Issuer.Should().Be("fitmate-test");
         parsed.Audiences.Should().Contain("fitmate-clients");
         parsed.Claims.Should().Contain(c => c.Type == ClaimTypes.Email && c.Value == "u@x.vn");
-        parsed.Claims.Should().Contain(c => c.Type == ClaimTypes.Role && c.Value == "member");
+        parsed.Claims.Should().Contain(c => c.Type == "role" && c.Value == "member");
     }
 
     [Fact]

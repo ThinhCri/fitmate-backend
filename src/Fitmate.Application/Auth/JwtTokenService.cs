@@ -52,7 +52,9 @@ public class JwtTokenService : IJwtTokenService
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new(ClaimTypes.NameIdentifier, request.UserId.ToString()),
             new(ClaimTypes.Email, request.Email),
-            new(ClaimTypes.Role, request.Role.Equals("admin", StringComparison.OrdinalIgnoreCase) ? "Admin" : request.Role),
+            // Emit the JWT-native wire name. Bearer validation keeps inbound
+            // mapping disabled and uses `role` as RoleClaimType.
+            new("role", request.Role.Equals("admin", StringComparison.OrdinalIgnoreCase) ? "Admin" : request.Role),
             new("full_name", request.FullName),
         };
         if (request.SecurityStamp is not null) claims.Add(new Claim("security_stamp", request.SecurityStamp));
