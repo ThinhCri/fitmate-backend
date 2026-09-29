@@ -1392,4 +1392,11 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
   - Same integration command run 3 -> **45/45 PASS**, 0 skipped (9 s).
 - Integration status is **VERIFIED** for this working tree. Full solution/unit verification and runtime/Admin Web smoke remain separate release gates.
 
+## 2026-09-29 — CI secret scan and container scan repair
+
+- Diagnosed the failed Gitleaks job: all 11 reported findings were exact public test vectors, local performance-only credentials, immutable evidence hashes, or false matches against the `dbPassword` C# variable name. No production credential was present in the report.
+- Tightened the custom database-password rule so it only recognizes separated environment/configuration names such as `DB_PASSWORD` and `db-password`. Added value-scoped allowlists for the reviewed test vectors and local benchmark values; no source or documentation directory was excluded from scanning.
+- Replaced the nonexistent `aquasecurity/trivy-action@0.28.0` ref with the official `v0.36.0` release. The failing Docker job had stopped while resolving the action, before either Dockerfile was built.
+- Repository diff checks passed before commit. The definitive Gitleaks and action-resolution verification remains a new GitHub Actions run after the commit is pushed.
+
 

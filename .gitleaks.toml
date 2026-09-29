@@ -21,17 +21,19 @@ keywords = ["jwt_signing_key", "jwt__signingkey", "jwt-signing-key", "jwt_secret
 regexes = [
   '''__SET_[A-Z0-9_]+__''',
   '''ci-dummy-signing-key-not-used-by-unit-tests-32bytes''',
+  '''FitmatePerfSuperSecretSigningKeyForBenchmarkingOnly2026!''',
 ]
 
 [[rules]]
 id = "fitmate-db-password"
 description = "Postgres / DB password env var (quoted or unquoted value, real secret)."
-regex = '''(?i)(?:^|\s)(?:db[_-]?password|postgres[_-]?password|database[_-]?password)\s*[:=]\s*["']?([^\s"'#]{8,})["']?'''
+regex = '''(?i)(?:^|\s)(?:db[_-]password|postgres[_-]password|database[_-]password)\s*[:=]\s*["']?([^\s"'#]{8,})["']?'''
 keywords = ["db_password", "postgres_password", "database_password", "db-password", "postgres-password", "database-password"]
 [rules.allowlist]
 regexes = [
   '''__SET_[A-Z0-9_]+__''',
   '''ci-ephemeral-db-password''',
+  '''localverify300pw''',
 ]
 
 [[rules]]
@@ -96,6 +98,13 @@ regexes = [
   '''admin@fitmate\.local''',
   '''test@example\.com''',
   '''noreply@fitmate\.vn''',
+  # Exact public test vectors, local-only test values and immutable evidence.
+  # Keep these value-scoped: never allowlist their containing source/docs paths.
+  '''VNPAYTESTSECRETKEY1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF''',
+  '''VNPAYINTEGRATIONTESTSECRETKEY1234567890ABCDEF1234567890ABCDEF''',
+  '''1a54716c8f0efb2744fb28b6e38b25da7f67a925d98bc1c18bd8faaecadd7675''',
+  '''3B2E624616A3999DDDC4288E430866C8CD236F0E70430B22541B1556AF4496F6''',
+  '''fitmate-api:1\.0\.0-previous''',
 ]
 
 stopwords = [
