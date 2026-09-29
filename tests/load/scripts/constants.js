@@ -4,6 +4,21 @@
 export const BASE_URL = __ENV.BASE_URL ?? 'http://localhost:8088';
 export const API_PREFIX = '/api/v1';
 
+// Fail closed so load scripts cannot be started accidentally by a normal local
+// setup or aimed at staging/production. Every script imports this module either
+// directly or through common.js, so the check runs before any HTTP request.
+const LOAD_TEST_CONFIRMATION = 'FITMATE_LOCAL_ONLY';
+const confirmation = __ENV.LOAD_TEST_CONFIRM ?? '';
+if (confirmation !== LOAD_TEST_CONFIRMATION) {
+  throw new Error(`Load test blocked. Set LOAD_TEST_CONFIRM=${LOAD_TEST_CONFIRMATION} explicitly.`);
+}
+
+const target = BASE_URL.match(/^https?:\/\/([^/:?#]+)/i);
+const allowedHosts = ['localhost', '127.0.0.1', 'api', 'api-perf'];
+if (!target || !allowedHosts.includes(target[1].toLowerCase())) {
+  throw new Error(`Load test blocked for non-local target: ${BASE_URL}`);
+}
+
 // Seeded perf credentials (matches SeedPerfDataCommand)
 export const PERF_PASSWORD = __ENV.PERF_PASSWORD ?? 'PerfTestPass123!';
 

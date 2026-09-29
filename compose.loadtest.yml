@@ -13,6 +13,9 @@ services:
       - ./tests/load/scripts:/scripts:ro
     environment:
       BASE_URL: http://api:8080
+      # Fail-closed opt-in. A normal compose startup never runs k6 because of
+      # the profile, and an explicit k6 run still needs this exact value.
+      LOAD_TEST_CONFIRM: ${LOAD_TEST_CONFIRM:-}
       K6_CLOUD_TOKEN: ${K6_CLOUD_TOKEN:-}
     depends_on:
       api:

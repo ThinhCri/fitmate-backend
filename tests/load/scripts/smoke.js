@@ -19,7 +19,26 @@ export const options = {
   },
 };
 
-export default function () {
+export function setup() {
+  // Register exactly one disposable account per smoke execution. Creating an
+  // account inside the VU loop used to leave roughly 60 rows after a 30s run.
+  const ts = Date.now();
+  const email = `smoke-${ts}-${Math.random().toString(36).slice(2, 7)}@fitmate.vn`;
+  const password = 'SmokeTest12!';
+  const regPayload = JSON.stringify({
+    email,
+    password,
+    fullName: 'Smoke Test',
+    role: 'member',
+  });
+  const reg = http.post(`${constants.BASE_URL}${constants.API_PREFIX}/auth/register`, regPayload, {
+    headers: { 'Content-Type': 'application/json' },
+  });
+  check(reg, { 'register: 201': (r) => r.status === 201 });
+  return { email, password };
+}
+
+export default function (data) {
   // 1. Liveness
   const live = http.get(`${constants.BASE_URL}/health/live`);
   check(live, { 'live: 200': (r) => r.status === 200 });
@@ -28,24 +47,10 @@ export default function () {
   const ready = http.get(`${constants.BASE_URL}/health/ready`);
   check(ready, { 'ready: 200': (r) => r.status === 200 });
 
-  // 3. Register a fresh user
-  const ts = Date.now();
-  const email = `smoke-${ts}-${Math.random().toString(36).slice(2, 7)}@fitmate.vn`;
-  const regPayload = JSON.stringify({
-    email,
-    password: 'SmokeTest12!',
-    fullName: 'Smoke Test',
-    role: 'member',
-  });
-  const reg = http.post(`${constants.BASE_URL}${constants.API_PREFIX}/auth/register`, regPayload, {
-    headers: { 'Content-Type': 'application/json' },
-  });
-  check(reg, { 'register: 201 or 409': (r) => r.status === 201 || r.status === 409 });
-
-  // 4. Login with the same credentials
+  // 3. Login with the single account created by setup().
   const loginPayload = JSON.stringify({
-    email,
-    password: 'SmokeTest12!',
+    email: data.email,
+    password: data.password,
   });
   const login = http.post(`${constants.BASE_URL}${constants.API_PREFIX}/auth/login`, loginPayload, {
     headers: { 'Content-Type': 'application/json' },
@@ -56,13 +61,13 @@ export default function () {
   try { token = login.json('accessToken'); } catch { /* ignore */ }
 
   if (token) {
-    // 5. Authenticated: GET /me/bookings (uses same auth as /users/me)
+    // 4. Authenticated: GET /me/bookings (uses same auth as /users/me)
     const bookings = http.get(`${constants.BASE_URL}${constants.API_PREFIX}/me/bookings`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });
     check(bookings, { 'GET /me/bookings: 200': (r) => r.status === 200 });
 
-    // 6. Authenticated: GET /me/notifications
+    // 5. Authenticated: GET /me/notifications
     const notifs = http.get(`${constants.BASE_URL}${constants.API_PREFIX}/me/notifications`, {
       headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
     });

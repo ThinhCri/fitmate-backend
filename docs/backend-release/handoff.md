@@ -1430,4 +1430,11 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Updated UA-001 to require deletion/decommission of the old Supabase project, or credential revocation if the project is retained. Provider-side revocation has not been independently verified.
 - BE-099 remains **BLOCKED** because the credential still exists in Git history. Rewriting refs and force-pushing require explicit operator authorization for the exact scope after provider revocation is confirmed.
 
+## 2026-09-29 — Local-only k6 execution guard
+
+- The k6 service remains isolated behind its Compose `k6` profile, so normal team startup cannot launch it.
+- Every load script now fails before its first HTTP request unless `LOAD_TEST_CONFIRM=FITMATE_LOCAL_ONLY` is supplied explicitly. Targets are restricted to `localhost`, `127.0.0.1`, `api`, or `api-perf`; staging and production hosts are rejected even with confirmation.
+- `smoke.js` now creates one disposable account in `setup()` per complete run instead of registering a new account in every VU iteration. Existing `smoke-*` rows are not deleted automatically.
+- Documentation and `compose.loadtest.yml` now show the explicit opt-in. Runtime k6 execution was left to the operator.
+
 

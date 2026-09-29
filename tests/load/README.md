@@ -4,7 +4,8 @@
 #   k6 run scripts/normal.js --tag checklabel=admin
 
 # Environment variables (can override at runtime):
-#   BASE_URL           — API base URL (default: http://localhost:8080)
+#   BASE_URL           — API base URL (default: http://localhost:8088)
+#   LOAD_TEST_CONFIRM  — must equal FITMATE_LOCAL_ONLY; all other values fail before HTTP
 #   K6_CLOUD_TOKEN     — Cloud results upload (optional)
 
 # ─── Smoke ────────────────────────────────────────────────────────────────────
@@ -52,9 +53,14 @@
 # ─── Running via Docker ────────────────────────────────────────────────────────
 # The `compose.loadtest.yml` profile starts a k6 container pre-configured to
 # run all scripts sequentially against the local stack:
+#   $env:LOAD_TEST_CONFIRM = "FITMATE_LOCAL_ONLY"
 #   docker compose -f compose.yml -f compose.loadtest.yml up k6
 #
 # To run a single script via Docker:
 #   docker compose -f compose.yml -f compose.loadtest.yml run --rm \
 #     -e BASE_URL=http://api:8080 \
+#     -e LOAD_TEST_CONFIRM=FITMATE_LOCAL_ONLY \
 #     k6 run /scripts/smoke.js
+#
+# Safety: scripts accept only localhost, 127.0.0.1, api, or api-perf targets.
+# Staging and production URLs are rejected even when confirmation is present.
