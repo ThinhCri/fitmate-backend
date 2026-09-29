@@ -24,4 +24,4 @@
 ## Lưu ý
 
 - **KHÔNG commit secrets.** Chỉ có `.env.example`. Cấu hình thật đi qua `.env` (local) hoặc secret manager (CI/prod).
-- **Supabase credentials cũ** (trong `src/main/resources/application.properties` của Spring Boot scaffold) đã được rotate nhưng cần xóa khỏi Git history. Xem DEC-014 + UA-001.
+- Module Spring Boot/Supabase legacy đã bị xóa khỏi current tree. Credential cũ vẫn cần được thu hồi ở provider và xóa khỏi Git history theo DEC-014 + UA-001 + BE-099.

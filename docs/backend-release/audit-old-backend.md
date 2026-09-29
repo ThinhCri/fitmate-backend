@@ -173,7 +173,7 @@ is_completed BOOLEAN
 
 | ID | Vấn đề | Evidence |
 |---|---|---|
-| S-001 | **Secrets lộ** | `src/main/resources/application.properties` chứa Supabase password `doanxemtoilaai` đã commit. |
+| S-001 | **Secrets lộ** | `src/main/resources/application.properties` từng chứa Supabase password `[REDACTED]` trong Git history. Module Spring Boot legacy đã bị xóa khỏi current tree. |
 | S-002 | **JWT giả** | `AuthService.java:81` và `:101` — `"FITMATE-JWT-" + UUID.randomUUID()`. Không có signature, không thể verify ở client khác. |
 | S-003 | **permitAll** | `SecurityConfig.java:26` — `anyRequest().permitAll()`. Ai cũng gọi được mọi endpoint. |
 | S-004 | **CORS credentials wildcard** | `CorsConfig.java:18-22` — `allowedOriginPatterns("*")` + `allowCredentials(true)`. RFC không cho phép kết hợp này. |

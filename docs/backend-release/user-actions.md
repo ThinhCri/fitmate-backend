@@ -2,13 +2,13 @@
 
 > Việc user + nhóm AI phải làm. Mỗi mục có: ID, việc, lý do, bắt buộc/tùy chọn, thời điểm, hướng dẫn, cách verify, task bị chặn.
 
-## UA-001 — Rotate Supabase password `doanxemtoilaai`
+## UA-001 — Revoke legacy Supabase database credentials
 
-- **Lý do**: Đã commit vào `application.properties` của BE Spring Boot cũ. Có khả năng bị lộ.
+- **Lý do**: Một database password đã từng được commit vào `application.properties` của Backend Spring Boot cũ. Giá trị được ghi `[REDACTED]` trong current tree nhưng vẫn tồn tại trong Git history cho đến khi hoàn tất BE-099.
 - **Bắt buộc**: ✅
 - **Thời điểm**: Ngay khi có thể.
-- **Hướng dẫn**: Supabase dashboard → Settings → Database → Reset password. Sau đó cập nhật connection string.
-- **Verify**: Test connect với password mới fail với password cũ.
+- **Hướng dẫn**: Vì Fitmate không còn dùng Supabase, xóa/decommission project cũ; nếu vẫn phải giữ project, reset database password và thu hồi mọi credential liên quan. Không chép giá trị cũ hoặc mới vào issue, log hay tài liệu.
+- **Verify**: Operator xác nhận project cũ đã bị xóa, hoặc credential cũ đã bị vô hiệu và không còn workload nào tham chiếu Supabase.
 - **Task bị chặn**: Việc xóa secret khỏi Git history (BE-099).
 
 ## UA-002 — Cấp Git hosting cho 3 repo (nếu chưa có public)

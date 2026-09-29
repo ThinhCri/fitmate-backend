@@ -312,7 +312,7 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 ## Providers và release legacy còn mở
 ### BE-099 — Rotation và history cleanup
 - Plan: [Plan triển khai](production-plans/BE-099.md).
-- Status: BLOCKED (operator xác minh rotation và duyệt riêng phạm vi rewrite).
+- Status: BLOCKED (Spring Boot/Supabase legacy đã bị xóa khỏi current tree; operator còn phải xác nhận project/credential cũ đã bị revoke và duyệt riêng phạm vi rewrite Git history).
 - Owner: operator; theo OPS-01. Không coi allowlist secret cũ là giải quyết leak.
 ### BE-400 — Payment adapter: payOS mới, VNPay lịch sử
 - Plan: [Plan triển khai](production-plans/BE-400.md).

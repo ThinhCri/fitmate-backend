@@ -398,7 +398,7 @@ Plan rev 1 lưu ở `docs/backend-release/tasks/BE-340-plan.md`.
   - `fitmate-storage-credentials` — `STORAGE_*_KEY` / `SIGNED_URL_SECRET`.
   - `fitmate-bootstrap-admin-secret` — `BOOTSTRAP_ADMIN_PASSWORD/TOKEN/SECRET`.
   - Allowlist paths: `.env.example`, `docs/`, `AGENTS.md`, `.mdc`, `.gitleaks.toml`, `node_modules/`, `bin/`, `obj/`, `out/`, `.git/`, `tests/load/*.json`, `.gitignore`.
-  - Allowlist regexes: `__SET_*__`, demo emails `*@fitmate.vn`, historical leak `doanxemtoilaai` (BE-099 reference), CI ephemeral strings.
+  - Allowlist regexes: `__SET_*__`, demo emails `*@fitmate.vn`, CI ephemeral strings. Historical Supabase credential is never allowlisted and is tracked under BE-099.
   - Stopwords: placeholder/example/TODO/FIXME/DEMO.
 - **`.github/workflows/ci.yml` — job `secrets-scan` (mới):** chạy song song `lint-test`, `runs-on: ubuntu-22.04`, `timeout-minutes: 10`. `actions/checkout@v4` với `fetch-depth: 0` (full history). Action `gitleaks/gitleaks-action@v2` đọc `GITLEAKS_CONFIG=.gitleaks.toml`. Upload SARIF artifact qua `actions/upload-artifact@v4`. Fail trên exit code != 0 (= có leak).
 - **`docs/backend-release/runbooks/secrets.md` (mới, 9 sections):**
@@ -1422,5 +1422,12 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - The SDK container compiled all four production projects with **0 warnings and 0 errors**. The API still requires `docker compose up -d --build --force-recreate --renew-anon-volumes api` because a container restart retained stale anonymous `obj` volumes; the operator declined that recreate during this pass, so the fixed `/verify` request has not yet received a runtime response.
 - Admin Web now renders password login and MFA challenge as separate stages. During the MFA stage the password field is absent, only the Authenticator/recovery-code input is submitted, and returning to password login clears the challenge state. Web `typecheck` and `lint` both pass.
 - The first successful MFA login then exposed a separate wire-claim mismatch: `JwtTokenService` emitted the legacy .NET role URI while JWT bearer validation intentionally expected the raw `role` claim. This authenticated the access token but made every `AdminOnly` policy return 403. Token issuance now emits `role` directly and its wire-format unit assertion was updated. A fresh login is required after the API rebuild because already-issued access tokens retain their original claims.
+
+## 2026-09-29 — Legacy Spring Boot and Supabase current-tree removal
+
+- Operator confirmed Fitmate no longer uses Supabase and requested removal. Deleted the unused Maven project (`pom.xml`) and complete legacy `src/main/**` Spring Boot implementation; the active .NET solution, Docker files, migrations, and tests do not reference that module.
+- Removed the historical Supabase password value from current documentation and from the Gitleaks allowlist. Current docs use `[REDACTED]`; Gitleaks must fail on the historical occurrence until BE-099 is completed instead of silently accepting it.
+- Updated UA-001 to require deletion/decommission of the old Supabase project, or credential revocation if the project is retained. Provider-side revocation has not been independently verified.
+- BE-099 remains **BLOCKED** because the credential still exists in Git history. Rewriting refs and force-pushing require explicit operator authorization for the exact scope after provider revocation is confirmed.
 
 
