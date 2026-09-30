@@ -30,4 +30,5 @@ public static class ErrorCodes
 
     // IDEMPOTENCY (placeholder, sẽ mở rộng ở BE-070)
     public const string IdempotencyConflict = "FITMATE.IDEMPOTENCY.CONFLICT";
+    public const string IdempotencyInProgress = "FITMATE.IDEMPOTENCY.IN_PROGRESS";
 }

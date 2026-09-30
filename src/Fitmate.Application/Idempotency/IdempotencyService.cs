@@ -42,6 +42,7 @@ public sealed record IdempotencyDecision(
     public static IdempotencyDecision Replay(int statusCode, string responseBody)
         => new(IdempotencyDecisionKind.Replay, statusCode, responseBody);
     public static IdempotencyDecision Conflict() => new(IdempotencyDecisionKind.Conflict);
+    public static IdempotencyDecision InProgress() => new(IdempotencyDecisionKind.InProgress);
 }
 
 public enum IdempotencyDecisionKind
@@ -49,4 +50,5 @@ public enum IdempotencyDecisionKind
     Proceed,
     Replay,
     Conflict,
+    InProgress,
 }

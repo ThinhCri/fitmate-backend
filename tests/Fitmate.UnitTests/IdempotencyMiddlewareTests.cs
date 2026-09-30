@@ -19,9 +19,10 @@ public class IdempotencyMiddlewareTests
         public Dictionary<string, IdempotencyRecord> Items { get; } = new();
         public Task<IdempotencyLookup> FindAsync(string key, string payloadHash, CancellationToken ct)
         {
-            if (!Items.TryGetValue(key, out var rec)) return Task.FromResult(new IdempotencyLookup(null, false));
+            if (!Items.TryGetValue(key, out var rec)) return Task.FromResult(new IdempotencyLookup(null, false, false));
             return Task.FromResult(new IdempotencyLookup(rec,
-                Conflict: !string.Equals(rec.PayloadHash, payloadHash, StringComparison.Ordinal)));
+                Conflict: !string.Equals(rec.PayloadHash, payloadHash, StringComparison.Ordinal),
+                IsProcessing: rec.Status == IdempotencyRecord.StatusProcessing));
         }
         public Task AddAsync(IdempotencyRecord record, CancellationToken ct)
         {
@@ -195,8 +196,41 @@ public class IdempotencyMiddlewareTests
 
         secondCalled.Should().Be(0);
         secondCtx.Response.StatusCode.Should().Be(201);
+        secondCtx.Response.Headers["X-Idempotent-Replay"].ToString().Should().Be("true");
         var body = await ReadBody(secondCtx);
         body.Should().Contain("\"id\":\"first\"");
+    }
+
+    [Fact]
+    public async Task InProgress_WhenProcessing_Returns409()
+    {
+        var store = new InMemoryStore();
+        var svc = new IdempotencyService(store);
+        var called = 0;
+        RequestDelegate next = _ => { called++; return Task.CompletedTask; };
+        var mw = new IdempotencyMiddleware(next, NullLogger<IdempotencyMiddleware>.Instance);
+
+        var ctx1 = await BuildContext("POST", "in-prog-key-1", "{\"a\":1}");
+        // Pretend key was stored as Processing in store
+        // Let's compute the hashed key as the middleware does:
+        var actor = "test-user-one";
+        var expectedKey = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes($"{actor}\nPOST\n/api/v1/test\nin-prog-key-1")));
+        var prefix = "application/json\n";
+        var prefixBytes = Encoding.UTF8.GetBytes(prefix);
+        var bodyBytes = Encoding.UTF8.GetBytes("{\"a\":1}");
+        var combined = new byte[prefixBytes.Length + bodyBytes.Length];
+        Buffer.BlockCopy(prefixBytes, 0, combined, 0, prefixBytes.Length);
+        Buffer.BlockCopy(bodyBytes, 0, combined, prefixBytes.Length, bodyBytes.Length);
+        var payloadHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(combined)).ToLowerInvariant();
+        store.Items[expectedKey] = IdempotencyRecord.StartProcessing(expectedKey, payloadHash, TimeSpan.FromMinutes(5));
+
+        await mw.InvokeAsync(ctx1, svc);
+
+        called.Should().Be(0);
+        ctx1.Response.StatusCode.Should().Be(409);
+        var body = await ReadBody(ctx1);
+        body.Should().Contain("FITMATE.IDEMPOTENCY.IN_PROGRESS");
     }
 
     [Fact]

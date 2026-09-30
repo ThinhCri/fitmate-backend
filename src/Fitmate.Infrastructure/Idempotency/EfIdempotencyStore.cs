@@ -17,13 +17,25 @@ public class EfIdempotencyStore : IIdempotencyStore
     public async Task<IdempotencyLookup> FindAsync(string key, string payloadHash, CancellationToken ct)
     {
         var existing = await _db.IdempotencyRecords.FirstOrDefaultAsync(r => r.Key == key, ct);
-        if (existing is null) return new IdempotencyLookup(null, false);
-        return new IdempotencyLookup(existing, Conflict: !string.Equals(existing.PayloadHash, payloadHash, StringComparison.Ordinal));
+        if (existing is null) return new IdempotencyLookup(null, false, false);
+        if (!string.Equals(existing.PayloadHash, payloadHash, StringComparison.Ordinal))
+            return new IdempotencyLookup(existing, Conflict: true, IsProcessing: false);
+        if (existing.Status == "processing" && existing.ExpiresAt > DateTime.UtcNow)
+            return new IdempotencyLookup(existing, Conflict: false, IsProcessing: true);
+        return new IdempotencyLookup(existing, Conflict: false, IsProcessing: false);
     }
 
     public async Task AddAsync(IdempotencyRecord record, CancellationToken ct)
     {
-        await _db.IdempotencyRecords.AddAsync(record, ct);
+        var existing = await _db.IdempotencyRecords.FirstOrDefaultAsync(r => r.Key == record.Key, ct);
+        if (existing != null)
+        {
+            existing.Complete(record.StatusCode, record.ResponseBody);
+        }
+        else
+        {
+            await _db.IdempotencyRecords.AddAsync(record, ct);
+        }
         await _db.SaveChangesAsync(ct);
     }
 

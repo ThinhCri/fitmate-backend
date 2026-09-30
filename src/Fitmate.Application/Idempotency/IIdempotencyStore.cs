@@ -7,7 +7,7 @@ namespace Fitmate.Application.Idempotency;
 /// </summary>
 /// <param name="Record">Record đã lưu (null nếu key chưa từng dùng).</param>
 /// <param name="Conflict">True nếu key tồn tại nhưng payload hash khác (client gửi lại key với body khác).</param>
-public sealed record IdempotencyLookup(IdempotencyRecord? Record, bool Conflict);
+public sealed record IdempotencyLookup(IdempotencyRecord? Record, bool Conflict, bool IsProcessing = false);
 
 /// <summary>
 /// Lưu trữ idempotency record. DB chỉ chứa hash + response snapshot;

@@ -92,6 +92,16 @@ public class IdempotencyMiddleware
                     traceId: FitmateProblemDetails.ResolveTraceId(context));
                 return;
 
+            case IdempotencyDecisionKind.InProgress:
+                _logger.LogWarning("Idempotency in progress: key={Key}", key);
+                await WriteProblemAsync(context, StatusCodes.Status409Conflict,
+                    title: "Request in progress",
+                    code: ErrorCodes.IdempotencyInProgress,
+                    typeSlug: "idempotency/in-progress",
+                    detail: "Yêu cầu với Idempotency-Key này đang được xử lý, vui lòng thử lại sau.",
+                    traceId: FitmateProblemDetails.ResolveTraceId(context));
+                return;
+
             case IdempotencyDecisionKind.Proceed:
             default:
                 // Capture response rồi store sau khi Controller xử lý xong.
@@ -175,6 +185,7 @@ public class IdempotencyMiddleware
     {
         context.Response.StatusCode = statusCode;
         context.Response.ContentType = "application/json; charset=utf-8";
+        context.Response.Headers["X-Idempotent-Replay"] = "true";
         await context.Response.WriteAsync(body);
     }
 

@@ -17,9 +17,10 @@ public class IdempotencyServiceTests
         public Task<IdempotencyLookup> FindAsync(string key, string payloadHash, CancellationToken ct)
         {
             if (!Items.TryGetValue(key, out var rec))
-                return Task.FromResult(new IdempotencyLookup(null, false));
+                return Task.FromResult(new IdempotencyLookup(null, false, false));
             var conflict = !string.Equals(rec.PayloadHash, payloadHash, StringComparison.Ordinal);
-            return Task.FromResult(new IdempotencyLookup(rec, conflict));
+            var isProcessing = rec.Status == IdempotencyRecord.StatusProcessing;
+            return Task.FromResult(new IdempotencyLookup(rec, conflict, isProcessing));
         }
 
         public Task AddAsync(IdempotencyRecord record, CancellationToken ct)
@@ -95,5 +96,17 @@ public class IdempotencyServiceTests
         var rec = store.Items["key-abc-123"];
         rec.ExpiresAt.Should().BeAfter(rec.CreatedAt);
         (rec.ExpiresAt - rec.CreatedAt).TotalHours.Should().BeApproximately(24, 0.01);
+    }
+
+    [Fact]
+    public async Task Check_RecordProcessing_ReturnsInProgress()
+    {
+        var store = new InMemoryStore();
+        var rec = IdempotencyRecord.StartProcessing("key-in-prog", "hash-A", TimeSpan.FromMinutes(10));
+        store.Items["key-in-prog"] = rec;
+        var svc = NewService(store);
+
+        var decision = await svc.CheckAsync("key-in-prog", "hash-A", CancellationToken.None);
+        decision.Kind.Should().Be(IdempotencyDecisionKind.InProgress);
     }
 }

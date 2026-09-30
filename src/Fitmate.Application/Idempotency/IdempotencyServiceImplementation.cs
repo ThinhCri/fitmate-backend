@@ -41,6 +41,11 @@ public class IdempotencyService : IIdempotencyService
             return IdempotencyDecision.Conflict();
         }
 
+        if (lookup.IsProcessing)
+        {
+            return IdempotencyDecision.InProgress();
+        }
+
         return IdempotencyDecision.Replay(lookup.Record.StatusCode, lookup.Record.ResponseBody ?? string.Empty);
     }
 

@@ -35,5 +35,7 @@ public class IdempotencyRecordConfiguration : IEntityTypeConfiguration<Idempoten
         e.Property(x => x.ResponseBody).HasColumnType("jsonb");
         e.Property(x => x.CreatedAt).IsRequired();
         e.Property(x => x.ExpiresAt).IsRequired();
+        e.Property(x => x.Status).HasMaxLength(32).HasDefaultValue("completed").IsRequired();
+        e.HasIndex(x => new { x.Key, x.Status });
     }
 }
