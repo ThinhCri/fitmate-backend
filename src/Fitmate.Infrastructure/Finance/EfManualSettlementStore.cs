@@ -52,12 +52,16 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             if (await db.Refunds.AnyAsync(r => r.Id != refundId && r.ProviderRefundRef == bankReference, ct) ||
                 await db.Set<ManualPtSettlement>().AnyAsync(s => s.BankReference == bankReference, ct))
                 throw new ConflictException("TRANSFER_REFERENCE_REUSED", "Transfer reference already used.");
+            var refundedSoFarBefore = payment.RefundedSoFarVnd;
             payment.ApplyRefund(refund.AmountVnd);
             refund.MarkSucceeded(bankReference);
 
             var appt = await db.Appointments.FindAsync(new object[] { payment.AppointmentId }, ct);
             var platformFeeVnd = appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
-            var refundFee = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refund.AmountVnd / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
+            var refundedSoFarAfter = payment.RefundedSoFarVnd;
+            var cumFeeBefore = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarBefore / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
+            var cumFeeAfter = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarAfter / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
+            var refundFee = cumFeeAfter - cumFeeBefore;
             var refundTrainer = refund.AmountVnd - refundFee;
             var occurredAt = refund.SucceededAtUtc ?? request.TransferredAt;
             var adjEntries = new[]

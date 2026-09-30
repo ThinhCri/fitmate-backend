@@ -2,9 +2,11 @@ using Fitmate.Application.Auth;
 using Fitmate.Application.Common;
 using Fitmate.Application.Finance;
 using Fitmate.Application.Outbox;
+using Fitmate.Application.Payments;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Finance;
+using Fitmate.Domain.Payment;
 
 namespace Fitmate.Application.Booking;
 
@@ -25,6 +27,7 @@ public class BookingService : IBookingService
     private readonly IAuthorizationGuard _authz;
     private readonly TimeSpan _holdTtl;
     private readonly IFinancialLedgerStore? _ledger;
+    private readonly IPaymentStore? _payments;
 
     public BookingService(
         IAppointmentStore appointments,
@@ -33,7 +36,8 @@ public class BookingService : IBookingService
         IOutboxDispatcher outbox,
         IAuthorizationGuard authz,
         TimeSpan? holdTtl = null,
-        IFinancialLedgerStore? ledger = null)
+        IFinancialLedgerStore? ledger = null,
+        IPaymentStore? payments = null)
     {
         _appointments = appointments;
         _holds = holds;
@@ -42,6 +46,7 @@ public class BookingService : IBookingService
         _authz = authz;
         _holdTtl = holdTtl ?? TimeSpan.FromMinutes(5); // domain-rules.md §3.6
         _ledger = ledger;
+        _payments = payments;
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _slotLocks = new();
@@ -98,6 +103,32 @@ public class BookingService : IBookingService
         {
             appt.Cancel(reason);
             await _appointments.SaveChangesAsync(ct);
+
+            if (_payments != null && appt.PaymentId.HasValue)
+            {
+                var payment = await _payments.FindByIdForUpdateAsync(appt.PaymentId.Value, ct);
+                if (payment != null && payment.Status is PaymentStatus.Paid or PaymentStatus.PartialRefunded)
+                {
+                    var pendingRefunds = await _payments.GetPendingRefundsTotalAsync(payment.Id, ct);
+                    var remainingRefund = payment.AmountVnd - payment.RefundedSoFarVnd - pendingRefunds;
+                    if (remainingRefund > 0)
+                    {
+                        var refund = Refund.CreateSystemRefund(payment.Id, appt.Id, remainingRefund, $"Auto refund on cancellation: {reason}");
+                        _payments.AddRefund(refund);
+                        await _payments.SaveChangesAsync(ct);
+
+                        _outbox.Enqueue("payment.refund_requested", new
+                        {
+                            refundId = refund.Id,
+                            paymentId = payment.Id,
+                            appointmentId = appt.Id,
+                            amountVnd = remainingRefund,
+                            reason
+                        });
+                    }
+                }
+            }
+
             _outbox.Enqueue("booking.cancelled", new { appointmentId, actorUserId, reason, memberId = appt.MemberId, ptUserId = appt.PtUserId });
             return appt;
         }, ct);
