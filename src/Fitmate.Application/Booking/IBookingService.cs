@@ -38,4 +38,7 @@ public interface IBookingService
 
     /// <summary>Lookup appointment theo id (cho internal use).</summary>
     Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct);
+
+    /// <summary>Sweep and expire old holds (>5m) and pending appointments whose acceptance deadline has passed.</summary>
+    Task<int> ExpireOldHoldsAndPendingAsync(DateTime nowUtc, CancellationToken ct);
 }

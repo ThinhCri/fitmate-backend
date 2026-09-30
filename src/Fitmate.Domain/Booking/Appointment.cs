@@ -91,6 +91,8 @@ public class Appointment : AuditableEntity
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot start booking in status {Status}.");
         if (DateTime.UtcNow < SlotStartUtc.AddMinutes(-5))
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, "Cannot start appointment before 5 minutes prior to slot time.");
+        if (DateTime.UtcNow >= SlotStartUtc.AddMinutes(DurationMinutes))
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, "Cannot start appointment after slot has already ended.");
         Status = AppointmentStatus.InProgress;
         StartedAtUtc = DateTime.UtcNow;
         Touch();

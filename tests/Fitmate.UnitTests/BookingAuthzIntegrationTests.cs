@@ -26,6 +26,8 @@ public class BookingAuthzIntegrationTests
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(AppointmentStatus? s, Guid? p, Guid? m, int page, int pageSize, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
+        public Task<IReadOnlyList<Appointment>> GetExpiredHeldAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct) => Task.FromResult((IReadOnlyList<Appointment>)Array.Empty<Appointment>());
+        public Task<IReadOnlyList<Appointment>> GetExpiredPendingAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct) => Task.FromResult((IReadOnlyList<Appointment>)Array.Empty<Appointment>());
         public Task AddAsync(Appointment a, CancellationToken ct) { Items[a.Id] = a; return Task.CompletedTask; }
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }

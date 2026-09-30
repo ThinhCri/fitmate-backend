@@ -111,6 +111,24 @@ public class EfAppointmentStore : IAppointmentStore
 
 
 
+    public async Task<IReadOnlyList<Appointment>> GetExpiredHeldAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct)
+    {
+        return await _db.Appointments
+            .Where(a => a.Status == AppointmentStatus.Held && a.HoldExpiresAtUtc != null && a.HoldExpiresAtUtc <= nowUtc)
+            .OrderBy(a => a.HoldExpiresAtUtc)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Appointment>> GetExpiredPendingAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct)
+    {
+        return await _db.Appointments
+            .Where(a => a.Status == AppointmentStatus.Pending && a.AcceptanceDeadlineUtc != null && a.AcceptanceDeadlineUtc <= nowUtc)
+            .OrderBy(a => a.AcceptanceDeadlineUtc)
+            .Take(limit)
+            .ToListAsync(ct);
+    }
+
     public async Task AddAsync(Appointment appointment, CancellationToken ct)
         => await _db.Appointments.AddAsync(appointment, ct);
 

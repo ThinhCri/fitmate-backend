@@ -92,6 +92,18 @@ public class BookingServiceTests
             return ListAdminPagedAsync(mapped, ptUserId, memberId, page, pageSize, ct);
         }
 
+        public Task<IReadOnlyList<Appointment>> GetExpiredHeldAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct)
+        {
+            var items = Items.Values.Where(a => a.Status == AppointmentStatus.Held && a.HoldExpiresAtUtc.HasValue && a.HoldExpiresAtUtc.Value <= nowUtc).Take(limit).ToList();
+            return Task.FromResult((IReadOnlyList<Appointment>)items);
+        }
+
+        public Task<IReadOnlyList<Appointment>> GetExpiredPendingAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct)
+        {
+            var items = Items.Values.Where(a => a.Status == AppointmentStatus.Pending && a.AcceptanceDeadlineUtc.HasValue && a.AcceptanceDeadlineUtc.Value <= nowUtc).Take(limit).ToList();
+            return Task.FromResult((IReadOnlyList<Appointment>)items);
+        }
+
         public Task AddAsync(Appointment a, CancellationToken ct)
         {
             Items[a.Id] = a;
@@ -690,5 +702,79 @@ public class BookingServiceTests
         hold.Should().NotBeNull();
         appt.Should().NotBeNull();
         appt.SlotStartUtc.Should().Be(baseSlot);
+    }
+
+    [Fact]
+    public async Task ExpireOldHoldsAndPending_HeldPastExpiration_MarksExpiredAndEnqueuesOutbox()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var outbox = new CapturingOutbox();
+        var pt = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddHours(2);
+
+        var heldAppt = Appointment.CreateHold(member, pt, serviceId, slot, slot, 60, 100_000);
+        typeof(Appointment).GetProperty(nameof(Appointment.HoldExpiresAtUtc))!
+            .SetValue(heldAppt, DateTime.UtcNow.AddMinutes(-1));
+        apptStore.Items[heldAppt.Id] = heldAppt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
+        var expiredCount = await svc.ExpireOldHoldsAndPendingAsync(DateTime.UtcNow, CancellationToken.None);
+
+        expiredCount.Should().Be(1);
+        heldAppt.Status.Should().Be(AppointmentStatus.Expired);
+        outbox.Messages.Should().Contain(m => m.Type == "booking.expired");
+    }
+
+    [Fact]
+    public async Task ExpireOldHoldsAndPending_PendingPastDeadline_MarksExpiredAndEnqueuesRefund()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var outbox = new CapturingOutbox();
+        var pt = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddHours(2);
+
+        var pendingAppt = Appointment.CreateHold(member, pt, serviceId, slot, slot, 60, 100_000);
+        var paymentId = Guid.NewGuid();
+        pendingAppt.AttachPayment(paymentId, 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        typeof(Appointment).GetProperty(nameof(Appointment.AcceptanceDeadlineUtc))!
+            .SetValue(pendingAppt, DateTime.UtcNow.AddMinutes(-5));
+        apptStore.Items[pendingAppt.Id] = pendingAppt;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
+        var expiredCount = await svc.ExpireOldHoldsAndPendingAsync(DateTime.UtcNow, CancellationToken.None);
+
+        expiredCount.Should().Be(1);
+        pendingAppt.Status.Should().Be(AppointmentStatus.Expired);
+        outbox.Messages.Should().Contain(m => m.Type == "booking.acceptance_expired");
+        outbox.Messages.Should().Contain(m => m.Type == "finance.refund_required");
+    }
+
+    [Fact]
+    public async Task ExpireOldHoldsAndPending_ActiveHoldAndPending_NotExpired()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var outbox = new CapturingOutbox();
+        var pt = Guid.NewGuid();
+        var member = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddHours(2);
+
+        var activeHold = Appointment.CreateHold(member, pt, serviceId, slot, slot, 60, 100_000);
+        var activePending = Appointment.CreateHold(member, pt, serviceId, slot.AddHours(1), slot.AddHours(1), 60, 100_000);
+        activePending.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        apptStore.Items[activeHold.Id] = activeHold;
+        apptStore.Items[activePending.Id] = activePending;
+
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
+        var expiredCount = await svc.ExpireOldHoldsAndPendingAsync(DateTime.UtcNow, CancellationToken.None);
+
+        expiredCount.Should().Be(0);
+        activeHold.Status.Should().Be(AppointmentStatus.Held);
+        activePending.Status.Should().Be(AppointmentStatus.Pending);
+        outbox.Messages.Should().BeEmpty();
     }
 }

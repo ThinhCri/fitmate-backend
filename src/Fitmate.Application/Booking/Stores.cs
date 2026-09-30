@@ -15,6 +15,8 @@ public interface IAppointmentStore
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct);
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct);
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(AppointmentStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct);
+    Task<IReadOnlyList<Appointment>> GetExpiredHeldAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct);
+    Task<IReadOnlyList<Appointment>> GetExpiredPendingAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct);
     Task AddAsync(Appointment appointment, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }

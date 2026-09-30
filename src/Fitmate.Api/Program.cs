@@ -346,6 +346,7 @@ builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastruc
 builder.Services.AddSingleton<IPushProvider, Fitmate.Infrastructure.Notifications.MissingPushProvider>();
 builder.Services.AddScoped<PushDeliverySweepService>();
 builder.Services.AddHostedService<Fitmate.Infrastructure.Notifications.SweepBackgroundService>();
+builder.Services.AddHostedService<Fitmate.Infrastructure.Booking.BookingExpirationBackgroundService>();
 // Outbox handler for `notification.push_requested`.
 builder.Services.AddScoped<IOutboxHandler, Fitmate.Application.Notifications.Handlers.NotificationPushHandler>();
 

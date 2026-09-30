@@ -89,10 +89,13 @@ public class BookingService : IBookingService
         if (appt.MemberId != actorUserId && appt.PtUserId != actorUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner or PT.");
 
-        appt.Cancel(reason);
-        await _appointments.SaveChangesAsync(ct);
-        _outbox.Enqueue("booking.cancelled", new { appointmentId, actorUserId, reason });
-        return appt;
+        return await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+        {
+            appt.Cancel(reason);
+            await _appointments.SaveChangesAsync(ct);
+            _outbox.Enqueue("booking.cancelled", new { appointmentId, actorUserId, reason, memberId = appt.MemberId, ptUserId = appt.PtUserId });
+            return appt;
+        }, ct);
     }
 
     public async Task<Appointment> ConfirmAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
@@ -103,10 +106,13 @@ public class BookingService : IBookingService
         if (appt.PtUserId != ptUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner PT.");
 
-        appt.ConfirmByPt();
-        await _appointments.SaveChangesAsync(ct);
-        _outbox.Enqueue("booking.confirmed", new { appointmentId, ptUserId, memberId = appt.MemberId });
-        return appt;
+        return await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
+        {
+            appt.ConfirmByPt();
+            await _appointments.SaveChangesAsync(ct);
+            _outbox.Enqueue("booking.confirmed", new { appointmentId, ptUserId, memberId = appt.MemberId });
+            return appt;
+        }, ct);
     }
 
     public async Task<Appointment> StartAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
@@ -131,10 +137,14 @@ public class BookingService : IBookingService
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
         if (appt.PtUserId != ptUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner PT.");
-        appt.CompleteByPt();
-        await _appointments.SaveChangesAsync(ct);
-        _outbox.Enqueue("booking.completed", new { appointmentId, ptUserId, memberId = appt.MemberId });
-        return appt;
+
+        return await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
+        {
+            appt.CompleteByPt();
+            await _appointments.SaveChangesAsync(ct);
+            _outbox.Enqueue("booking.completed", new { appointmentId, ptUserId, memberId = appt.MemberId });
+            return appt;
+        }, ct);
     }
 
     public async Task<Appointment> RescheduleAsync(Guid memberId, Guid appointmentId, DateTime newSlotStartUtc, CancellationToken ct)
@@ -192,4 +202,40 @@ public class BookingService : IBookingService
 
     public Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct)
         => _appointments.FindByIdAsync(appointmentId, ct);
+
+    public async Task<int> ExpireOldHoldsAndPendingAsync(DateTime nowUtc, CancellationToken ct)
+    {
+        var expiredHolds = await _appointments.GetExpiredHeldAppointmentsAsync(nowUtc, 50, ct);
+        var count = 0;
+        foreach (var appt in expiredHolds)
+        {
+            await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+            {
+                appt.ExpireHold();
+                await _appointments.SaveChangesAsync(ct);
+                _outbox.Enqueue("booking.expired", new { appointmentId = appt.Id, memberId = appt.MemberId, ptUserId = appt.PtUserId, slotStartUtc = appt.SlotStartUtc });
+                return true;
+            }, ct);
+            count++;
+        }
+
+        var expiredPending = await _appointments.GetExpiredPendingAppointmentsAsync(nowUtc, 50, ct);
+        foreach (var appt in expiredPending)
+        {
+            await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+            {
+                appt.ExpireAcceptance();
+                await _appointments.SaveChangesAsync(ct);
+                _outbox.Enqueue("booking.acceptance_expired", new { appointmentId = appt.Id, memberId = appt.MemberId, ptUserId = appt.PtUserId });
+                if (appt.PaymentId.HasValue && appt.ActualPaidVnd > 0)
+                {
+                    _outbox.Enqueue("finance.refund_required", new { appointmentId = appt.Id, paymentId = appt.PaymentId.Value, amountVnd = appt.ActualPaidVnd, reason = "PT acceptance deadline expired" });
+                }
+                return true;
+            }, ct);
+            count++;
+        }
+
+        return count;
+    }
 }
