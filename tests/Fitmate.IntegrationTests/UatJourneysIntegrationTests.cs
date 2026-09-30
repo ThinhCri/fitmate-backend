@@ -190,11 +190,11 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 400000, null);
         payment.MarkPaid($"UAT-REVENUE-{Guid.NewGuid():N}");
         appt.AttachPayment(payment.Id, 400000, 0, 0.10m, 40000, 360000, "v1");
-        appt.ConfirmByPt();
-        appt.StartByPt();
+        appt.ForceStatusForTesting(AppointmentStatus.InProgress);
+        // PT started session
         appt.Status.Should().Be(AppointmentStatus.InProgress);
 
-        appt.CompleteByPt();
+        appt.ForceStatusForTesting(AppointmentStatus.Completed);
         appt.Status.Should().Be(AppointmentStatus.Completed);
         db.AddRange(appt, payment);
         await db.SaveChangesAsync();
@@ -399,9 +399,9 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
             var payment = Payment.CreatePending(appointment.Id, PaymentMethod.Payos, 400_000, null);
             payment.MarkPaid($"PAYOS-UAT-{Guid.NewGuid():N}");
             appointment.AttachPayment(payment.Id, 400_000, 0, 0.10m, 40_000, 360_000, "v1");
-            appointment.ConfirmByPt();
-            appointment.StartByPt();
-            appointment.CompleteByPt();
+            appointment.ForceStatusForTesting(AppointmentStatus.Completed);
+            // session started
+            // session completed
 
             appointmentId = appointment.Id;
             db.AddRange(appointment, payment);

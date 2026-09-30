@@ -163,10 +163,18 @@ public class Appointment : AuditableEntity
         LegacyCompletionTimeUnknown = legacyCompletionTimeUnknown;
     }
 
-    // Helper for testing legacy mappings
-    public void ForceStatusForTesting(AppointmentStatus status)
+    // Helper for testing legacy mappings and test fixtures
+    public void ForceStatusForTesting(AppointmentStatus status, DateTime? completedAtUtc = null)
     {
         Status = status;
+        if (status is AppointmentStatus.Confirmed or AppointmentStatus.InProgress or AppointmentStatus.Completed)
+            ConfirmedAtUtc ??= SlotStartUtc.AddHours(-1);
+        if (status is AppointmentStatus.InProgress or AppointmentStatus.Completed)
+            StartedAtUtc ??= SlotStartUtc;
+        if (status is AppointmentStatus.Completed && !LegacyCompletionTimeUnknown)
+        {
+            CompletedAtUtc ??= completedAtUtc ?? (DateTime.UtcNow > SlotStartUtc.AddMinutes(DurationMinutes) ? SlotStartUtc.AddMinutes(DurationMinutes) : DateTime.UtcNow);
+        }
         Touch();
     }
 

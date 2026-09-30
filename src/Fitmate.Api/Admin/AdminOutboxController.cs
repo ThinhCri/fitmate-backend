@@ -64,7 +64,6 @@ public class AdminOutboxController : ControllerBase
         [FromBody] ReplayOutboxRequest request,
         CancellationToken ct)
     {
-        RequireKey();
         var adminId = _current.GetUserIdOrThrow();
         var result = await _outboxService.ReplayAsync(id, adminId, request?.Reason ?? string.Empty, ct);
 
@@ -76,11 +75,5 @@ public class AdminOutboxController : ControllerBase
             replayed_by = result.ReplayedBy,
             next_attempt_at = result.NextAttemptAt
         });
-    }
-
-    private void RequireKey()
-    {
-        if (string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]))
-            throw new DomainException("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required.", 400);
     }
 }
