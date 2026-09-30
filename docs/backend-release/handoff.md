@@ -1,3 +1,30 @@
+## 2026-09-30 — Triển khai hoàn tất Backend Production Baseline (PROD-2026-09-22-v1, DEC-051, Plan V8, Reschedule Branch A)
+- **Hoàn thành toàn bộ kế hoạch triển khai Backend production**:
+  1. **Tách trạng thái Appointment, Payment, Refund (BE-807)**: Migration `20260930114000_DecoupleAppointmentPaymentStatus.cs`, bỏ phụ thuộc trạng thái chéo; Appointment giữ nguyên khi Payment fail/pending/refund.
+  2. **Khóa lịch PT & chống Double Booking (BE-807)**: Bảng `pt_schedule_locks` với PostgreSQL advisory lock / row lock; `ExecuteWithScheduleLockAsync` áp dụng cho Hold, Confirm, Reschedule, Expire.
+  3. **Booking Lifecycle Guards & Expiry Worker (BE-807)**: Chống double hold, tự động hoàn trả slot khi hold hết hạn qua `BookingHoldExpiryWorker` chạy định kỳ; xử lý thanh toán đến muộn an toàn (`LATE_PAYMENT_SLOT_TAKEN`).
+  4. **Nghiệp vụ Đổi lịch Nhánh A - BR-05 (BE-807)**: `BookingRescheduleRequest`, `POST /api/v1/bookings/{id}/reschedule`, accept/reject, deadline tính theo `min(old_slot - 2h, created + 24h)`. Bổ sung Outbox events (`booking.rescheduled`, `booking.reschedule_requested`).
+  5. **Sổ cái tài chính Bất biến Append-Only - BR-07 (BE-810)**: Bảng `financial_ledger_entries` kèm PostgreSQL trigger `fn_prevent_financial_ledger_mutation()`; ghi recognition entries khi session hoàn thành, adjustment entries khi refund; đối soát số dư tổng.
+  6. **Thuật toán Hoàn tiền Lũy kế & Cancellation Hỗ trợ PartialRefunded (BE-810)**: Tính delta hoàn tiền bằng công thức lũy kế với `MidpointRounding.AwayFromZero` loại bỏ hoàn toàn lệch xu; tự động hoàn số tiền còn lại khi hủy booking `Paid` hoặc `PartialRefunded`.
+  7. **Đối soát Lịch hẹn Lịch sử & Chặn Settlement (BE-810)**: Đánh dấu `LegacyCompletionTimeUnknown`; chặn chi trả quyết toán (`SETTLEMENT_BLOCKED_LEGACY_UNKNOWN`) cho tới khi Quản trị viên đối soát; cung cấp API unverified list và verify endpoint.
+  8. **Bảng Idempotency Bền vững & In-Progress Protection (BE-810)**: Bảng `idempotency_records` với trạng thái `processing`, `completed`, `failed`; trả về HTTP 409 `IDEMPOTENCY_IN_PROGRESS` khi có request trùng đang xử lý; trả header `X-Idempotent-Replay: true` khi replay.
+  9. **Bắt buộc TOTP Step-up và Idempotency cho Toàn bộ Manual Finance Mutations (BE-810)**: Enforce `X-Finance-Totp` qua `IFinanceStepUp` và `Idempotency-Key` trên toàn bộ các endpoint phê duyệt/tạm giữ quyết toán, ghi nhận chuyển khoản, và yêu cầu hoàn tiền; kiểm tra duy nhất mã giao dịch ngân hàng.
+  10. **Kiểm toán Tầng Application, Wire Contracts & Outbox Replay (BE-818)**: Tách `IAdminBookingService`, trả về `AdminBookingSummaryResponse` loại bỏ hoàn toàn trường `Note` theo BR-14; chuẩn hóa `PlatformPolicyResponse` dạng `snake_case`; kiểm soát dead-letter queue và bảo vệ replay tài chính.
+- **Kiểm thử & Biên dịch**:
+  - `dotnet build --configuration Release`: 0 Warning(s), 0 Error(s).
+  - `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --configuration Release --no-build`: 766/766 tests PASS (100%).
+- **Trình tự Commits đã thực hiện**:
+  - `ee7a8d0`: `refactor(booking): separate appointment and payment status [BE-807]`
+  - `ccaa08f`: `feat(booking): add pt schedule locks against double-booking [BE-807]`
+  - `f2d7799`: `feat(booking): enforce lifecycle guards and hold expiry worker [BE-807]`
+  - `c99b716`: `feat(booking): implement reschedule branch a per user approval [BE-807]`
+  - `7e43c05`: `feat(finance): implement immutable append-only financial ledger [BE-810]`
+  - `16f2ee2`: `fix(finance): cumulative refund allocation and cancellation [BE-810]`
+  - `c763a96`: `fix(finance): legacy reconciliation and block unverified settlement [BE-810]`
+  - `b60c7c2`: `feat(common): implement durable idempotency store [BE-810]`
+  - `bd6b515`: `fix(finance): enforce manual settlement totp and idempotency [BE-810]`
+  - `fe9a8c5`: `fix(admin): enforce application authorization and contracts [BE-818]`
+
 ## 2026-09-27 — Admin Web draft implementation and documentation handoff
 - User redirected the work to detailed documentation only. Preserved the preceding unfinished code changes; no additional runtime code changes in this documentation pass.
 - Prior draft touched Admin MFA/login/refresh/JWT validation, certificate preview/revoke, AdminReview APIs and Web auth/finance/support/certificate flows. These changes are NOT verified; tests and contracts still need coordinated updates.
@@ -356,10 +383,129 @@
   - DataProtection: giải mã token hợp lệ và từ chối an toàn fail-closed khi sai key/purpose.
   - Password Hasher: xác thực đúng mật khẩu băm cũ qua BCrypt và ASP.NET Identity PBKDF2, từ chối mật khẩu sai.
   - Token & Contract: JWT claims parsing, expired token 401, và bảo toàn quy ước JSON serialization từ response fixtures thực tế hiện hành.
-- Giữ nguyên `TargetFramework` `net8.0` trong các file `.csproj`. Kế hoạch build container image và chạy migration drill trên database cô lập `fitmate_upgrade_drill` được theo dõi ở trạng thái Pending Verification.
+- Giữ nguyên `TargetFramework` `net8.0` trong các file `.csproj`. Kế hoạp build container image và chạy migration drill trên database cô lập `fitmate_upgrade_drill` được theo dõi ở trạng thái Pending Verification.
 - File evidence: `docs/backend-release/production-plans/evidence/BE-828.md`.
 
-**Next:** Chạy kiểm thử baseline BE-828, sau đó chuyển tiếp sang **BE-826 — UAT ba repo và staging** và **BE-827 — Chốt production và Play release**.
+## Phiên 37 — 2026-09-29 — Rà lại regression patch và xác nhận baseline (PARTIAL VERIFIED)
+
+**Bối cảnh**
+- Làm việc CHỈ trong `D:\Ky8\exe201\FitmateAI_BE`. Không đụng vào `FitmateWebApp` và `FitmateAI_FE`.
+- User yêu cầu rà lại các thay đổi dở đã nằm sẵn trong working tree từ phiên trước:
+  - `docs/backend-release/openapi/fitmate-v1.yaml`
+  - `src/Fitmate.Api/Trainers/AvailabilityController.cs`
+  - `src/Fitmate.Api/Trainers/CertificatesController.cs`
+  - `src/Fitmate.Api/Trainers/ServicesController.cs`
+  - `src/Fitmate.Api/Trainers/TrainersPublicController.cs`
+  - `tests/Fitmate.UnitTests/PtSerializationContractTests.cs`
+- Quy định Git bắt buộc: tuyệt đối KHÔNG `git add`, `git commit`, `push`, `amend`, `reset`, `restore`, `checkout`, `clean`, `stash`. Chỉ dùng read-only (`status`, `diff`, `log`, `show`, `ls-files`, `hash-object`). Giữ toàn bộ thay đổi ở working tree để user review.
+
+**Kết quả xác minh working tree (zero-content-diff vs HEAD)**
+- `git -c core.autocrlf=false diff --stat` trả về 0 dòng — toàn bộ 6 file khớp byte-for-byte với HEAD blob.
+- Cảnh báo "LF will be replaced by CRLF" trong `git status` là do `core.autocrlf=true` của repo Windows chứ không phải thay đổi nội dung; blob hash-Object khớp HEAD 100%:
+  - `docs/backend-release/openapi/fitmate-v1.yaml` -> `8054413c4e0ce322356846ea4177f22423ee0b4b` (HEAD)
+  - `src/Fitmate.Api/Trainers/AvailabilityController.cs` -> `8dd06b0f32f9aec856a55bd0603ef974ee6719c4` (HEAD)
+  - `src/Fitmate.Api/Trainers/CertificatesController.cs` -> `e8267389ccbd3fcd834b9faeb862decb84694e10` (HEAD)
+  - `src/Fitmate.Api/Trainers/ServicesController.cs` -> `c498418225f23e26a36aeb1af454e5f2c1aeb56c` (HEAD)
+  - `src/Fitmate.Api/Trainers/TrainersPublicController.cs` -> `d09d8f62aa3851368556715d441d26c59ece1955` (HEAD)
+  - `tests/Fitmate.UnitTests/PtSerializationContractTests.cs` -> `ce76f6fe7103293eb9480ba2402ac70a0cc9b280` (HEAD)
+- Kết luận: working tree đã ở đúng baseline authoritative — không có patch regression nào đang dở. Status "M" trong `git status` chỉ là line-ending warning, không phải nội dung.
+
+**Phần A — Regression patch (6 file) đã rà lại**
+- `AvailabilityController.cs`: còn `GET /me/availability` (line 27), `PUT /me/availability` (line 48) với query/body `from`/`to`, scoped `ReplaceScopedAsync`, wire DTO `AvailabilitySlotResponse` (snake_case `slot_start_utc`, `slot_start_local`, `duration_minutes`, `status`) và `SetAvailabilityRequest` (`from`/`to`/`slots`). ✓
+- `CertificatesController.cs`: còn `ISignedUrlService` injection cho `ListMine` (line 35) và `Submit` (line 59), wire DTO `CertificateResponse` (snake_case `pt_id`, `issued_by`, `issue_date`, `image_url`, `reject_reason`, `verified_at`) + `CertificatePageResponse` (`items`/`total`/`page`/`pageSize`), và `ImageKeyBelongsTo` ownership check (line 74, 86). ✓
+- `ServicesController.cs`: còn wire DTO `ServiceResponse` (`id`/`name`/`description`/`price_vnd`/`duration_minutes`/`is_active`), `CreateServiceRequest`, `UpdateServiceRequest`, internal `ToResponse`. Domain entity không bao giờ thoát ra ngoài. ✓
+- `TrainersPublicController.cs`: còn mapping `detail.Services.Select(ServicesController.ToResponse).ToList()` ở `Get(Guid ptUserId)` (line 44). Public DTO trùng PT owner contract. ✓
+- `PtSerializationContractTests.cs`: còn đủ 6 test case (`ServiceResponse_SerializesToSnakeCase`, `CreateServiceRequest_DeserializesFromSnakeCase`, `AvailabilitySlotResponse_SerializesToSnakeCaseAndLowercaseEnum`, `SetAvailabilityRequest_DeserializesFromSnakeCase`, `CertificateResponse_SerializesToSnakeCaseAndLowercaseStringStatus`, `CertificatePageResponse_SerializesToItemsStructure`). File KHÔNG rỗng. ✓
+- `docs/backend-release/openapi/fitmate-v1.yaml`: còn `GET /me/availability`, scoped replace parameters, `AppointmentStatus` enum (`[Held, Pending, Confirmed, InProgress, Completed, Cancelled, Expired]`) tách khỏi `PaymentStatus`/`RefundStatus`, `RecentBookingSummary`/`ActionRequired`/`AdminUserSummary` camelCase đúng schema Web. ✓
+
+**Phần B — Admin API contract camelCase**
+- Runtime DTO `AdminUserSummary` (`Fitmate.Application.Identity`) dùng C# record PascalCase (`Id`, `Email`, `FullName`, `Role`, `IsLocked`, `EmailConfirmed`, `CreatedAtUtc`) → ASP.NET Core default serializer (`AddControllers()` + `System.Text.Json` camelCase policy) phát ra camelCase JSON, khớp OpenAPI.
+- Runtime DTO `ActionRequired` + `RecentBookingSummary` (`Fitmate.Application.Admin`) tương tự — record PascalCase `PendingCertificates`, `PendingReports`, `PendingPayments`, `RecentBookings` + `AppointmentId`, `MemberId`, `PtUserId`, `ActualPaidVnd`, `PlatformFeeVnd`, `Status`, `CreatedAt` → camelCase runtime.
+- OpenAPI khai báo đúng `camelCase` cho 3 schema này, không đứt gãy contract v1. Không tạo breaking change.
+
+**Phần C — Rà 7 module Admin**
+- **Users (`AdminUserService` + `AdminUsersController`)**: có `ListAsync` (search/role/status/sort/page/pageSize theo `AdminUserListQuery`), `GetAsync`, `SetLockAsync` với last-admin guard (`CountActiveAdminsAsync` > 1) + bump `SecurityStamp` để thu hồi session/refresh-token. ✓
+- **Certificates (`/api/v1/admin/certificates`)**: còn `ISignedUrlService` cấp preview URL cho Admin (image_url signed, không public), approve/reject/revoke với audit log; ownership bảo vệ qua `IAdminCertificateStore.GetByIdForReviewAsync` (chỉ lấy của PT đích). ✓
+- **Bookings (`AdminBookingsController` + `BookingService.ListAdminAsync`)**: danh sách phân trang có filter theo `status`, `ptUserId`, `memberId`. Không lộ health/chat private (chỉ trả appointment metadata + slot + giá). ✓
+- **Finance (`AdminFinanceController` + `AdminFinanceService`)**:
+  - Manual refund: enforce role Admin ở Application, kiểm tra số tiền + state transition (`ProcessRefundAsync`), idempotency key, ghi `AuditLog`, attach vào payment. ✓
+  - Manual settlement: tương tự qua `ManualSettlementService` + controller `POST /api/v1/admin/finance/settlements`, idempotency-key bắt buộc. ✓
+  - Hiện `TOTP` step-up cho finance mutation chưa enforce ở Application (xem blocker demo).
+- **Reports (`/api/v1/admin/reports`)**: list/resolve/dismiss đầy đủ. ✓
+- **Support (`/api/v1/admin/support/tickets`)**: list/detail/reply/status đầy đủ, IDOR protection. ✓
+- **Audit/Metrics/Action-Required/Dead-letter**: `/api/v1/admin/audit`, `/api/v1/admin/metrics/prometheus`, `/api/v1/admin/metrics/summary`, `/api/v1/admin/action-required`, `AdminOutboxService.ReplayAsync` (financial replay guard, atomic conditional update, audit). ✓
+- **MFA**: `/api/v1/admin/auth/mfa` setup/verify/disable, recovery codes (10), bump `SecurityStamp` để revoke session. ✓
+
+**Phần D — Debt trạng thái booking (BookingStatus gộp)**
+- `Fitmate.Domain.Common.Enums.BookingStatus` vẫn giữ 9 giá trị `Held, AwaitingPayment, Paid, Completed, Cancelled, Refunded, Expired, Confirmed, InProgress`. OpenAPI target tách thành 3 enum `AppointmentStatus` ([Held, Pending, Confirmed, InProgress, Completed, Cancelled, Expired]), `PaymentStatus` ([Pending, Paid, Failed, Refunded, PartialRefunded]), `RefundStatus` ([Pending, Succeeded, Failed]) theo DEC-026 / DEC-051.
+- Runtime vẫn dùng `BookingStatus` ở 9 file:
+  - `Fitmate.Domain.Booking.Appointment` (transition methods `AttachPayment`, `MarkRefunded`, `ConfirmByPt`, `StartByPt`, `CompleteByPt`).
+  - `Fitmate.Infrastructure.Booking.EfBookingStores`, `Fitmate.Infrastructure.Payments.EfPaymentStore`, `Fitmate.Infrastructure.Identity.EfAccountDeletionStore`, `Fitmate.Infrastructure.Dashboard.EfDashboardStore`, `Fitmate.Infrastructure.Finance.EfAdminFinanceStore`, `Fitmate.Infrastructure.Finance.EfTrainerRevenueStore`, `Fitmate.Infrastructure.Admin.EfAdminMetricsStore`, `Fitmate.Application.Booking.BookingService`.
+- File bị ảnh hưởng (blocker): bất kỳ nơi `Appointment.Status` được đọc/ghi trong query sẽ phải ánh xạ `BookingStatus` → `AppointmentStatus`/`PaymentStatus`/`RefundStatus`.
+- **Không tự ý thực hiện migration phá vỡ** trong phiên này. Mapping 9 trạng thái → 3 enum + phân tầng cột DB (thêm `payment_status_id`/`refund_id`) cần:
+  - Kế hoạch migration additive (giữ cột `Status` cũ + thêm cột mới, backfill song song, dọn cột sau khi admin UAT đối chiếu xong).
+  - OpenAPI: đã có target schema, cần đồng bộ DTO trả về runtime (`AppointmentResponse.Status` ↔ `AppointmentStatus`; thêm `PaymentStatus`; thêm `RefundStatus`).
+  - Bộ test đối chiếu cũ/mới (`BookingStatusAdapterTests`, fixture admin book detail, admin finance reconciliation).
+  - Task mới đề xuất: **BE-829 (tách trạng thái booking theo DEC-051/026)** — chưa khởi tạo, chờ user duyệt scope.
+- Tạm thời đã ghi nhận debt trong mục "Blocker còn lại" bên dưới; không đụng code runtime.
+
+**Phần E — Bảo mật**
+- Không thêm secret mới, không chạm `.env`, không log JWT/password/TOTP/recovery code. ✓
+- Không sửa `.gitleaks.toml` allowlist (Supabase legacy credentials đã được thu hẹp trước đó ở BE-822). ✓
+- Không rewrite Git history. Không deploy. Không gọi payment provider. Không tạo dữ liệu smoke/load. ✓
+
+**Kết quả build & test**
+- `dotnet build Fitmate.slnx` -> **0 Warning(s), 0 Error(s)**.
+- `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --no-build` -> **714 Passed, 0 Failed, 0 Skipped, Total 714** trong ~1 giây.
+- 6/6 `PtSerializationContractTests` PASS — bảo toàn wire contract snake_case cho PT endpoints.
+
+**Trạng thái Git sau phiên**
+- Không stage file nào. Không `git add`/`git commit`. Tất cả thay đổi của phiên trước đã có sẵn trong working tree (content = HEAD) và KHÔNG đổi trong phiên này.
+- Helper script `verify-equal.ps1` (do agent tạo để verify blob hash) đã được xóa sau khi xác minh xong. Diff sạch ở mức nội dung.
+- Untracked từ trước còn nguyên: `AI/` (bundle inference chưa được user review), `docs/review-handoff/changes.patch` (patch cũ của user).
+
+**Blocker còn lại**
+
+Demo blocker
+- TOTP step-up cho finance mutation chưa enforce ở Application layer. Hiện chỉ yêu cầu Admin role + Idempotency-Key + audit log + state transition. Bổ sung `IAdminTotpGuard.RequireFreshAsync(adminId, action, ct)` + header `X-Admin-TOTP` trước khi demo live.
+- Debt trạng thái booking: runtime còn dùng `BookingStatus` gộp `Paid`/`Refunded`/`AwaitingPayment` (xem Phần D). API và FE Web/Mobile đang tạm chấp nhận các giá trị legacy; cần migration target theo DEC-026 trước khi freeze contract cho Web.
+- Dead-letter replay (`AdminOutboxService.ReplayAsync`) chỉ verify đơn vị. Cần integration test trên PostgreSQL thật (CI integration-test job) để xác nhận atomic conditional update + audit log persists.
+
+Production blocker
+- `BookingStatus` debt (Phần D) — cần migration additive + OpenAPI/DTO đồng bộ trước release.
+- Thiếu `count_active_admins_async` semantics cho boundary `web/Mobile` chưa verify end-to-end (chỉ có unit test).
+- CORS production env chỉ fail-closed nếu `CORS_ALLOWED_ORIGINS` được set; hiện managed deploy chưa có env này.
+- Backup/DR drill (BE-825) chỉ chạy local; chưa có operator approval cho offsite storage + KMS custody (OPS-04/05).
+- Runtime hiện `net8.0` (EOL 10/11/2026); BE-828 chỉ ở giai đoạn PREPARATION. Cần verify lên `net10.0` trước ngày EOL.
+
+**Lệnh verification cho user (theo đúng thứ tự)**
+
+```powershell
+# 1. Xác minh working tree không có diff (nội dung)
+git -C "D:/Ky8/exe201/FitmateAI_BE" -c core.autocrlf=false diff --stat
+
+# 2. Xác minh 6 file PT khớp HEAD blob
+foreach ($f in @(
+  "src/Fitmate.Api/Trainers/AvailabilityController.cs",
+  "src/Fitmate.Api/Trainers/CertificatesController.cs",
+  "src/Fitmate.Api/Trainers/ServicesController.cs",
+  "src/Fitmate.Api/Trainers/TrainersPublicController.cs",
+  "tests/Fitmate.UnitTests/PtSerializationContractTests.cs",
+  "docs/backend-release/openapi/fitmate-v1.yaml")) {
+  git -C "D:/Ky8/exe201/FitmateAI_BE" hash-object $f
+}
+
+# 3. Build sạch
+dotnet build "D:/Ky8/exe201/FitmateAI_BE/Fitmate.slnx" -c Debug --nologo
+
+# 4. Unit tests
+dotnet test "D:/Ky8/exe201/FitmateAI_BE/tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj" --no-build --nologo
+
+# 5. Format guard
+dotnet format "D:/Ky8/exe201/FitmateAI_BE/Fitmate.slnx" --verify-no-changes --no-restore
+```
+
+**Next:** Chờ user duyệt scope BE-829 (tách trạng thái booking theo DEC-026/051) trước khi đụng runtime code liên quan. Tiếp tục rà các dư chứng cũ ngoài working tree (`AI/`, `docs/review-handoff/changes.patch`) khi user cho phép.
 
 ### Lịch sử các phiên trước
 
