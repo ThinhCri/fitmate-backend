@@ -203,6 +203,7 @@ builder.Services.Configure<Fitmate.Application.Booking.RescheduleOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Booking.RescheduleOptions.SectionName));
 builder.Services.AddScoped<IBookingRescheduleStore, Fitmate.Infrastructure.Booking.EfBookingRescheduleStore>();
 builder.Services.AddScoped<IBookingRescheduleService, Fitmate.Application.Booking.BookingRescheduleService>();
+builder.Services.AddScoped<IAdminBookingService, Fitmate.Application.Booking.AdminBookingService>();
 
 // BE-090: Authorization guard.
 builder.Services.AddScoped<IAuthorizationGuard, Fitmate.Application.Auth.AuthorizationGuard>();

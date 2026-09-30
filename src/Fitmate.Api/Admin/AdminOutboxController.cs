@@ -1,5 +1,6 @@
 using Fitmate.Api.Auth;
 using Fitmate.Application.Admin;
+using Fitmate.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -63,6 +64,7 @@ public class AdminOutboxController : ControllerBase
         [FromBody] ReplayOutboxRequest request,
         CancellationToken ct)
     {
+        RequireKey();
         var adminId = _current.GetUserIdOrThrow();
         var result = await _outboxService.ReplayAsync(id, adminId, request?.Reason ?? string.Empty, ct);
 
@@ -76,4 +78,9 @@ public class AdminOutboxController : ControllerBase
         });
     }
 
+    private void RequireKey()
+    {
+        if (string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]))
+            throw new DomainException("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required.", 400);
+    }
 }

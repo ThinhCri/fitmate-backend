@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fitmate.Application.Auth;
 using Fitmate.Application.Common;
 using Microsoft.Extensions.Options;
@@ -18,11 +19,11 @@ public interface IPlatformPolicyService
 /// Field names theo OpenAPI <c>PlatformPolicyResponse</c>.
 /// </summary>
 public sealed record PlatformPolicy(
-    int PlatformFeeRateBps,
-    string PolicyVersion,
-    DateTime EffectiveFrom,
-    bool Editable,
-    string DisplayHint);
+    [property: JsonPropertyName("platform_fee_rate_bps")] int PlatformFeeRateBps,
+    [property: JsonPropertyName("policy_version")] string PolicyVersion,
+    [property: JsonPropertyName("effective_from")] DateTime EffectiveFrom,
+    [property: JsonPropertyName("editable")] bool Editable,
+    [property: JsonPropertyName("display_hint")] string DisplayHint);
 
 /// <summary>
 /// BE-151 implementation. Đọc <see cref="PlatformPolicyOptions"/> từ DI,

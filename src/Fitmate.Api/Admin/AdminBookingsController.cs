@@ -1,3 +1,4 @@
+using Fitmate.Api.Auth;
 using Fitmate.Application.Booking;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
@@ -14,11 +15,13 @@ namespace Fitmate.Api.Admin;
 [Route("api/v1/admin/bookings")]
 public class AdminBookingsController : ControllerBase
 {
-    private readonly IBookingService _booking;
+    private readonly IAdminBookingService _adminBooking;
+    private readonly ICurrentUserAccessor _current;
 
-    public AdminBookingsController(IBookingService booking)
+    public AdminBookingsController(IAdminBookingService adminBooking, ICurrentUserAccessor current)
     {
-        _booking = booking;
+        _adminBooking = adminBooking;
+        _current = current;
     }
 
     /// <summary>
@@ -33,8 +36,9 @@ public class AdminBookingsController : ControllerBase
         [FromQuery] int pageSize = 25,
         CancellationToken ct = default)
     {
+        var adminId = _current.GetUserIdOrThrow();
         var st = ParseStatus(status);
-        var (items, total) = await _booking.ListAdminAsync(st, ptUserId, memberId, page, pageSize, ct);
+        var (items, total) = await _adminBooking.ListBookingsAsync(adminId, st, ptUserId, memberId, page, pageSize, ct);
         return Ok(new { items, total, page, pageSize });
     }
 
@@ -44,7 +48,8 @@ public class AdminBookingsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> Get(Guid id, CancellationToken ct)
     {
-        var appt = await _booking.FindByIdAsync(id, ct);
+        var adminId = _current.GetUserIdOrThrow();
+        var appt = await _adminBooking.GetBookingDetailAsync(adminId, id, ct);
         if (appt is null) return NotFound();
         return Ok(appt);
     }
