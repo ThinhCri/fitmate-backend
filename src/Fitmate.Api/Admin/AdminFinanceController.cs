@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Fitmate.Application.Finance;
+using Fitmate.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -54,6 +55,7 @@ public class AdminFinanceController : ControllerBase
         [FromBody] CreateRefundRequest body,
         CancellationToken ct = default)
     {
+        RequireKey();
         var adminId = GetUserId();
         var result = await _svc.ProcessRefundAsync(adminId, body, ct);
         return Ok(result);
@@ -81,6 +83,7 @@ public class AdminFinanceController : ControllerBase
         [FromBody] VerifyLegacyAppointmentRequest body,
         CancellationToken ct = default)
     {
+        RequireKey();
         var adminId = GetUserId();
         var result = await _svc.ReconcileLegacyAppointmentAsync(adminId, id, body, ct);
         return Ok(new
@@ -90,6 +93,12 @@ public class AdminFinanceController : ControllerBase
             completedAtUtc = result.CompletedAtUtc,
             legacyCompletionTimeUnknown = result.LegacyCompletionTimeUnknown
         });
+    }
+
+    private void RequireKey()
+    {
+        if (string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]))
+            throw new DomainException("IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key is required.", 400);
     }
 
     private Guid GetUserId()

@@ -20,6 +20,7 @@ public class AdminFinanceService : IAdminFinanceService
     private readonly IAuthorizationGuard _authz;
     private readonly IOutboxDispatcher _outbox;
     private readonly IFinancialLedgerStore? _ledger;
+    private readonly IFinanceStepUp? _stepUp;
 
     private const int MaxPageSize = 100;
     private const int DefaultPageSize = 50;
@@ -28,12 +29,14 @@ public class AdminFinanceService : IAdminFinanceService
         IAdminFinanceStore store,
         IAuthorizationGuard authz,
         IOutboxDispatcher outbox,
-        IFinancialLedgerStore? ledger = null)
+        IFinancialLedgerStore? ledger = null,
+        IFinanceStepUp? stepUp = null)
     {
         _store = store;
         _authz = authz;
         _outbox = outbox;
         _ledger = ledger;
+        _stepUp = stepUp;
     }
 
     public async Task<FinanceOverview> GetOverviewAsync(Guid adminUserId, FinanceRange range, CancellationToken ct)
@@ -138,6 +141,10 @@ public class AdminFinanceService : IAdminFinanceService
     public async Task<RefundView> ProcessRefundAsync(Guid adminUserId, CreateRefundRequest request, CancellationToken ct)
     {
         await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+        if (_stepUp != null)
+        {
+            await _stepUp.EnsureAsync(adminUserId, ct);
+        }
 
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Reason phải có ít nhất 5 ký tự.",

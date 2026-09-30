@@ -3,6 +3,7 @@ using Fitmate.Application.Finance;
 using Fitmate.Application.Payments;
 using Fitmate.Domain.Common;
 using FluentAssertions;
+using Moq;
 
 namespace Fitmate.UnitTests;
 
@@ -385,5 +386,24 @@ public class AdminFinanceServiceTests
         result.TotalRefundsCount.Should().Be(1);
         result.TotalRefundedVnd.Should().Be(100_000);
         result.DiscrepanciesCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ProcessRefund_WithStepUp_EnforcesStepUp()
+    {
+        var store = new InMemoryFinanceStore();
+        var outbox = new CapturingOutbox();
+        var payment = Fitmate.Domain.Payment.Payment.CreatePending(Guid.NewGuid(), Fitmate.Domain.Common.PaymentMethod.Vnpay, 500_000, "url");
+        payment.MarkPaid("txn_123");
+        store.Payments[payment.Id] = payment;
+
+        var stepUpMock = new Mock<IFinanceStepUp>();
+        var adminId = Guid.NewGuid();
+        var svc = new AdminFinanceService(store, new RoleRequireAuthz { RequiredRole = "Admin" }, outbox, null, stepUpMock.Object);
+
+        var req = new CreateRefundRequest(payment.Id, 200_000, "Valid reason here");
+        await svc.ProcessRefundAsync(adminId, req, CancellationToken.None);
+
+        stepUpMock.Verify(s => s.EnsureAsync(adminId, It.IsAny<CancellationToken>()), Times.Once);
     }
 }
