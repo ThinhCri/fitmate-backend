@@ -1,6 +1,7 @@
 using Fitmate.Domain.Identity;
 using Fitmate.Domain.Trainers;
 using Fitmate.Domain.Booking;
+using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
 using Fitmate.Domain.Outbox;
 using Fitmate.Domain.Social;
@@ -48,9 +49,10 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<PtScheduleLock> PtScheduleLocks => Set<PtScheduleLock>();
     public DbSet<BookingRescheduleRequest> BookingRescheduleRequests => Set<BookingRescheduleRequest>();
 
-    // Payment
+    // Payment & Finance
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<FinancialLedgerEntry> FinancialLedgerEntries => Set<FinancialLedgerEntry>();
 
     // Outbox
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();

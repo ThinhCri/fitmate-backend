@@ -30,7 +30,7 @@ namespace Fitmate.IntegrationTests;
 /// BE-826: Bộ kiểm thử tích hợp API chuẩn bị cho UAT xuyên 3 repo (FitmateAI_BE, FitmateAI_FE, FitmateWebApp).
 /// Kiểm chứng 10 hành trình nghiệp vụ cốt lõi (BR-01..BR-16) trên WebApplicationFactory kết nối PostgreSQL 16 thật:
 /// - Không tự bịa đặt field hay trạng thái; đối chiếu chính xác Domain entities và Application contracts hiện có.
-/// - Paid là trạng thái thanh toán và trạng thái appointment trước khi PT confirm (BookingStatus.Paid).
+/// - Pending là trạng thái appointment đã thanh toán trước khi PT confirm (AppointmentStatus.Pending).
 /// - Block chỉ cô lập tương tác giữa 2 bên, không khóa push token của bên thứ ba.
 /// - Kiểm chứng offline retry dedup, data export, cross-account push revocation, và manual settlement.
 /// </summary>
@@ -128,7 +128,7 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
             DateTime.UtcNow.AddDays(3).AddHours(7),
             60, 300000);
 
-        appt.Status.Should().Be(BookingStatus.Held);
+        appt.Status.Should().Be(AppointmentStatus.Held);
 
         // 2. State Machine Rule: Chưa thanh toán thì PT KHÔNG ĐƯỢC phép Confirm
         var confirmAction = () => appt.ConfirmByPt();
@@ -138,12 +138,12 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         // 3. Thanh toán thành công (Payment attached) -> chuyển sang BookingStatus.Paid
         var paymentId = Guid.NewGuid();
         appt.AttachPayment(paymentId, 300000, 0, 0.10m, 30000, 270000, "v1");
-        appt.Status.Should().Be(BookingStatus.Paid);
+        appt.Status.Should().Be(AppointmentStatus.Pending);
         appt.PaymentId.Should().Be(paymentId);
 
         // 4. PT tiếp nhận và chấp thuận -> chuyển sang BookingStatus.Confirmed
         appt.ConfirmByPt();
-        appt.Status.Should().Be(BookingStatus.Confirmed);
+        appt.Status.Should().Be(AppointmentStatus.Confirmed);
     }
 
     [Fact]
@@ -192,10 +192,10 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         appt.AttachPayment(payment.Id, 400000, 0, 0.10m, 40000, 360000, "v1");
         appt.ConfirmByPt();
         appt.StartByPt();
-        appt.Status.Should().Be(BookingStatus.InProgress);
+        appt.Status.Should().Be(AppointmentStatus.InProgress);
 
         appt.CompleteByPt();
-        appt.Status.Should().Be(BookingStatus.Completed);
+        appt.Status.Should().Be(AppointmentStatus.Completed);
         db.AddRange(appt, payment);
         await db.SaveChangesAsync();
 
@@ -223,12 +223,16 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         appt.AttachPayment(paymentId, 500000, 0, 0.10m, 50000, 450000, "v1");
 
         appt.Cancel("Bận việc đột xuất trước 24h");
-        appt.Status.Should().Be(BookingStatus.Cancelled);
+        appt.Status.Should().Be(AppointmentStatus.Cancelled);
         appt.Note.Should().Be("Bận việc đột xuất trước 24h");
 
         // 2. Chuyển trạng thái sang Refunded
-        appt.MarkRefunded();
-        appt.Status.Should().Be(BookingStatus.Refunded);
+        var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 500000, null);
+        payment.MarkPaid("UAT-PAY-REFUND");
+        var refund = Refund.CreateSystemRefund(payment.Id, appt.Id, 500000, "Hoàn tiền do hủy");
+        refund.MarkSucceeded("REF-SUCCESS");
+        payment.ApplyRefund(500000);
+        payment.Status.Should().Be(PaymentStatus.Refunded);
 
         // 3. Quy tắc tính Net Earnings khi có hoàn tiền: Net = TrainerShare - (refundedVnd * 0.90)
         long trainerShare = 450000;

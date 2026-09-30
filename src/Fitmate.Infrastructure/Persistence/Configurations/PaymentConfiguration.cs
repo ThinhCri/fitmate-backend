@@ -1,3 +1,4 @@
+using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -76,3 +77,76 @@ public sealed class ManualPtSettlementConfiguration : IEntityTypeConfiguration<M
         e.HasOne<Payment>().WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
     }
 }
+
+public sealed class FinancialLedgerEntryConfiguration : IEntityTypeConfiguration<FinancialLedgerEntry>
+{
+    public void Configure(EntityTypeBuilder<FinancialLedgerEntry> b)
+    {
+        b.ToTable("financial_ledger_entries");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id");
+        b.Property(x => x.EntryType).HasColumnName("entry_type").HasMaxLength(64).IsRequired();
+        b.Property(x => x.AmountVnd).HasColumnName("amount_vnd").IsRequired();
+        b.Property(x => x.OccurredAtUtc).HasColumnName("occurred_at_utc").IsRequired();
+        b.Property(x => x.AppointmentId).HasColumnName("appointment_id");
+        b.Property(x => x.PaymentId).HasColumnName("payment_id");
+        b.Property(x => x.RefundId).HasColumnName("refund_id");
+        b.Property(x => x.SettlementId).HasColumnName("settlement_id");
+        b.Property(x => x.SourceEventId).HasColumnName("source_event_id").HasMaxLength(128);
+        b.Property(x => x.CorrelationId).HasColumnName("correlation_id").HasMaxLength(128);
+        b.Property(x => x.CreatedByUserId).HasColumnName("created_by_user_id").HasMaxLength(128).IsRequired();
+        b.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+        b.Property(x => x.ReversesEntryId).HasColumnName("reverses_entry_id");
+        b.Property(x => x.CorrectsEntryId).HasColumnName("corrects_entry_id");
+        b.Property(x => x.MetadataVersion).HasColumnName("metadata_version").IsRequired();
+        b.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb").IsRequired();
+
+        b.HasOne<Fitmate.Domain.Booking.Appointment>()
+            .WithMany()
+            .HasForeignKey(x => x.AppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.HasOne<Payment>()
+            .WithMany()
+            .HasForeignKey(x => x.PaymentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.HasOne<Refund>()
+            .WithMany()
+            .HasForeignKey(x => x.RefundId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.HasOne<ManualPtSettlement>()
+            .WithMany()
+            .HasForeignKey(x => x.SettlementId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.HasOne<FinancialLedgerEntry>()
+            .WithMany()
+            .HasForeignKey(x => x.ReversesEntryId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.HasOne<FinancialLedgerEntry>()
+            .WithMany()
+            .HasForeignKey(x => x.CorrectsEntryId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.HasIndex(x => new { x.AppointmentId, x.EntryType })
+            .HasDatabaseName("uq_ledger_appointment_recognition")
+            .IsUnique()
+            .HasFilter("appointment_id IS NOT NULL AND entry_type IN ('GrossBookingFee', 'PlatformCommission', 'TrainerPayable')");
+
+        b.HasIndex(x => new { x.RefundId, x.EntryType })
+            .HasDatabaseName("uq_ledger_refund_adjustment")
+            .IsUnique()
+            .HasFilter("refund_id IS NOT NULL");
+
+        b.HasIndex(x => new { x.SettlementId, x.EntryType })
+            .HasDatabaseName("uq_ledger_settlement_payout")
+            .IsUnique()
+            .HasFilter("settlement_id IS NOT NULL");
+
+        b.HasIndex(x => x.OccurredAtUtc);
+    }
+}
+

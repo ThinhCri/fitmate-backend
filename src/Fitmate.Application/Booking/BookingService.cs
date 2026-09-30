@@ -1,8 +1,10 @@
 using Fitmate.Application.Auth;
 using Fitmate.Application.Common;
+using Fitmate.Application.Finance;
 using Fitmate.Application.Outbox;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Finance;
 
 namespace Fitmate.Application.Booking;
 
@@ -22,6 +24,7 @@ public class BookingService : IBookingService
     private readonly IOutboxDispatcher _outbox;
     private readonly IAuthorizationGuard _authz;
     private readonly TimeSpan _holdTtl;
+    private readonly IFinancialLedgerStore? _ledger;
 
     public BookingService(
         IAppointmentStore appointments,
@@ -29,7 +32,8 @@ public class BookingService : IBookingService
         IServiceBookingLookup services,
         IOutboxDispatcher outbox,
         IAuthorizationGuard authz,
-        TimeSpan? holdTtl = null)
+        TimeSpan? holdTtl = null,
+        IFinancialLedgerStore? ledger = null)
     {
         _appointments = appointments;
         _holds = holds;
@@ -37,6 +41,7 @@ public class BookingService : IBookingService
         _outbox = outbox;
         _authz = authz;
         _holdTtl = holdTtl ?? TimeSpan.FromMinutes(5); // domain-rules.md §3.6
+        _ledger = ledger;
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _slotLocks = new();
@@ -142,6 +147,20 @@ public class BookingService : IBookingService
         {
             appt.CompleteByPt();
             await _appointments.SaveChangesAsync(ct);
+
+            if (_ledger != null && appt.ActualPaidVnd > 0 && !await _ledger.HasEntriesForAppointmentAsync(appt.Id, ct))
+            {
+                var completedAt = appt.CompletedAtUtc ?? DateTime.UtcNow;
+                var entries = new[]
+                {
+                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, appt.ActualPaidVnd, completedAt, ptUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}"),
+                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.PlatformCommission, appt.PlatformFeeVnd, completedAt, ptUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}"),
+                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayable, appt.TrainerShareVnd, completedAt, ptUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}")
+                };
+                await _ledger.AddEntriesAsync(entries, ct);
+                await _ledger.SaveChangesAsync(ct);
+            }
+
             _outbox.Enqueue("booking.completed", new { appointmentId, ptUserId, memberId = appt.MemberId });
             return appt;
         }, ct);

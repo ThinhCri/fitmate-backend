@@ -3,6 +3,7 @@ using Fitmate.Application.Outbox;
 using Fitmate.Application.Payments;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
+using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,19 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                 throw new ConflictException("TRANSFER_REFERENCE_REUSED", "Transfer reference already used.");
             payment.ApplyRefund(refund.AmountVnd);
             refund.MarkSucceeded(bankReference);
+
+            var appt = await db.Appointments.FindAsync(new object[] { payment.AppointmentId }, ct);
+            var platformFeeVnd = appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
+            var refundFee = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refund.AmountVnd / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
+            var refundTrainer = refund.AmountVnd - refundFee;
+            var occurredAt = refund.SucceededAtUtc ?? request.TransferredAt;
+            var adjEntries = new[]
+            {
+                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundGrossReduction, -refund.AmountVnd, occurredAt, adminId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}"),
+                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundPlatformFeeReturn, -refundFee, occurredAt, adminId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}"),
+                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundTrainerDeduction, -refundTrainer, occurredAt, adminId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}")
+            };
+            db.FinancialLedgerEntries.AddRange(adjEntries);
             db.AuditLogs.Add(AuditLog.Record(adminId, "Admin", "finance.manual_refund_confirmed", "Refund", refundId,
                 metadataJson: System.Text.Json.JsonSerializer.Serialize(new { request.EvidenceReference, request.TransferredAt })));
             outbox.Enqueue("finance.refund_processed", new { refundId, paymentId, appointmentId = payment.AppointmentId, amountVnd = refund.AmountVnd });
@@ -109,7 +123,19 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                     settlement.TransferredAt, settlement.TransferEvidenceReference
                 })));
             if (settlement.Status == "paid")
+            {
+                var payoutEntry = FinancialLedgerEntry.Create(
+                    FinancialLedgerEntryTypes.TrainerPayout,
+                    -settlement.AmountVnd,
+                    settlement.TransferredAt ?? DateTime.UtcNow,
+                    adminId.ToString(),
+                    appointmentId: appointmentId,
+                    paymentId: paymentId,
+                    settlementId: settlement.AppointmentId,
+                    sourceEventId: $"settlement.transferred:{appointmentId}");
+                db.FinancialLedgerEntries.Add(payoutEntry);
                 outbox.Enqueue("finance.trainer_settled", new { appointmentId, ptUserId = settlement.PtUserId, amountVnd = settlement.AmountVnd });
+            }
             await db.SaveChangesAsync(ct);
             return settlement;
         }, ct);

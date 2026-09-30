@@ -221,6 +221,7 @@ builder.Services.AddScoped<IAccountDeletionStore, Fitmate.Infrastructure.Identit
 builder.Services.AddScoped<IAccountDeletionService, Fitmate.Application.Identity.AccountDeletionService>();
 
 // BE-150 & BE-809: Admin finance.
+builder.Services.AddScoped<IFinancialLedgerStore, Fitmate.Infrastructure.Finance.EfFinancialLedgerStore>();
 builder.Services.AddScoped<IAdminFinanceStore, Fitmate.Infrastructure.Finance.EfAdminFinanceStore>();
 builder.Services.AddScoped<IAdminFinanceService, Fitmate.Application.Finance.AdminFinanceService>();
 

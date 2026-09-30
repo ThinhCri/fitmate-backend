@@ -122,12 +122,12 @@ public class AdminFinanceService : IAdminFinanceService
 
     // Type đến từ DB, không phải input người dùng: enum không nhận diện được thì
     // bỏ dòng đó khỏi kết quả thay vì ném exception (⇒ 500 cho cả request).
-    private static LedgerEntryType? ParseType(string t) => t switch
+    private static LedgerEntryType? ParseType(string t) => t?.ToLowerInvariant() switch
     {
-        "platform_fee" => LedgerEntryType.PlatformFee,
-        "trainer_share" => LedgerEntryType.TrainerShare,
-        "refund" => LedgerEntryType.Refund,
-        "payout" => LedgerEntryType.Payout,
+        "platform_fee" or "platformcommission" or "platform_commission" or "refundplatformfeereturn" or "refund_platform_fee_return" => LedgerEntryType.PlatformFee,
+        "trainer_share" or "trainerpayable" or "trainer_payable" or "refundtrainerdeduction" or "refund_trainer_deduction" => LedgerEntryType.TrainerShare,
+        "refund" or "refundgrossreduction" or "refund_gross_reduction" => LedgerEntryType.Refund,
+        "payout" or "trainerpayout" or "trainer_payout" => LedgerEntryType.Payout,
         _ => null
     };
 

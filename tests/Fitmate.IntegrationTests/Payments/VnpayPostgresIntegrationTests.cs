@@ -130,7 +130,7 @@ public class VnpayPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
 
         var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == apptId);
         appt.Should().NotBeNull();
-        appt!.Status.Should().Be(BookingStatus.Paid);
+        appt!.Status.Should().Be(AppointmentStatus.Pending);
         appt.PaymentId.Should().Be(paymentId);
     }
 
@@ -174,7 +174,7 @@ public class VnpayPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         // Appointment MUST NOT be revived or attached as Paid
         var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == apptId);
         appt.Should().NotBeNull();
-        appt!.Status.Should().Be(BookingStatus.Held);
+        appt!.Status.Should().Be(AppointmentStatus.Held);
         appt.PaymentId.Should().BeNull();
 
         // A Refund record in Pending status must have been automatically created

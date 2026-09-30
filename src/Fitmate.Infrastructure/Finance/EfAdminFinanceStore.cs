@@ -1,5 +1,6 @@
 using Fitmate.Application.Finance;
 using Fitmate.Domain.Booking;
+using Fitmate.Domain.Finance;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
 using Fitmate.Domain.Payment;
@@ -79,6 +80,47 @@ public class EfAdminFinanceStore : IAdminFinanceStore
 
     public async Task<IReadOnlyList<FinanceLedgerRow>> ListLedgerAsync(LedgerEntryType? type, int skip, int take, CancellationToken ct)
     {
+        if (await _db.FinancialLedgerEntries.AnyAsync(ct))
+        {
+            var query = _db.FinancialLedgerEntries.AsNoTracking();
+
+            if (type.HasValue)
+            {
+                query = type.Value switch
+                {
+                    LedgerEntryType.PlatformFee => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.PlatformCommission || e.EntryType == FinancialLedgerEntryTypes.RefundPlatformFeeReturn),
+                    LedgerEntryType.TrainerShare => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayable || e.EntryType == FinancialLedgerEntryTypes.RefundTrainerDeduction),
+                    LedgerEntryType.Refund => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.RefundGrossReduction || e.EntryType == FinancialLedgerEntryTypes.RefundPlatformFeeReturn || e.EntryType == FinancialLedgerEntryTypes.RefundTrainerDeduction),
+                    LedgerEntryType.Payout => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayout),
+                    _ => query
+                };
+            }
+
+            var entries = await query
+                .OrderByDescending(e => e.OccurredAtUtc)
+                .ThenBy(e => e.Id)
+                .Skip(skip)
+                .Take(take)
+                .ToListAsync(ct);
+
+            return entries.Select(e => new FinanceLedgerRow(
+                e.Id,
+                e.EntryType switch
+                {
+                    FinancialLedgerEntryTypes.PlatformCommission => "platform_fee",
+                    FinancialLedgerEntryTypes.TrainerPayable => "trainer_share",
+                    FinancialLedgerEntryTypes.RefundGrossReduction => "refund",
+                    FinancialLedgerEntryTypes.RefundPlatformFeeReturn => "platform_fee",
+                    FinancialLedgerEntryTypes.RefundTrainerDeduction => "trainer_share",
+                    FinancialLedgerEntryTypes.TrainerPayout => "payout",
+                    _ => e.EntryType
+                },
+                Math.Abs(e.AmountVnd),
+                e.AppointmentId,
+                e.PaymentId,
+                e.OccurredAtUtc)).ToList();
+        }
+
         // Project 2 entries / Paid booking (platform_fee + trainer_share) và 1 entry / Refund succeeded.
         var bookings = await _db.Appointments
             .Where(a => a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Cancelled)
@@ -123,10 +165,29 @@ public class EfAdminFinanceStore : IAdminFinanceStore
         return page.Select(x => new FinanceLedgerRow(x.id, x.type, x.amount, x.apptId, x.payId, x.occurred)).ToList();
     }
 
-    public Task<int> CountLedgerAsync(LedgerEntryType? type, CancellationToken ct)
+    public async Task<int> CountLedgerAsync(LedgerEntryType? type, CancellationToken ct)
     {
+        if (await _db.FinancialLedgerEntries.AnyAsync(ct))
+        {
+            var query = _db.FinancialLedgerEntries.AsNoTracking();
+
+            if (type.HasValue)
+            {
+                query = type.Value switch
+                {
+                    LedgerEntryType.PlatformFee => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.PlatformCommission || e.EntryType == FinancialLedgerEntryTypes.RefundPlatformFeeReturn),
+                    LedgerEntryType.TrainerShare => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayable || e.EntryType == FinancialLedgerEntryTypes.RefundTrainerDeduction),
+                    LedgerEntryType.Refund => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.RefundGrossReduction || e.EntryType == FinancialLedgerEntryTypes.RefundPlatformFeeReturn || e.EntryType == FinancialLedgerEntryTypes.RefundTrainerDeduction),
+                    LedgerEntryType.Payout => query.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayout),
+                    _ => query
+                };
+            }
+
+            return await query.CountAsync(ct);
+        }
+
         // Đếm rows tương tự ListLedgerAsync nhưng không load toàn bộ — project counts trực tiếp.
-        return CountLedgerInternalAsync(type, ct);
+        return await CountLedgerInternalAsync(type, ct);
     }
 
     private async Task<int> CountLedgerInternalAsync(LedgerEntryType? type, CancellationToken ct)
