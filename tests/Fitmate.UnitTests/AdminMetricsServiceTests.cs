@@ -43,7 +43,7 @@ public class AdminMetricsServiceTests
     private static AdminMetricsService NewService(IAdminMetricsStore store, string? requiredRole = "Admin") => new(store, new RoleRequireAuthz { RequiredRole = requiredRole });
 
     private static RecentAppointmentRow Row(
-        BookingStatus status,
+        AppointmentStatus status,
         DateTime createdAt,
         long amount = 500_000,
         long platformFee = 50_000)
@@ -53,7 +53,7 @@ public class AdminMetricsServiceTests
     public async Task ActionRequired_AllCountsAggregated()
     {
         var store = new InMemoryStore { PendingCerts = 3, PendingReports = 5, PendingPayments = 2 };
-        store.Recent.Add(Row(BookingStatus.Paid, DateTime.UtcNow.AddMinutes(-5)));
+        store.Recent.Add(Row(AppointmentStatus.Pending, DateTime.UtcNow.AddMinutes(-5)));
         var svc = NewService(store);
 
         var ar = await svc.GetActionRequiredAsync(Guid.NewGuid(), recentLimit: 10, CancellationToken.None);
@@ -61,7 +61,7 @@ public class AdminMetricsServiceTests
         ar.PendingReports.Should().Be(5);
         ar.PendingPayments.Should().Be(2);
         ar.RecentBookings.Should().HaveCount(1);
-        ar.RecentBookings[0].Status.Should().Be("Paid");
+        ar.RecentBookings[0].Status.Should().Be("Pending");
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class AdminMetricsServiceTests
     {
         var store = new InMemoryStore();
         for (var i = 0; i < 100; i++)
-            store.Recent.Add(Row(BookingStatus.Paid, DateTime.UtcNow.AddMinutes(-i)));
+            store.Recent.Add(Row(AppointmentStatus.Pending, DateTime.UtcNow.AddMinutes(-i)));
         var svc = NewService(store);
 
         var ar = await svc.GetActionRequiredAsync(Guid.NewGuid(), recentLimit: 1000, CancellationToken.None);
@@ -81,7 +81,7 @@ public class AdminMetricsServiceTests
     {
         var store = new InMemoryStore();
         for (var i = 0; i < 20; i++)
-            store.Recent.Add(Row(BookingStatus.Completed, DateTime.UtcNow.AddMinutes(-i)));
+            store.Recent.Add(Row(AppointmentStatus.Completed, DateTime.UtcNow.AddMinutes(-i)));
         var svc = NewService(store);
 
         var ar = await svc.GetActionRequiredAsync(Guid.NewGuid(), recentLimit: 0, CancellationToken.None);
@@ -111,12 +111,12 @@ public class AdminMetricsServiceTests
     public async Task ActionRequired_StatusString_MirrorsEnum()
     {
         var store = new InMemoryStore();
-        store.Recent.Add(Row(BookingStatus.Refunded, DateTime.UtcNow.AddMinutes(-1)));
-        store.Recent.Add(Row(BookingStatus.Cancelled, DateTime.UtcNow.AddMinutes(-2)));
+        store.Recent.Add(Row(AppointmentStatus.Confirmed, DateTime.UtcNow.AddMinutes(-1)));
+        store.Recent.Add(Row(AppointmentStatus.Cancelled, DateTime.UtcNow.AddMinutes(-2)));
         var svc = NewService(store);
 
         var ar = await svc.GetActionRequiredAsync(Guid.NewGuid(), 10, CancellationToken.None);
-        ar.RecentBookings[0].Status.Should().Be("Refunded");
+        ar.RecentBookings[0].Status.Should().Be("Confirmed");
         ar.RecentBookings[1].Status.Should().Be("Cancelled");
     }
 }

@@ -39,6 +39,7 @@ public class RefundConfiguration : IEntityTypeConfiguration<Refund>
         e.Property(x => x.Status).HasConversion<int>();
         e.Property(x => x.RequestedByAdminId).IsRequired();
         e.Property(x => x.ProviderRefundRef).HasMaxLength(128);
+        e.Property(x => x.SucceededAtUtc);
         e.HasIndex(x => new { x.PaymentId, x.Status });
     }
 }

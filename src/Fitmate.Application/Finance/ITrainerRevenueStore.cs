@@ -11,7 +11,7 @@ public sealed record TrainerBookingRevenueRow(
     long PlatformFeeVnd,
     long TrainerShareVnd,
     long RefundedVnd,
-    BookingStatus Status,
+    AppointmentStatus Status,
     long PaidOutVnd = 0,
     string SettlementStatus = "pending_review");
 

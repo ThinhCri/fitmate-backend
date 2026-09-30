@@ -58,7 +58,7 @@ public class TrainerRevenueServiceTests
         => new(store, new RoleRequireAuthz { RequiredRole = requiredRole }, outbox ?? new CapturingOutbox());
 
     private static TrainerBookingRevenueRow BookingRow(
-        long actualPaid, long fee, long share, DateTime utc, BookingStatus status = BookingStatus.Completed, long refunded = 0)
+        long actualPaid, long fee, long share, DateTime utc, AppointmentStatus status = AppointmentStatus.Completed, long refunded = 0)
         => new(
             AppointmentId: Guid.NewGuid(),
             SlotStartUtc: utc,
@@ -78,9 +78,9 @@ public class TrainerRevenueServiceTests
         var t0 = DateTime.UtcNow.AddDays(-2);
 
         // Booking 1: 100k gross -> 10k fee, 90k share
-        store.Bookings.Add(BookingRow(100_000, 10_000, 90_000, t0, BookingStatus.Completed));
+        store.Bookings.Add(BookingRow(100_000, 10_000, 90_000, t0, AppointmentStatus.Completed));
         // Booking 2: 200k gross -> 20k fee, 180k share
-        store.Bookings.Add(BookingRow(200_000, 20_000, 180_000, t0.AddHours(2), BookingStatus.Completed));
+        store.Bookings.Add(BookingRow(200_000, 20_000, 180_000, t0.AddHours(2), AppointmentStatus.Completed));
 
         var svc = NewService(store, "PT");
         var ov = await svc.GetOverviewAsync(ptId, FinanceRange._30d, CancellationToken.None);
@@ -100,9 +100,9 @@ public class TrainerRevenueServiceTests
         var t0 = DateTime.UtcNow.AddDays(-1);
 
         // Booking 1: 500k -> completed (50k fee, 450k share)
-        store.Bookings.Add(BookingRow(500_000, 50_000, 450_000, t0, BookingStatus.Completed));
+        store.Bookings.Add(BookingRow(500_000, 50_000, 450_000, t0, AppointmentStatus.Completed));
         // Booking 2: 200k -> refunded (20k fee, 180k share, 200k refunded)
-        store.Bookings.Add(BookingRow(200_000, 20_000, 180_000, t0.AddHours(1), BookingStatus.Refunded, refunded: 200_000));
+        store.Bookings.Add(BookingRow(200_000, 20_000, 180_000, t0.AddHours(1), AppointmentStatus.Cancelled, refunded: 200_000));
 
         var svc = NewService(store, "PT");
         var ov = await svc.GetOverviewAsync(ptId, FinanceRange._30d, CancellationToken.None);

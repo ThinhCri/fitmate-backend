@@ -12,6 +12,7 @@ public class Refund : AuditableEntity
     public RefundStatus Status { get; private set; }
     public Guid RequestedByAdminId { get; private set; }
     public string? ProviderRefundRef { get; private set; }
+    public DateTime? SucceededAtUtc { get; private set; }
 
     private Refund() { }
 
@@ -33,10 +34,11 @@ public class Refund : AuditableEntity
     public static Refund CreateSystemRefund(Guid paymentId, Guid appointmentId, long amountVnd, string reason)
         => Create(paymentId, appointmentId, amountVnd, reason, SystemUserId);
 
-    public void MarkSucceeded(string? providerRefundRef)
+    public void MarkSucceeded(string? providerRefundRef, DateTime? succeededAtUtc = null)
     {
         Status = RefundStatus.Succeeded;
         ProviderRefundRef = providerRefundRef;
+        SucceededAtUtc = succeededAtUtc ?? DateTime.UtcNow;
         Touch();
     }
 

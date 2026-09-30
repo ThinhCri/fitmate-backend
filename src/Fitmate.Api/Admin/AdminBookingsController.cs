@@ -49,11 +49,13 @@ public class AdminBookingsController : ControllerBase
         return Ok(appt);
     }
 
-    private static BookingStatus? ParseStatus(string? raw)
+    private static AppointmentStatus? ParseStatus(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        if (Enum.TryParse<BookingStatus>(raw, ignoreCase: true, out var status) && Enum.IsDefined(status))
-            return status;
+        if (Enum.TryParse<AppointmentStatus>(raw, ignoreCase: true, out var apptStatus) && Enum.IsDefined(apptStatus))
+            return apptStatus;
+        if (Enum.TryParse<BookingStatus>(raw, ignoreCase: true, out var legacyStatus) && Enum.IsDefined(legacyStatus))
+            return Appointment.MapLegacyToAppointmentStatus(legacyStatus);
 
         throw new ValidationException(
             ErrorCodes.Validation.FieldInvalid,

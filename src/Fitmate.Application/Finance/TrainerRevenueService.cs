@@ -32,7 +32,7 @@ public class TrainerRevenueService : ITrainerRevenueService
         var rows = await _store.ListBookingsInRangeAsync(ptUserId, fromUtc, toUtc, ct);
 
         // Completion recognizes earnings; a verified transfer independently records paid-out money.
-        var paidRows = rows.Where(r => r.Status == BookingStatus.Completed).ToList();
+        var paidRows = rows.Where(r => r.Status == AppointmentStatus.Completed).ToList();
 
         long gross = paidRows.Sum(r => r.ActualPaidVnd);
         long fee = paidRows.Sum(r => r.PlatformFeeVnd);
@@ -41,7 +41,7 @@ public class TrainerRevenueService : ITrainerRevenueService
         long netEarnings = paidRows.Sum(NetRevenue);
         long paidOut = rows.Sum(r => r.PaidOutVnd);
 
-        var completedRows = rows.Where(r => r.Status == BookingStatus.Completed).ToList();
+        var completedRows = rows.Where(r => r.Status == AppointmentStatus.Completed).ToList();
         var completedSessionsCount = completedRows.Count;
 
         var chart = completedRows

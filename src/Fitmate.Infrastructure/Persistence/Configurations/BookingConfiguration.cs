@@ -21,7 +21,16 @@ public class AppointmentConfiguration : IEntityTypeConfiguration<Appointment>
                 v => DateTime.SpecifyKind(v, DateTimeKind.Utc),
                 v => DateTime.SpecifyKind(v, DateTimeKind.Unspecified));
         e.Property(x => x.DurationMinutes).IsRequired();
-        e.Property(x => x.Status).HasConversion<int>();
+        e.Property(x => x.Status).HasConversion<int>().HasColumnName("appointment_status");
+        e.Property(x => x.LegacyStatus).HasColumnName("legacy_status");
+        e.Property(x => x.CompletedAtUtc).HasColumnName("completed_at_utc");
+        e.Property(x => x.LegacyCompletionTimeUnknown).HasColumnName("legacy_completion_time_unknown");
+        e.Property(x => x.HoldExpiresAtUtc).HasColumnName("hold_expires_at_utc");
+        e.Property(x => x.AcceptanceDeadlineUtc).HasColumnName("acceptance_deadline_utc");
+        e.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");
+        e.Property(x => x.StartedAtUtc).HasColumnName("started_at_utc");
+        e.Property(x => x.CancelledAtUtc).HasColumnName("cancelled_at_utc");
+        e.Property(x => x.RescheduledCount).HasColumnName("rescheduled_count");
         e.Property(x => x.PlatformFeeRate).HasColumnType("numeric(5,4)");
         e.HasIndex(x => new { x.PtUserId, x.SlotStartUtc });
         e.HasIndex(x => new { x.MemberId, x.SlotStartUtc });

@@ -50,7 +50,7 @@ public sealed class PayosWebhookHandler(FitmateDbContext db, IPaymentStore store
             var hold = appointment == null ? null : await store.FindHoldForUpdateAsync(appointment.Id, ct);
             payment.MarkPaid(Text(data, "reference"));
             order.BindLink(linkId!);
-            if (appointment != null && appointment.Status == BookingStatus.Held && hold is { IsActive: true })
+            if (appointment != null && appointment.Status == AppointmentStatus.Held && hold is { IsActive: true })
             {
                 var fee = (long)Math.Round(amountVnd * 0.10m, MidpointRounding.AwayFromZero);
                 appointment.AttachPayment(payment.Id, amountVnd, 0, 0.10m, fee, amountVnd - fee, "v1");

@@ -30,7 +30,7 @@ public class EfAccountDeletionStore : IAccountDeletionStore
     {
         return await _db.Appointments.AnyAsync(a =>
             (a.MemberId == userId || a.PtUserId == userId) &&
-            (a.Status == BookingStatus.Held || a.Status == BookingStatus.AwaitingPayment || a.Status == BookingStatus.Paid),
+            (a.Status == AppointmentStatus.Held || a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress),
             ct);
     }
 

@@ -268,7 +268,7 @@ public class AdminFinanceServiceTests
         result.AmountVnd.Should().Be(500_000);
         payment.Status.Should().Be(Fitmate.Domain.Common.PaymentStatus.Refunded);
         payment.RefundedSoFarVnd.Should().Be(500_000);
-        appt.Status.Should().Be(Fitmate.Domain.Common.BookingStatus.Refunded);
+        appt.Status.Should().Be(Fitmate.Domain.Common.AppointmentStatus.Cancelled);
     }
 
     [Fact]

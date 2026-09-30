@@ -22,7 +22,7 @@ public class EfTrainerReviewStore : ITrainerReviewStore
         return await _db.Appointments.AnyAsync(a =>
             a.MemberId == memberId &&
             a.PtUserId == ptUserId &&
-            a.Status == BookingStatus.Completed,
+            a.Status == AppointmentStatus.Completed,
             ct);
     }
 

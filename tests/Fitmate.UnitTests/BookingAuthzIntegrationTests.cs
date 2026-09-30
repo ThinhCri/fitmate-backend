@@ -20,9 +20,15 @@ public class BookingAuthzIntegrationTests
         public Task<bool> ExistsActiveForSlotAsync(Guid ptUserId, DateTime slotStartUtc, CancellationToken ct) => Task.FromResult(false);
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid m, BookingStatus? s, int p, int ps, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid m, AppointmentStatus? s, int p, int ps, CancellationToken ct)
+            => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid p, BookingStatus? s, int page, int pageSize, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid p, AppointmentStatus? s, int page, int pageSize, CancellationToken ct)
+            => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(BookingStatus? s, Guid? p, Guid? m, int page, int pageSize, CancellationToken ct)
+            => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(AppointmentStatus? s, Guid? p, Guid? m, int page, int pageSize, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task AddAsync(Appointment a, CancellationToken ct) { Items[a.Id] = a; return Task.CompletedTask; }
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
@@ -79,13 +85,15 @@ public class BookingAuthzIntegrationTests
     public async Task Complete_AsPt_Passes()
     {
         var pt = Guid.NewGuid();
-        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        var slot = DateTime.UtcNow.AddMinutes(-70);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), slot, slot, 60, 100_000);
         appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.InProgress);
         var store = new InMemoryAppointmentStore { Items = { [appt.Id] = appt } };
         var guard = new RoleGuard { Role = "PT" };
         var svc = new BookingService(store, new InMemoryHoldStore(), new NoServiceLookup(), new OutboxStub(), guard);
 
         var done = await svc.CompleteAsync(pt, appt.Id, CancellationToken.None);
-        done.Status.Should().Be(BookingStatus.Completed);
+        done.Status.Should().Be(AppointmentStatus.Completed);
     }
 }

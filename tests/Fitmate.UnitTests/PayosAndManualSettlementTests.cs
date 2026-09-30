@@ -96,7 +96,7 @@ public class PayosAndManualSettlementTests
         var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 101, null);
         payment.MarkPaid("test-txn");
         appt.AttachPayment(payment.Id, 101, 0, .10m, 10, 91, "v1");
-        appt.CompleteByPt();
+        appt.ForceStatusForTesting(AppointmentStatus.Completed);
         payment.ApplyRefund(5); // Original fee ratio: round(10 * 5 / 101) = 0, not round(5 * .1) = 1.
         var context = new SettlementContext(appt, payment, ManualPtSettlement.Create(appt.Id, appt.PtUserId, payment.Id), false);
         ManualSettlementService.EligibleAmount(context).Should().Be(86);

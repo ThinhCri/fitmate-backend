@@ -181,10 +181,14 @@ public class BookingsController : ControllerBase
         return (page, pageSize);
     }
 
-    private static BookingStatus? ParseStatus(string? raw)
+    private static AppointmentStatus? ParseStatus(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return null;
-        return Enum.TryParse<BookingStatus>(raw, ignoreCase: true, out var s) ? s : null;
+        if (Enum.TryParse<AppointmentStatus>(raw, ignoreCase: true, out var apptStatus) && Enum.IsDefined(apptStatus))
+            return apptStatus;
+        if (Enum.TryParse<BookingStatus>(raw, ignoreCase: true, out var legacyStatus) && Enum.IsDefined(legacyStatus))
+            return Appointment.MapLegacyToAppointmentStatus(legacyStatus);
+        return null;
     }
 }
 

@@ -53,7 +53,7 @@ public class EfDashboardStore : IDashboardStore
     {
         return await _db.Appointments
             .Where(a => a.MemberId == userId && a.DeletedAt == null &&
-                        (a.Status == BookingStatus.Confirmed || a.Status == BookingStatus.Paid || a.Status == BookingStatus.InProgress) &&
+                        (a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.InProgress) &&
                         a.SlotStartUtc >= nowUtc)
             .OrderBy(a => a.SlotStartUtc)
             .FirstOrDefaultAsync(ct);

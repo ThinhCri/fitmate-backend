@@ -22,6 +22,17 @@ public enum CertificateStatus
     Revoked = 3
 }
 
+public enum AppointmentStatus
+{
+    Held = 0,
+    Pending = 1,
+    Confirmed = 2,
+    InProgress = 3,
+    Completed = 4,
+    Cancelled = 5,
+    Expired = 6
+}
+
 public enum BookingStatus
 {
     Held = 0,

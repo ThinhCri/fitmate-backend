@@ -25,12 +25,13 @@ public class EfAppointmentStore : IAppointmentStore
         => _db.Appointments.AnyAsync(a =>
             a.PtUserId == ptUserId &&
             a.SlotStartUtc == slotStartUtc &&
-            (a.Status == BookingStatus.Held ||
-             a.Status == BookingStatus.AwaitingPayment ||
-             a.Status == BookingStatus.Paid ||
-             a.Status == BookingStatus.Completed), ct);
+            (a.Status == AppointmentStatus.Held ||
+             a.Status == AppointmentStatus.Pending ||
+             a.Status == AppointmentStatus.Confirmed ||
+             a.Status == AppointmentStatus.InProgress ||
+             a.Status == AppointmentStatus.Completed), ct);
 
-    public async Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+    public async Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
     {
         IQueryable<Appointment> q = _db.Appointments.Where(a => a.MemberId == memberId);
         if (status.HasValue) q = q.Where(a => a.Status == status.Value);
@@ -40,7 +41,7 @@ public class EfAppointmentStore : IAppointmentStore
         return (items, total);
     }
 
-    public async Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+    public async Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
     {
         IQueryable<Appointment> q = _db.Appointments.Where(a => a.PtUserId == ptUserId);
         if (status.HasValue) q = q.Where(a => a.Status == status.Value);
@@ -51,7 +52,7 @@ public class EfAppointmentStore : IAppointmentStore
     }
 
     public async Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(
-        BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
+        AppointmentStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
     {
         IQueryable<Appointment> q = _db.Appointments;
         if (status.HasValue) q = q.Where(a => a.Status == status.Value);
@@ -63,6 +64,8 @@ public class EfAppointmentStore : IAppointmentStore
             .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return (items, total);
     }
+
+
 
     public async Task AddAsync(Appointment appointment, CancellationToken ct)
         => await _db.Appointments.AddAsync(appointment, ct);

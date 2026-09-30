@@ -12,7 +12,16 @@ public class Appointment : AuditableEntity
     public DateTime SlotStartUtc { get; private set; }
     public DateTime SlotStartLocal { get; private set; }
     public int DurationMinutes { get; private set; }
-    public BookingStatus Status { get; private set; }
+    public AppointmentStatus Status { get; private set; }
+    public int? LegacyStatus { get; private set; }
+    public DateTime? CompletedAtUtc { get; private set; }
+    public bool LegacyCompletionTimeUnknown { get; private set; }
+    public DateTime? HoldExpiresAtUtc { get; private set; }
+    public DateTime? AcceptanceDeadlineUtc { get; private set; }
+    public DateTime? ConfirmedAtUtc { get; private set; }
+    public DateTime? StartedAtUtc { get; private set; }
+    public DateTime? CancelledAtUtc { get; private set; }
+    public int RescheduledCount { get; private set; }
     public long PriceListedVnd { get; private set; }
     public long DiscountVnd { get; private set; }
     public long ActualPaidVnd { get; private set; }
@@ -27,8 +36,9 @@ public class Appointment : AuditableEntity
 
     public static Appointment CreateHold(Guid memberId, Guid ptUserId, Guid serviceId,
         DateTime slotStartUtc, DateTime slotStartLocal, int durationMinutes,
-        long priceListedVnd)
+        long priceListedVnd, TimeSpan? holdTtl = null)
     {
+        var ttl = holdTtl ?? TimeSpan.FromMinutes(5);
         return new Appointment
         {
             Id = Guid.NewGuid(),
@@ -38,15 +48,17 @@ public class Appointment : AuditableEntity
             SlotStartUtc = slotStartUtc,
             SlotStartLocal = slotStartLocal,
             DurationMinutes = durationMinutes,
-            Status = BookingStatus.Held,
+            Status = AppointmentStatus.Held,
+            HoldExpiresAtUtc = DateTime.UtcNow.Add(ttl),
             PriceListedVnd = priceListedVnd,
+            PaymentId = null,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
     }
 
     public void AttachPayment(Guid paymentId, long actualPaidVnd, long discountVnd,
-        decimal platformFeeRate, long platformFeeVnd, long trainerShareVnd, string policyVersion)
+        decimal platformFeeRate, long platformFeeVnd, long trainerShareVnd, string policyVersion, DateTime? paidAtUtc = null)
     {
         PaymentId = paymentId;
         ActualPaidVnd = actualPaidVnd;
@@ -55,72 +67,118 @@ public class Appointment : AuditableEntity
         PlatformFeeVnd = platformFeeVnd;
         TrainerShareVnd = trainerShareVnd;
         PolicyVersion = policyVersion;
-        Status = BookingStatus.Paid;
+        Status = AppointmentStatus.Pending;
+        var paidAt = paidAtUtc ?? DateTime.UtcNow;
+        var deadline = paidAt.AddHours(24);
+        AcceptanceDeadlineUtc = deadline < SlotStartUtc ? deadline : SlotStartUtc;
         Touch();
     }
 
     public void ConfirmByPt()
     {
-        if (Status is not (BookingStatus.Paid or BookingStatus.AwaitingPayment))
+        if (Status != AppointmentStatus.Pending)
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot confirm booking in status {Status}.");
-        Status = BookingStatus.Confirmed;
+        if (AcceptanceDeadlineUtc.HasValue && DateTime.UtcNow > AcceptanceDeadlineUtc.Value)
+            throw new ConflictException("ACCEPTANCE_DEADLINE_EXPIRED", "Acceptance deadline has expired.");
+        Status = AppointmentStatus.Confirmed;
+        ConfirmedAtUtc = DateTime.UtcNow;
         Touch();
     }
 
     public void StartByPt()
     {
-        if (Status is not (BookingStatus.Confirmed or BookingStatus.Paid))
+        if (Status != AppointmentStatus.Confirmed)
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot start booking in status {Status}.");
         if (DateTime.UtcNow < SlotStartUtc.AddMinutes(-5))
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, "Cannot start appointment before 5 minutes prior to slot time.");
-        Status = BookingStatus.InProgress;
+        Status = AppointmentStatus.InProgress;
+        StartedAtUtc = DateTime.UtcNow;
         Touch();
     }
 
-    public void CompleteByPt()
+    public void CompleteByPt(DateTime? completedAtUtc = null)
     {
-        if (Status is not (BookingStatus.InProgress or BookingStatus.Confirmed or BookingStatus.Paid))
+        if (Status != AppointmentStatus.InProgress)
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot complete booking in status {Status}.");
-        Status = BookingStatus.Completed;
+        if (DateTime.UtcNow < SlotStartUtc.AddMinutes(DurationMinutes))
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, "Cannot complete appointment before slot end.");
+        Status = AppointmentStatus.Completed;
+        CompletedAtUtc = completedAtUtc ?? DateTime.UtcNow;
+        LegacyCompletionTimeUnknown = false;
         Touch();
     }
 
-    public void Reschedule(DateTime newSlotStartUtc, DateTime newSlotStartLocal, int newDurationMinutes)
+    public void RescheduleSlot(DateTime newSlotStartUtc, DateTime newSlotStartLocal, int newDurationMinutes)
     {
-        if (Status is not (BookingStatus.Held or BookingStatus.Paid or BookingStatus.Confirmed))
-            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot reschedule booking in status {Status}.");
         SlotStartUtc = newSlotStartUtc;
         SlotStartLocal = newSlotStartLocal;
         DurationMinutes = newDurationMinutes;
+        RescheduledCount++;
         Touch();
     }
 
     public void Cancel(string reason)
     {
-        if (Status is BookingStatus.Completed or BookingStatus.Refunded or BookingStatus.Cancelled)
+        if (Status == AppointmentStatus.Completed)
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot cancel in status {Status}.");
-        Status = BookingStatus.Cancelled;
+        Status = AppointmentStatus.Cancelled;
+        CancelledAtUtc = DateTime.UtcNow;
         Note = reason;
         Touch();
     }
 
-    public void MarkRefunded()
+    public void ExpireHold()
     {
-        if (Status is BookingStatus.Cancelled or BookingStatus.Refunded or BookingStatus.Held)
-            Status = BookingStatus.Refunded;
-        else if (Status == BookingStatus.Paid)
-            Status = BookingStatus.Refunded;
-        else
-            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot refund in status {Status}.");
-        Touch();
-    }
-
-    public void MarkExpired()
-    {
-        if (Status == BookingStatus.Held)
+        if (Status == AppointmentStatus.Held)
         {
-            Status = BookingStatus.Expired;
+            Status = AppointmentStatus.Expired;
             Touch();
         }
     }
+
+    public void ExpireAcceptance()
+    {
+        if (Status == AppointmentStatus.Pending)
+        {
+            Status = AppointmentStatus.Expired;
+            Touch();
+        }
+    }
+
+    public void ReconcileLegacyCompletion(DateTime verifiedCompletedAtUtc)
+    {
+        if (!LegacyCompletionTimeUnknown && CompletedAtUtc.HasValue)
+            throw new ConflictException("TIMESTAMP_ALREADY_VERIFIED", "Completion timestamp has already been verified.");
+        CompletedAtUtc = verifiedCompletedAtUtc;
+        LegacyCompletionTimeUnknown = false;
+        Touch();
+    }
+
+    public void SetLegacyData(int legacyStatus, DateTime? completedAtUtc, bool legacyCompletionTimeUnknown)
+    {
+        LegacyStatus = legacyStatus;
+        CompletedAtUtc = completedAtUtc;
+        LegacyCompletionTimeUnknown = legacyCompletionTimeUnknown;
+    }
+
+    // Helper for testing legacy mappings
+    public void ForceStatusForTesting(AppointmentStatus status)
+    {
+        Status = status;
+        Touch();
+    }
+
+    public static AppointmentStatus MapLegacyToAppointmentStatus(BookingStatus legacy) => legacy switch
+    {
+        BookingStatus.Held => AppointmentStatus.Held,
+        BookingStatus.AwaitingPayment => AppointmentStatus.Held,
+        BookingStatus.Paid => AppointmentStatus.Pending,
+        BookingStatus.Confirmed => AppointmentStatus.Confirmed,
+        BookingStatus.InProgress => AppointmentStatus.InProgress,
+        BookingStatus.Completed => AppointmentStatus.Completed,
+        BookingStatus.Cancelled => AppointmentStatus.Cancelled,
+        BookingStatus.Refunded => AppointmentStatus.Cancelled,
+        BookingStatus.Expired => AppointmentStatus.Expired,
+        _ => throw new ArgumentOutOfRangeException(nameof(legacy), legacy, null)
+    };
 }

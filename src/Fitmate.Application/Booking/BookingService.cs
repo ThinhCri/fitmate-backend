@@ -151,7 +151,7 @@ public class BookingService : IBookingService
         if (appt.MemberId != memberId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner.");
 
-        if (appt.Status is BookingStatus.Completed or BookingStatus.Cancelled or BookingStatus.Refunded)
+        if (appt.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.Expired)
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot reschedule in status {appt.Status}.");
 
         if (newSlotStartUtc == appt.SlotStartUtc)
@@ -179,19 +179,20 @@ public class BookingService : IBookingService
         return newAppt;
     }
 
-    public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberAsync(Guid memberId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+    public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
         => _appointments.ListByMemberPagedAsync(memberId, status, page, pageSize, ct);
 
-    public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtAsync(Guid ptUserId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+    public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtAsync(Guid ptUserId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
         => _appointments.ListByPtPagedAsync(ptUserId, status, page, pageSize, ct);
 
     public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminAsync(
-        BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
+        AppointmentStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
     {
         page = page < 1 ? 1 : page;
         pageSize = pageSize < 1 ? 25 : (pageSize > 100 ? 100 : pageSize);
         return _appointments.ListAdminPagedAsync(status, ptUserId, memberId, page, pageSize, ct);
     }
+
 
     public Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct)
         => _appointments.FindByIdAsync(appointmentId, ct);

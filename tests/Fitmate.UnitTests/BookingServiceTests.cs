@@ -25,31 +25,50 @@ public class BookingServiceTests
             ActiveQueries.Add((ptUserId, slotStartUtc));
             return Task.FromResult(Items.Values.Any(a =>
                 a.PtUserId == ptUserId && a.SlotStartUtc == slotStartUtc &&
-                (a.Status == BookingStatus.Held || a.Status == BookingStatus.AwaitingPayment ||
-                 a.Status == BookingStatus.Paid || a.Status == BookingStatus.Confirmed ||
-                 a.Status == BookingStatus.InProgress || a.Status == BookingStatus.Completed)));
+                (a.Status == AppointmentStatus.Held || a.Status == AppointmentStatus.Pending ||
+                 a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress ||
+                 a.Status == AppointmentStatus.Completed)));
         }
 
-        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
         {
             var filtered = Items.Values.Where(a => a.MemberId == memberId && (!status.HasValue || a.Status == status.Value)).ToList();
             return Task.FromResult(((IReadOnlyList<Appointment>)filtered, filtered.Count));
         }
 
-        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+        {
+            var mapped = status.HasValue ? Appointment.MapLegacyToAppointmentStatus(status.Value) : (AppointmentStatus?)null;
+            return ListByMemberPagedAsync(memberId, mapped, page, pageSize, ct);
+        }
+
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
         {
             var filtered = Items.Values.Where(a => a.PtUserId == ptUserId && (!status.HasValue || a.Status == status.Value)).ToList();
             return Task.FromResult(((IReadOnlyList<Appointment>)filtered, filtered.Count));
         }
 
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, BookingStatus? status, int page, int pageSize, CancellationToken ct)
+        {
+            var mapped = status.HasValue ? Appointment.MapLegacyToAppointmentStatus(status.Value) : (AppointmentStatus?)null;
+            return ListByPtPagedAsync(ptUserId, mapped, page, pageSize, ct);
+        }
+
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(
-            BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
+            AppointmentStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
         {
             var filtered = Items.Values.Where(a =>
                 (!status.HasValue || a.Status == status.Value) &&
                 (!ptUserId.HasValue || a.PtUserId == ptUserId.Value) &&
                 (!memberId.HasValue || a.MemberId == memberId.Value)).ToList();
             return Task.FromResult(((IReadOnlyList<Appointment>)filtered, filtered.Count));
+        }
+
+        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(
+            BookingStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct)
+        {
+            var mapped = status.HasValue ? Appointment.MapLegacyToAppointmentStatus(status.Value) : (AppointmentStatus?)null;
+            return ListAdminPagedAsync(mapped, ptUserId, memberId, page, pageSize, ct);
         }
 
         public Task AddAsync(Appointment a, CancellationToken ct)
@@ -110,7 +129,7 @@ public class BookingServiceTests
         var (hold, appt) = await svc.CreateHoldAsync(memberId, pt, serviceId, slot, CancellationToken.None);
 
         hold.MemberId.Should().Be(memberId);
-        appt.Status.Should().Be(BookingStatus.Held);
+        appt.Status.Should().Be(AppointmentStatus.Held);
         appt.PtUserId.Should().Be(pt);
         appt.PriceListedVnd.Should().Be(500_000);
         appt.DurationMinutes.Should().Be(60);
@@ -197,7 +216,7 @@ public class BookingServiceTests
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
         var cancelled = await svc.CancelAsync(member, appt.Id, "Bận đột xuất", CancellationToken.None);
 
-        cancelled.Status.Should().Be(BookingStatus.Cancelled);
+        cancelled.Status.Should().Be(AppointmentStatus.Cancelled);
         cancelled.Note.Should().Be("Bận đột xuất");
         outbox.Messages.Should().Contain(m => m.Type == "booking.cancelled");
     }
@@ -221,14 +240,16 @@ public class BookingServiceTests
         var apptStore = new InMemoryAppointmentStore();
         var outbox = new CapturingOutbox();
         var pt = Guid.NewGuid();
-        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        var slot = DateTime.UtcNow.AddMinutes(-70);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), slot, slot, 60, 100_000);
         appt.AttachPayment(Guid.NewGuid(), 500_000, 0, 0.10m, 50_000, 450_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.InProgress);
         apptStore.Items[appt.Id] = appt;
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
         var done = await svc.CompleteAsync(pt, appt.Id, CancellationToken.None);
 
-        done.Status.Should().Be(BookingStatus.Completed);
+        done.Status.Should().Be(AppointmentStatus.Completed);
         outbox.Messages.Should().Contain(m => m.Type == "booking.completed");
     }
 
@@ -281,7 +302,7 @@ public class BookingServiceTests
             .Where(e => e.Code == ErrorCodes.Booking.SlotTaken);
 
         // Old appointment vẫn Held (domain-rules.md §3.1.1: reschedule fail → slot cũ không bị mất).
-        apptStore.Items[appt.Id].Status.Should().Be(BookingStatus.Held);
+        apptStore.Items[appt.Id].Status.Should().Be(AppointmentStatus.Held);
     }
 
     [Fact]
@@ -294,7 +315,7 @@ public class BookingServiceTests
         var newSlot = new DateTime(2026, 12, 6, 9, 0, 0, DateTimeKind.Utc);
         var appt = Appointment.CreateHold(member, pt, Guid.NewGuid(), oldSlot, oldSlot, 60, 100_000);
         appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
-        appt.CompleteByPt();
+        appt.ForceStatusForTesting(AppointmentStatus.Completed);
         apptStore.Items[appt.Id] = appt;
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
@@ -319,7 +340,7 @@ public class BookingServiceTests
 
         newAppt.SlotStartUtc.Should().Be(newSlot);
         newAppt.MemberId.Should().Be(member);
-        apptStore.Items[appt.Id].Status.Should().Be(BookingStatus.Cancelled); // old cancelled
+        apptStore.Items[appt.Id].Status.Should().Be(AppointmentStatus.Cancelled); // old cancelled
         apptStore.Items.Should().HaveCount(2);
         outbox.Messages.Should().Contain(m => m.Type == "booking.rescheduled");
     }
@@ -352,7 +373,7 @@ public class BookingServiceTests
         apptStore.Items[Guid.NewGuid()] = Appointment.CreateHold(memberA, otherPt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
-        var (items, total) = await svc.ListByPtAsync(pt, null, 1, 10, CancellationToken.None);
+        var (items, total) = await svc.ListByPtAsync(pt, (AppointmentStatus?)null, 1, 10, CancellationToken.None);
 
         total.Should().Be(2);
         items.Should().HaveCount(2);
@@ -373,11 +394,11 @@ public class BookingServiceTests
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
 
         // All held.
-        var (allItems, allTotal) = await svc.ListByMemberAsync(member, null, 1, 10, CancellationToken.None);
+        var (allItems, allTotal) = await svc.ListByMemberAsync(member, (AppointmentStatus?)null, 1, 10, CancellationToken.None);
         allTotal.Should().Be(2);
 
         // Only completed — none yet.
-        var (completedItems, completedTotal) = await svc.ListByMemberAsync(member, BookingStatus.Completed, 1, 10, CancellationToken.None);
+        var (completedItems, completedTotal) = await svc.ListByMemberAsync(member, AppointmentStatus.Completed, 1, 10, CancellationToken.None);
         completedTotal.Should().Be(0);
         completedItems.Should().BeEmpty();
     }
@@ -399,10 +420,10 @@ public class BookingServiceTests
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
 
-        var (page1Items, page1Total) = await svc.ListByMemberAsync(member, null, 1, 2, CancellationToken.None);
+        var (page1Items, page1Total) = await svc.ListByMemberAsync(member, (AppointmentStatus?)null, 1, 2, CancellationToken.None);
         page1Total.Should().Be(5);
 
-        var (page3Items, page3Total) = await svc.ListByMemberAsync(member, null, 3, 2, CancellationToken.None);
+        var (page3Items, page3Total) = await svc.ListByMemberAsync(member, (AppointmentStatus?)null, 3, 2, CancellationToken.None);
         page3Total.Should().Be(5);
         // Service returns whatever the store returns. InMemory stub doesn't paginate,
         // so all pages see all 5. Real Ef store will skip/take per page.
@@ -416,14 +437,15 @@ public class BookingServiceTests
         var outbox = new CapturingOutbox();
         var pt = Guid.NewGuid();
         var member = Guid.NewGuid();
-        var appt = Appointment.CreateHold(member, pt, Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        var slot = DateTime.UtcNow.AddHours(2);
+        var appt = Appointment.CreateHold(member, pt, Guid.NewGuid(), slot, slot, 60, 100_000);
         appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
         apptStore.Items[appt.Id] = appt;
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
         var confirmed = await svc.ConfirmAsync(pt, appt.Id, CancellationToken.None);
 
-        confirmed.Status.Should().Be(BookingStatus.Confirmed);
+        confirmed.Status.Should().Be(AppointmentStatus.Confirmed);
         outbox.Messages.Should().Contain(m => m.Type == "booking.confirmed");
     }
 
@@ -471,7 +493,7 @@ public class BookingServiceTests
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
         var started = await svc.StartAsync(pt, appt.Id, CancellationToken.None);
 
-        started.Status.Should().Be(BookingStatus.InProgress);
+        started.Status.Should().Be(AppointmentStatus.InProgress);
         outbox.Messages.Should().Contain(m => m.Type == "booking.started");
     }
 
@@ -514,17 +536,16 @@ public class BookingServiceTests
         var apptStore = new InMemoryAppointmentStore();
         var outbox = new CapturingOutbox();
         var pt = Guid.NewGuid();
-        var slot = DateTime.UtcNow.AddMinutes(-10);
+        var slot = DateTime.UtcNow.AddMinutes(-70);
         var appt = Appointment.CreateHold(Guid.NewGuid(), pt, Guid.NewGuid(), slot, slot, 60, 100_000);
         appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
-        appt.ConfirmByPt();
-        appt.StartByPt();
+        appt.ForceStatusForTesting(AppointmentStatus.InProgress);
         apptStore.Items[appt.Id] = appt;
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
         var done = await svc.CompleteAsync(pt, appt.Id, CancellationToken.None);
 
-        done.Status.Should().Be(BookingStatus.Completed);
+        done.Status.Should().Be(AppointmentStatus.Completed);
         outbox.Messages.Should().Contain(m => m.Type == "booking.completed");
     }
 
@@ -548,15 +569,15 @@ public class BookingServiceTests
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
 
-        var (all, totalAll) = await svc.ListAdminAsync(null, null, null, 1, 25, CancellationToken.None);
+        var (all, totalAll) = await svc.ListAdminAsync((AppointmentStatus?)null, null, null, 1, 25, CancellationToken.None);
         totalAll.Should().Be(2);
 
-        var (filteredMember, totalMember) = await svc.ListAdminAsync(null, null, member, 1, 25, CancellationToken.None);
+        var (filteredMember, totalMember) = await svc.ListAdminAsync((AppointmentStatus?)null, null, member, 1, 25, CancellationToken.None);
         totalMember.Should().Be(1);
         filteredMember[0].MemberId.Should().Be(member);
 
-        var (filteredStatus, totalStatus) = await svc.ListAdminAsync(BookingStatus.Confirmed, null, null, 1, 25, CancellationToken.None);
+        var (filteredStatus, totalStatus) = await svc.ListAdminAsync(AppointmentStatus.Confirmed, null, null, 1, 25, CancellationToken.None);
         totalStatus.Should().Be(1);
-        filteredStatus[0].Status.Should().Be(BookingStatus.Confirmed);
+        filteredStatus[0].Status.Should().Be(AppointmentStatus.Confirmed);
     }
 }

@@ -109,7 +109,7 @@ public class VipAndRewardBacklogGuardTests
                 PlatformFeeVnd: 50_000,
                 TrainerShareVnd: 450_000,
                 RefundedVnd: 0,
-                Status: BookingStatus.Completed),
+                Status: AppointmentStatus.Completed),
             new(
                 AppointmentId: Guid.NewGuid(),
                 SlotStartUtc: DateTime.UtcNow.AddDays(-1),
@@ -119,7 +119,7 @@ public class VipAndRewardBacklogGuardTests
                 PlatformFeeVnd: 20_000,
                 TrainerShareVnd: 180_000,
                 RefundedVnd: 200_000,
-                Status: BookingStatus.Refunded),
+                Status: AppointmentStatus.Cancelled),
             // Payment alone must not recognize earnings or trigger a PT transfer.
             new(
                 AppointmentId: Guid.NewGuid(),
@@ -130,7 +130,7 @@ public class VipAndRewardBacklogGuardTests
                 PlatformFeeVnd: 30_000,
                 TrainerShareVnd: 270_000,
                 RefundedVnd: 0,
-                Status: BookingStatus.Paid)
+                Status: AppointmentStatus.Confirmed)
         };
 
         storeMock.Setup(s => s.ListBookingsInRangeAsync(ptUserId, It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<CancellationToken>()))

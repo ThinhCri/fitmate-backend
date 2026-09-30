@@ -29,10 +29,11 @@ public class EfAdminMetricsStore : IAdminMetricsStore
     public async Task<IReadOnlyList<RecentAppointmentRow>> ListRecentAppointmentsAsync(int limit, CancellationToken ct)
     {
         var rows = await _db.Appointments
-            .Where(a => a.Status == BookingStatus.Paid
-                     || a.Status == BookingStatus.Completed
-                     || a.Status == BookingStatus.Refunded
-                     || a.Status == BookingStatus.Cancelled)
+            .Where(a => a.Status == AppointmentStatus.Pending
+                     || a.Status == AppointmentStatus.Confirmed
+                     || a.Status == AppointmentStatus.Completed
+                     || a.Status == AppointmentStatus.InProgress
+                     || a.Status == AppointmentStatus.Cancelled)
             .OrderByDescending(a => a.CreatedAt)
             .Take(limit)
             .Select(a => new RecentAppointmentRow(

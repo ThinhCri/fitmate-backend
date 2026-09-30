@@ -35,7 +35,7 @@ public class EfPaymentStore : IPaymentStore
             a.PtUserId == hold.PtUserId &&
             a.MemberId == hold.MemberId &&
             a.SlotStartUtc == hold.SlotStartUtc &&
-            (a.Status == BookingStatus.Held || a.Status == BookingStatus.Paid || a.Status == BookingStatus.AwaitingPayment), ct);
+            (a.Status == AppointmentStatus.Held || a.Status == AppointmentStatus.Pending), ct);
     }
 
     public void Add(Payment payment) => _db.Payments.Add(payment);

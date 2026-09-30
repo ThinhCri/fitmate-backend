@@ -20,7 +20,7 @@ public sealed record TrainerRevenueItem(
     long GrossVnd,
     long PlatformFeeVnd,
     long NetVnd,
-    BookingStatus Status,
+    AppointmentStatus Status,
     long PaidOutVnd = 0,
     string SettlementStatus = "pending_review");
 
