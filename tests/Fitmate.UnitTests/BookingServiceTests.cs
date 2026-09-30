@@ -30,6 +30,27 @@ public class BookingServiceTests
                  a.Status == AppointmentStatus.Completed)));
         }
 
+        public Task<bool> HasOverlappingSlotAsync(Guid ptUserId, DateTime requestedStartUtc, int durationMinutes, Guid? excludeAppointmentId, CancellationToken ct)
+        {
+            var requestedEndUtc = requestedStartUtc.AddMinutes(durationMinutes);
+            var nowUtc = DateTime.UtcNow;
+            var overlaps = Items.Values.Any(a =>
+                a.PtUserId == ptUserId &&
+                (!excludeAppointmentId.HasValue || a.Id != excludeAppointmentId.Value) &&
+                (a.Status == AppointmentStatus.Pending ||
+                 a.Status == AppointmentStatus.Confirmed ||
+                 a.Status == AppointmentStatus.InProgress ||
+                 (a.Status == AppointmentStatus.Held && a.HoldExpiresAtUtc.HasValue && a.HoldExpiresAtUtc.Value > nowUtc)) &&
+                requestedStartUtc < a.SlotStartUtc.AddMinutes(a.DurationMinutes) &&
+                a.SlotStartUtc < requestedEndUtc);
+            return Task.FromResult(overlaps);
+        }
+
+        public async Task<T> ExecuteWithScheduleLockAsync<T>(Guid ptUserId, Func<Task<T>> operation, CancellationToken ct)
+        {
+            return await operation();
+        }
+
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
         {
             var filtered = Items.Values.Where(a => a.MemberId == memberId && (!status.HasValue || a.Status == status.Value)).ToList();
@@ -579,5 +600,95 @@ public class BookingServiceTests
         var (filteredStatus, totalStatus) = await svc.ListAdminAsync(AppointmentStatus.Confirmed, null, null, 1, 25, CancellationToken.None);
         totalStatus.Should().Be(1);
         filteredStatus[0].Status.Should().Be(AppointmentStatus.Confirmed);
+    }
+
+    [Fact]
+    public async Task CreateHold_OverlappingSlot_ThrowsConflict()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var holdStore = new InMemoryHoldStore();
+        var svcLookup = new StubServiceLookup();
+        var pt = Guid.NewGuid();
+        var member1 = Guid.NewGuid();
+        var member2 = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+
+        svcLookup.Items[serviceId] = new ServiceSnapshot(serviceId, pt, 100_000, 60, true);
+
+        var baseSlot = DateTime.UtcNow.AddHours(5);
+        // Existing confirmed appointment: baseSlot to baseSlot + 60m
+        var existing = Appointment.CreateHold(member1, pt, serviceId, baseSlot, baseSlot, 60, 100_000);
+        existing.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        existing.ConfirmByPt();
+        apptStore.Items[existing.Id] = existing;
+
+        var svc = NewService(apptStore, holdStore, svcLookup, new CapturingOutbox());
+
+        // Attempting to book baseSlot + 30m (partially overlaps baseSlot..baseSlot+60m)
+        var overlappingSlot = baseSlot.AddMinutes(30);
+        var act = () => svc.CreateHoldAsync(member2, pt, serviceId, overlappingSlot, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>();
+    }
+
+    [Fact]
+    public async Task CreateHold_AbuttingSlot_Succeeds()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var holdStore = new InMemoryHoldStore();
+        var svcLookup = new StubServiceLookup();
+        var pt = Guid.NewGuid();
+        var member1 = Guid.NewGuid();
+        var member2 = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+
+        svcLookup.Items[serviceId] = new ServiceSnapshot(serviceId, pt, 100_000, 60, true);
+
+        var baseSlot = DateTime.UtcNow.AddHours(5);
+        var existing = Appointment.CreateHold(member1, pt, serviceId, baseSlot, baseSlot, 60, 100_000);
+        existing.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        existing.ConfirmByPt();
+        apptStore.Items[existing.Id] = existing;
+
+        var svc = NewService(apptStore, holdStore, svcLookup, new CapturingOutbox());
+
+        // Attempting to book baseSlot + 60m (abutting slot, strictly non-overlapping [S1, E1) vs [S2, E2))
+        var abuttingSlot = baseSlot.AddMinutes(60);
+        var (hold, appt) = await svc.CreateHoldAsync(member2, pt, serviceId, abuttingSlot, CancellationToken.None);
+
+        hold.Should().NotBeNull();
+        appt.Should().NotBeNull();
+        appt.SlotStartUtc.Should().Be(abuttingSlot);
+    }
+
+    [Fact]
+    public async Task CreateHold_ExpiredHold_DoesNotBlockSlot()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var holdStore = new InMemoryHoldStore();
+        var svcLookup = new StubServiceLookup();
+        var pt = Guid.NewGuid();
+        var member1 = Guid.NewGuid();
+        var member2 = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+
+        svcLookup.Items[serviceId] = new ServiceSnapshot(serviceId, pt, 100_000, 60, true);
+
+        var baseSlot = DateTime.UtcNow.AddHours(5);
+        // Existing appointment is Held, but HoldExpiresAtUtc was 10 minutes ago
+        var expiredHoldAppt = Appointment.CreateHold(member1, pt, serviceId, baseSlot, baseSlot, 60, 100_000);
+        // Expire it by adjusting hold expiration time via reflection or forcing status
+        typeof(Appointment).GetProperty(nameof(Appointment.HoldExpiresAtUtc))!
+            .SetValue(expiredHoldAppt, DateTime.UtcNow.AddMinutes(-10));
+        apptStore.Items[expiredHoldAppt.Id] = expiredHoldAppt;
+
+        var svc = NewService(apptStore, holdStore, svcLookup, new CapturingOutbox());
+
+        // Booking the same slot should now succeed because hold has expired
+        var (hold, appt) = await svc.CreateHoldAsync(member2, pt, serviceId, baseSlot, CancellationToken.None);
+
+        hold.Should().NotBeNull();
+        appt.Should().NotBeNull();
+        appt.SlotStartUtc.Should().Be(baseSlot);
     }
 }

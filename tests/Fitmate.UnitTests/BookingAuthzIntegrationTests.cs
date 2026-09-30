@@ -18,15 +18,11 @@ public class BookingAuthzIntegrationTests
         public Dictionary<Guid, Appointment> Items { get; } = new();
         public Task<Appointment?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.GetValueOrDefault(id));
         public Task<bool> ExistsActiveForSlotAsync(Guid ptUserId, DateTime slotStartUtc, CancellationToken ct) => Task.FromResult(false);
-        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid m, BookingStatus? s, int p, int ps, CancellationToken ct)
-            => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
+        public Task<bool> HasOverlappingSlotAsync(Guid ptUserId, DateTime requestedStartUtc, int durationMinutes, Guid? excludeAppointmentId, CancellationToken ct) => Task.FromResult(false);
+        public async Task<T> ExecuteWithScheduleLockAsync<T>(Guid ptUserId, Func<Task<T>> operation, CancellationToken ct) => await operation();
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid m, AppointmentStatus? s, int p, int ps, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
-        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid p, BookingStatus? s, int page, int pageSize, CancellationToken ct)
-            => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByPtPagedAsync(Guid p, AppointmentStatus? s, int page, int pageSize, CancellationToken ct)
-            => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
-        public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(BookingStatus? s, Guid? p, Guid? m, int page, int pageSize, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));
         public Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(AppointmentStatus? s, Guid? p, Guid? m, int page, int pageSize, CancellationToken ct)
             => Task.FromResult(((IReadOnlyList<Appointment>)Array.Empty<Appointment>(), 0));

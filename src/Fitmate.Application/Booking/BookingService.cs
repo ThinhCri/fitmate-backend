@@ -53,13 +53,10 @@ public class BookingService : IBookingService
                 "Service does not belong to PT.",
                 new Dictionary<string, string[]> { ["pt_id"] = new[] { "mismatch" } });
 
-        // 2. Concurrency: Lock theo (ptUserId, slotStartUtc) giải quyết dứt điểm race condition khi nhiều VUs cùng tranh chấp 1 slot.
-        var lockKey = $"{ptUserId:N}:{slotStartUtc.Ticks}";
-        var sem = _slotLocks.GetOrAdd(lockKey, _ => new SemaphoreSlim(1, 1));
-        await sem.WaitAsync(ct);
-        try
+        // 2. Concurrency & Overlap: Lock theo PT và kiểm tra interval overlap [S1, E1) và [S2, E2).
+        return await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
         {
-            if (await _appointments.ExistsActiveForSlotAsync(ptUserId, slotStartUtc, ct))
+            if (await _appointments.HasOverlappingSlotAsync(ptUserId, slotStartUtc, svc.DurationMinutes, null, ct))
                 throw new ConflictException(ErrorCodes.Booking.SlotTaken,
                     $"Slot {slotStartUtc:O} of PT {ptUserId} is no longer available.");
 
@@ -76,11 +73,7 @@ public class BookingService : IBookingService
 
             _outbox.Enqueue("booking.held", new { holdId = hold.Id, appointmentId = appt.Id, memberId, ptUserId });
             return (hold, appt);
-        }
-        finally
-        {
-            sem.Release();
-        }
+        }, ct);
     }
 
     public async Task<Appointment> CancelAsync(Guid actorUserId, Guid appointmentId, string reason, CancellationToken ct)
@@ -160,23 +153,26 @@ public class BookingService : IBookingService
                 "new_slot_start_utc must differ from current.",
                 new Dictionary<string, string[]> { ["new_slot_start_utc"] = new[] { "different from current" } });
 
-        if (await _appointments.ExistsActiveForSlotAsync(appt.PtUserId, newSlotStartUtc, ct))
-            throw new ConflictException(ErrorCodes.Booking.SlotTaken,
-                $"New slot {newSlotStartUtc:O} is no longer available.");
+        return await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+        {
+            if (await _appointments.HasOverlappingSlotAsync(appt.PtUserId, newSlotStartUtc, appt.DurationMinutes, appt.Id, ct))
+                throw new ConflictException(ErrorCodes.Booking.SlotTaken,
+                    $"New slot {newSlotStartUtc:O} is no longer available.");
 
-        var oldSlot = appt.SlotStartUtc;
-        appt.Cancel($"Reschedule from {oldSlot:O} to {newSlotStartUtc:O}");
-        await _appointments.SaveChangesAsync(ct);
+            var oldSlot = appt.SlotStartUtc;
+            appt.Cancel($"Reschedule from {oldSlot:O} to {newSlotStartUtc:O}");
+            await _appointments.SaveChangesAsync(ct);
 
-        // Tạo appointment mới (BE-160 sẽ thêm previous_booking_id field; tạm thời liên kết qua Outbox event).
-        var newAppt = Appointment.CreateHold(memberId, appt.PtUserId, appt.ServiceId,
-            newSlotStartUtc, newSlotStartUtc, appt.DurationMinutes, appt.PriceListedVnd);
-        await _appointments.AddAsync(newAppt, ct);
-        await _appointments.SaveChangesAsync(ct);
+            // Tạo appointment mới (BE-160 sẽ thêm previous_booking_id field; tạm thời liên kết qua Outbox event).
+            var newAppt = Appointment.CreateHold(memberId, appt.PtUserId, appt.ServiceId,
+                newSlotStartUtc, newSlotStartUtc, appt.DurationMinutes, appt.PriceListedVnd);
+            await _appointments.AddAsync(newAppt, ct);
+            await _appointments.SaveChangesAsync(ct);
 
-        _outbox.Enqueue("booking.rescheduled",
-            new { oldAppointmentId = appointmentId, newAppointmentId = newAppt.Id, oldSlot, newSlotStartUtc });
-        return newAppt;
+            _outbox.Enqueue("booking.rescheduled",
+                new { oldAppointmentId = appointmentId, newAppointmentId = newAppt.Id, oldSlot, newSlotStartUtc });
+            return newAppt;
+        }, ct);
     }
 
     public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)

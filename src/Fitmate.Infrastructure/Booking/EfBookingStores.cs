@@ -22,14 +22,58 @@ public class EfAppointmentStore : IAppointmentStore
     /// Slot đang active (không bao gồm Cancelled/Expired/Refunded).
     /// </summary>
     public Task<bool> ExistsActiveForSlotAsync(Guid ptUserId, DateTime slotStartUtc, CancellationToken ct)
-        => _db.Appointments.AnyAsync(a =>
-            a.PtUserId == ptUserId &&
-            a.SlotStartUtc == slotStartUtc &&
-            (a.Status == AppointmentStatus.Held ||
-             a.Status == AppointmentStatus.Pending ||
-             a.Status == AppointmentStatus.Confirmed ||
-             a.Status == AppointmentStatus.InProgress ||
-             a.Status == AppointmentStatus.Completed), ct);
+        => HasOverlappingSlotAsync(ptUserId, slotStartUtc, 60, null, ct);
+
+    public async Task<bool> HasOverlappingSlotAsync(Guid ptUserId, DateTime requestedStartUtc, int durationMinutes, Guid? excludeAppointmentId, CancellationToken ct)
+    {
+        var requestedEndUtc = requestedStartUtc.AddMinutes(durationMinutes);
+        var nowUtc = DateTime.UtcNow;
+
+        var candidates = await _db.Appointments
+            .Where(a => a.PtUserId == ptUserId &&
+                        (excludeAppointmentId == null || a.Id != excludeAppointmentId.Value) &&
+                        (
+                            (a.Status == AppointmentStatus.Held && (a.HoldExpiresAtUtc == null || a.HoldExpiresAtUtc > nowUtc)) ||
+                            a.Status == AppointmentStatus.Pending ||
+                            a.Status == AppointmentStatus.Confirmed ||
+                            a.Status == AppointmentStatus.InProgress
+                        ) &&
+                        a.SlotStartUtc < requestedEndUtc)
+            .Select(a => new { a.SlotStartUtc, a.DurationMinutes })
+            .ToListAsync(ct);
+
+        return candidates.Any(a => requestedStartUtc < a.SlotStartUtc.AddMinutes(a.DurationMinutes));
+    }
+
+    public async Task<T> ExecuteWithScheduleLockAsync<T>(Guid ptUserId, Func<Task<T>> operation, CancellationToken ct)
+    {
+        if (!_db.Database.IsRelational())
+        {
+            var result = await operation();
+            await _db.SaveChangesAsync(ct);
+            return result;
+        }
+
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
+            await _db.Database.ExecuteSqlRawAsync(
+                @"INSERT INTO pt_schedule_locks (pt_user_id, locked_at_utc)
+                  VALUES ({0}, now())
+                  ON CONFLICT (pt_user_id) DO NOTHING;",
+                new object[] { ptUserId }, ct);
+
+            await _db.Database.ExecuteSqlRawAsync(
+                @"SELECT 1 FROM pt_schedule_locks WHERE pt_user_id = {0} FOR UPDATE;",
+                new object[] { ptUserId }, ct);
+
+            var result = await operation();
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return result;
+        });
+    }
 
     public async Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberPagedAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
     {

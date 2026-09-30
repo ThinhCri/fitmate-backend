@@ -54,3 +54,14 @@ public class BookingHoldConfiguration : IEntityTypeConfiguration<BookingHold>
         e.HasIndex(x => x.ExpiresAt);
     }
 }
+
+public class PtScheduleLockConfiguration : IEntityTypeConfiguration<PtScheduleLock>
+{
+    public void Configure(EntityTypeBuilder<PtScheduleLock> builder)
+    {
+        builder.ToTable("pt_schedule_locks");
+        builder.HasKey(x => x.PtUserId);
+        builder.Property(x => x.PtUserId).HasColumnName("pt_user_id");
+        builder.Property(x => x.LockedAtUtc).HasColumnName("locked_at_utc").IsRequired();
+    }
+}
