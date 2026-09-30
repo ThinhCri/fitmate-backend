@@ -161,6 +161,75 @@ public class BookingsController : ControllerBase
         return Ok(new { items, total, page = normalized.page, pageSize = normalized.pageSize });
     }
 
+    /// <summary>Create a reschedule request (Member or PT, Branch A rules).</summary>
+    [HttpPost("bookings/{id:guid}/reschedule-requests")]
+    public async Task<IActionResult> CreateRescheduleRequest(
+        [FromServices] ICurrentUserAccessor current,
+        [FromServices] IBookingRescheduleService reschedule,
+        Guid id,
+        [FromBody] CreateRescheduleRequestBody body,
+        CancellationToken ct)
+    {
+        var req = await reschedule.CreateRequestAsync(
+            current.GetUserIdOrThrow(),
+            id,
+            EnsureUtc(body.NewSlotStartUtc),
+            body.Reason,
+            ct);
+
+        return Ok(req);
+    }
+
+    /// <summary>Accept a pending reschedule request (Other party only, atomic slot swap).</summary>
+    [HttpPost("bookings/reschedule-requests/{requestId:guid}/accept")]
+    public async Task<IActionResult> AcceptRescheduleRequest(
+        [FromServices] ICurrentUserAccessor current,
+        [FromServices] IBookingRescheduleService reschedule,
+        Guid requestId,
+        CancellationToken ct)
+    {
+        var req = await reschedule.AcceptRequestAsync(
+            current.GetUserIdOrThrow(),
+            requestId,
+            ct);
+
+        return Ok(req);
+    }
+
+    /// <summary>Reject a pending reschedule request (Other party only).</summary>
+    [HttpPost("bookings/reschedule-requests/{requestId:guid}/reject")]
+    public async Task<IActionResult> RejectRescheduleRequest(
+        [FromServices] ICurrentUserAccessor current,
+        [FromServices] IBookingRescheduleService reschedule,
+        Guid requestId,
+        [FromBody] RejectRescheduleRequestBody? body,
+        CancellationToken ct)
+    {
+        var req = await reschedule.RejectRequestAsync(
+            current.GetUserIdOrThrow(),
+            requestId,
+            body?.RejectionReason,
+            ct);
+
+        return Ok(req);
+    }
+
+    /// <summary>Cancel a pending reschedule request (Requester only).</summary>
+    [HttpPost("bookings/reschedule-requests/{requestId:guid}/cancel")]
+    public async Task<IActionResult> CancelRescheduleRequest(
+        [FromServices] ICurrentUserAccessor current,
+        [FromServices] IBookingRescheduleService reschedule,
+        Guid requestId,
+        CancellationToken ct)
+    {
+        var req = await reschedule.CancelRequestAsync(
+            current.GetUserIdOrThrow(),
+            requestId,
+            ct);
+
+        return Ok(req);
+    }
+
     private static DateTime EnsureUtc(DateTime dt) =>
         dt.Kind switch
         {
@@ -195,3 +264,5 @@ public class BookingsController : ControllerBase
 public sealed record CreateHoldRequest(Guid PtId, Guid ServiceId, DateTime SlotStartUtc);
 public sealed record CancelBookingRequest(string Reason);
 public sealed record RescheduleRequest(DateTime NewSlotStartUtc);
+public sealed record CreateRescheduleRequestBody(DateTime NewSlotStartUtc, string Reason);
+public sealed record RejectRescheduleRequestBody(string? RejectionReason);

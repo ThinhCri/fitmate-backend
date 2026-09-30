@@ -29,6 +29,15 @@ public interface IBookingHoldStore
     Task SaveChangesAsync(CancellationToken ct);
 }
 
+/// <summary>Application abstraction cho BookingRescheduleRequest persistence.</summary>
+public interface IBookingRescheduleStore
+{
+    Task<BookingRescheduleRequest?> FindByIdAsync(Guid requestId, CancellationToken ct);
+    Task<BookingRescheduleRequest?> FindPendingByAppointmentIdAsync(Guid appointmentId, CancellationToken ct);
+    Task AddAsync(BookingRescheduleRequest request, CancellationToken ct);
+    Task SaveChangesAsync(CancellationToken ct);
+}
+
 /// <summary>Lookup Service cho Booking (price + duration + trainer timezone).</summary>
 public interface IServiceBookingLookup
 {

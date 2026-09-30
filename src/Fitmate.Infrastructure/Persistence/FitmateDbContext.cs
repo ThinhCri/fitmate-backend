@@ -46,6 +46,7 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<BookingHold> BookingHolds => Set<BookingHold>();
     public DbSet<PtScheduleLock> PtScheduleLocks => Set<PtScheduleLock>();
+    public DbSet<BookingRescheduleRequest> BookingRescheduleRequests => Set<BookingRescheduleRequest>();
 
     // Payment
     public DbSet<Payment> Payments => Set<Payment>();

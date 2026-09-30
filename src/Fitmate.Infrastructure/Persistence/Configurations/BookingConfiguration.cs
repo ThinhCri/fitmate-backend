@@ -65,3 +65,35 @@ public class PtScheduleLockConfiguration : IEntityTypeConfiguration<PtScheduleLo
         builder.Property(x => x.LockedAtUtc).HasColumnName("locked_at_utc").IsRequired();
     }
 }
+
+public class BookingRescheduleRequestConfiguration : IEntityTypeConfiguration<BookingRescheduleRequest>
+{
+    public void Configure(EntityTypeBuilder<BookingRescheduleRequest> b)
+    {
+        b.ToTable("booking_reschedule_requests");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).HasColumnName("id");
+        b.Property(x => x.AppointmentId).HasColumnName("appointment_id").IsRequired();
+        b.Property(x => x.RequestedByUserId).HasColumnName("requested_by_user_id").IsRequired();
+        b.Property(x => x.OldSlotStartUtc).HasColumnName("old_slot_start_utc").IsRequired();
+        b.Property(x => x.NewSlotStartUtc).HasColumnName("new_slot_start_utc").IsRequired();
+        b.Property(x => x.DurationMinutes).HasColumnName("duration_minutes").IsRequired();
+        b.Property(x => x.Status).HasColumnName("status").IsRequired();
+        b.Property(x => x.Reason).HasColumnName("reason").HasMaxLength(500).IsRequired();
+        b.Property(x => x.DeadlineUtc).HasColumnName("deadline_utc").IsRequired();
+        b.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+        b.Property(x => x.RespondedAtUtc).HasColumnName("responded_at_utc");
+        b.Property(x => x.RejectionReason).HasColumnName("rejection_reason").HasMaxLength(500);
+
+        b.HasOne<Appointment>()
+            .WithMany()
+            .HasForeignKey(x => x.AppointmentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        b.HasIndex(x => x.AppointmentId)
+            .HasDatabaseName("uq_booking_reschedule_pending")
+            .IsUnique()
+            .HasFilter("status = 0");
+    }
+}
+

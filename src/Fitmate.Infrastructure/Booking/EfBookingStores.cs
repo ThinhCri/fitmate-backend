@@ -155,6 +155,28 @@ public class EfBookingHoldStore : IBookingHoldStore
         => _db.SaveChangesAsync(ct);
 }
 
+public class EfBookingRescheduleStore : IBookingRescheduleStore
+{
+    private readonly FitmateDbContext _db;
+
+    public EfBookingRescheduleStore(FitmateDbContext db)
+    {
+        _db = db;
+    }
+
+    public Task<BookingRescheduleRequest?> FindByIdAsync(Guid requestId, CancellationToken ct)
+        => _db.BookingRescheduleRequests.FirstOrDefaultAsync(r => r.Id == requestId, ct);
+
+    public Task<BookingRescheduleRequest?> FindPendingByAppointmentIdAsync(Guid appointmentId, CancellationToken ct)
+        => _db.BookingRescheduleRequests.FirstOrDefaultAsync(r => r.AppointmentId == appointmentId && r.Status == RescheduleRequestStatus.Pending, ct);
+
+    public async Task AddAsync(BookingRescheduleRequest request, CancellationToken ct)
+        => await _db.BookingRescheduleRequests.AddAsync(request, ct);
+
+    public Task SaveChangesAsync(CancellationToken ct)
+        => _db.SaveChangesAsync(ct);
+}
+
 /// <summary>Service lookup từ Application store hiện có (IServiceOfferingStore ở BE-050).</summary>
 public class ServiceBookingLookup : IServiceBookingLookup
 {
