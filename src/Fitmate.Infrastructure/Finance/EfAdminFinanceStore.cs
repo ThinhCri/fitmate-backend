@@ -256,4 +256,12 @@ public class EfAdminFinanceStore : IAdminFinanceStore
             DiscrepanciesCount: discrepancies.Count,
             Discrepancies: discrepancies);
     }
+
+    public async Task<IReadOnlyList<Appointment>> ListUnverifiedLegacyAppointmentsAsync(CancellationToken ct)
+    {
+        return await _db.Appointments
+            .Where(a => a.LegacyCompletionTimeUnknown && a.Status == AppointmentStatus.Completed)
+            .OrderBy(a => a.SlotStartUtc)
+            .ToListAsync(ct);
+    }
 }

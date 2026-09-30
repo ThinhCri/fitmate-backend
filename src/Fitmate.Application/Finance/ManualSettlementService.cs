@@ -97,6 +97,9 @@ public sealed class ManualSettlementService(IManualSettlementStore store, IAutho
 
     public static long EligibleAmount(SettlementContext context)
     {
+        if (context.Appointment.LegacyCompletionTimeUnknown)
+            throw new ConflictException("SETTLEMENT_BLOCKED_LEGACY_UNKNOWN", "Settlement blocked: legacy appointment completion time is unverified.");
+
         if (context.Appointment.Status != AppointmentStatus.Completed ||
             context.Appointment.SlotStartUtc.AddMinutes(context.Appointment.DurationMinutes) > DateTime.UtcNow ||
             context.Payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded) || context.HasPendingRefund || context.HasOpenDispute ||

@@ -15,6 +15,7 @@ public interface IAdminFinanceStore
     Task AddRefundAsync(Fitmate.Domain.Payment.Refund refund, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
     Task<ReconciliationData> GetReconciliationDataAsync(CancellationToken ct);
+    Task<IReadOnlyList<Fitmate.Domain.Booking.Appointment>> ListUnverifiedLegacyAppointmentsAsync(CancellationToken ct);
 }
 
 /// <summary>Snapshot booking nhỏ cho finance aggregation.</summary>

@@ -95,6 +95,15 @@ public class AdminFinanceServiceTests
                 discrepancies));
         }
 
+        public Task<IReadOnlyList<Fitmate.Domain.Booking.Appointment>> ListUnverifiedLegacyAppointmentsAsync(CancellationToken ct)
+        {
+            var unverified = Appointments.Values
+                .Where(a => a.LegacyCompletionTimeUnknown && a.Status == Fitmate.Domain.Common.AppointmentStatus.Completed)
+                .OrderBy(a => a.SlotStartUtc)
+                .ToList();
+            return Task.FromResult<IReadOnlyList<Fitmate.Domain.Booking.Appointment>>(unverified);
+        }
+
         private static bool TypeMatches(string rowType, LedgerEntryType t) => rowType switch
         {
             "platform_fee" => t == LedgerEntryType.PlatformFee,

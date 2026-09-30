@@ -49,6 +49,23 @@ public sealed record DiscrepancyItem(
     long ExpectedVnd,
     long ActualVnd);
 
+public sealed record VerifyLegacyAppointmentRequest(
+    DateTime VerifiedCompletedAtUtc,
+    string Reason,
+    string EvidenceReference);
+
+public sealed record LegacyAppointmentReconciliationView(
+    Guid Id,
+    Guid MemberId,
+    Guid PtUserId,
+    DateTime SlotStartUtc,
+    long ActualPaidVnd,
+    long PlatformFeeVnd,
+    long TrainerShareVnd,
+    Fitmate.Domain.Common.AppointmentStatus Status,
+    bool LegacyCompletionTimeUnknown,
+    DateTime? CompletedAtUtc);
+
 public sealed record ReconciliationData(
     int TotalPaymentsCount,
     long TotalPaidVnd,
@@ -63,4 +80,6 @@ public interface IAdminFinanceService
     Task<LedgerPage> GetLedgerAsync(Guid adminUserId, LedgerEntryType? type, int page, int pageSize, CancellationToken ct);
     Task<RefundView> ProcessRefundAsync(Guid adminUserId, CreateRefundRequest request, CancellationToken ct);
     Task<ReconciliationData> GetReconciliationAsync(Guid adminUserId, CancellationToken ct);
+    Task<Fitmate.Domain.Booking.Appointment> ReconcileLegacyAppointmentAsync(Guid adminUserId, Guid appointmentId, VerifyLegacyAppointmentRequest request, CancellationToken ct);
+    Task<IReadOnlyList<LegacyAppointmentReconciliationView>> GetUnverifiedLegacyAppointmentsAsync(Guid adminUserId, CancellationToken ct);
 }

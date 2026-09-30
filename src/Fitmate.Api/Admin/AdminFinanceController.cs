@@ -67,6 +67,31 @@ public class AdminFinanceController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("legacy-appointments/unverified")]
+    public async Task<IActionResult> GetUnverifiedLegacyAppointments(CancellationToken ct = default)
+    {
+        var adminId = GetUserId();
+        var result = await _svc.GetUnverifiedLegacyAppointmentsAsync(adminId, ct);
+        return Ok(result);
+    }
+
+    [HttpPost("legacy-appointments/{id:guid}/verify")]
+    public async Task<IActionResult> VerifyLegacyAppointment(
+        Guid id,
+        [FromBody] VerifyLegacyAppointmentRequest body,
+        CancellationToken ct = default)
+    {
+        var adminId = GetUserId();
+        var result = await _svc.ReconcileLegacyAppointmentAsync(adminId, id, body, ct);
+        return Ok(new
+        {
+            appointmentId = result.Id,
+            status = result.Status.ToString(),
+            completedAtUtc = result.CompletedAtUtc,
+            legacyCompletionTimeUnknown = result.LegacyCompletionTimeUnknown
+        });
+    }
+
     private Guid GetUserId()
     {
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");

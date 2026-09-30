@@ -218,4 +218,85 @@ public class AdminFinanceService : IAdminFinanceService
         await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
         return await _store.GetReconciliationDataAsync(ct);
     }
+
+    public async Task<Fitmate.Domain.Booking.Appointment> ReconcileLegacyAppointmentAsync(
+        Guid adminUserId,
+        Guid appointmentId,
+        VerifyLegacyAppointmentRequest request,
+        CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+
+        if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Reason phải có ít nhất 5 ký tự.",
+                new Dictionary<string, string[]> { ["reason"] = new[] { "min 5 chars" } });
+
+        if (string.IsNullOrWhiteSpace(request.EvidenceReference))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "EvidenceReference không được để trống.",
+                new Dictionary<string, string[]> { ["evidenceReference"] = new[] { "required" } });
+
+        if (request.VerifiedCompletedAtUtc.Kind != DateTimeKind.Utc)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "VerifiedCompletedAtUtc must be UTC.",
+                new Dictionary<string, string[]> { ["verifiedCompletedAtUtc"] = new[] { "must be UTC" } });
+
+        if (request.VerifiedCompletedAtUtc > DateTime.UtcNow)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "VerifiedCompletedAtUtc cannot be in the future.",
+                new Dictionary<string, string[]> { ["verifiedCompletedAtUtc"] = new[] { "cannot be in future" } });
+
+        var appt = await _store.FindAppointmentByIdAsync(appointmentId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
+
+        if (appt.Status != AppointmentStatus.Completed)
+            throw new ConflictException("APPOINTMENT_NOT_COMPLETED", "Only completed appointments can be reconciled.");
+
+        if (request.VerifiedCompletedAtUtc < appt.SlotStartUtc)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "VerifiedCompletedAtUtc cannot be before SlotStartUtc.",
+                new Dictionary<string, string[]> { ["verifiedCompletedAtUtc"] = new[] { "cannot be before slot start" } });
+
+        appt.ReconcileLegacyCompletion(request.VerifiedCompletedAtUtc);
+
+        if (_ledger != null && appt.ActualPaidVnd > 0 && !await _ledger.HasEntriesForAppointmentAsync(appt.Id, ct))
+        {
+            var entries = new[]
+            {
+                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, appt.ActualPaidVnd, request.VerifiedCompletedAtUtc, adminUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"legacy.reconciled:{appt.Id}"),
+                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.PlatformCommission, appt.PlatformFeeVnd, request.VerifiedCompletedAtUtc, adminUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"legacy.reconciled:{appt.Id}"),
+                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayable, appt.TrainerShareVnd, request.VerifiedCompletedAtUtc, adminUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"legacy.reconciled:{appt.Id}")
+            };
+            await _ledger.AddEntriesAsync(entries, ct);
+        }
+
+        await _store.SaveChangesAsync(ct);
+
+        _outbox.Enqueue("finance.legacy_appointment_verified", new
+        {
+            appointmentId = appt.Id,
+            verifiedCompletedAtUtc = request.VerifiedCompletedAtUtc,
+            reason = request.Reason,
+            evidenceReference = request.EvidenceReference,
+            adminUserId
+        });
+
+        return appt;
+    }
+
+    public async Task<IReadOnlyList<LegacyAppointmentReconciliationView>> GetUnverifiedLegacyAppointmentsAsync(
+        Guid adminUserId,
+        CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+
+        var list = await _store.ListUnverifiedLegacyAppointmentsAsync(ct);
+        return list.Select(a => new LegacyAppointmentReconciliationView(
+            a.Id,
+            a.MemberId,
+            a.PtUserId,
+            a.SlotStartUtc,
+            a.ActualPaidVnd,
+            a.PlatformFeeVnd,
+            a.TrainerShareVnd,
+            a.Status,
+            a.LegacyCompletionTimeUnknown,
+            a.CompletedAtUtc)).ToList();
+    }
 }
