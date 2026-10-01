@@ -1681,7 +1681,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RevenueSummary'
+                $ref: '#/components/schemas/TrainerRevenueOverview'
 
   /me/revenue/history:
     get:
@@ -5031,16 +5031,24 @@ components:
 
     TrainerRevenueItem:
       type: object
-      required: [appointmentId, date, grossVnd, platformFeeVnd, netVnd, status]
+      required:
+        - appointment_id
+        - date
+        - gross_vnd
+        - platform_fee_vnd
+        - net_vnd
+        - status
+        - paid_out_vnd
+        - settlement_status
       properties:
-        appointmentId: { type: string, format: uuid }
+        appointment_id: { type: string, format: uuid }
         date: { type: string, format: date-time }
-        grossVnd: { type: integer }
-        platformFeeVnd: { type: integer }
-        netVnd: { type: integer }
+        gross_vnd: { type: integer }
+        platform_fee_vnd: { type: integer }
+        net_vnd: { type: integer }
         status: { $ref: '#/components/schemas/AppointmentStatus' }
-        paidOutVnd: { type: integer }
-        settlementStatus: { type: string }
+        paid_out_vnd: { type: integer }
+        settlement_status: { type: string }
 
     CreateSupportTicketRequest:
       type: object
@@ -5182,35 +5190,52 @@ components:
           type: string
           format: date-time
 
-    RevenueSummary:
+    TrainerRevenueOverview:
       type: object
+      required:
+        - range
+        - total_gross_vnd
+        - platform_fee_vnd
+        - net_earnings_vnd
+        - pending_payout_vnd
+        - completed_payout_vnd
+        - completed_sessions_count
+        - chart
       properties:
         range:
           type: string
           enum: [7d, 30d, 90d, all]
-        total_actual_paid_vnd:
+        total_gross_vnd:
           type: integer
-        total_platform_fee_vnd:
+        platform_fee_vnd:
           type: integer
-        total_trainer_share_vnd:
+        net_earnings_vnd:
           type: integer
-        total_refunded_vnd:
+        pending_payout_vnd:
           type: integer
-        completed_bookings_count:
+        completed_payout_vnd:
           type: integer
-        pending_revenue_vnd:
+        completed_sessions_count:
           type: integer
         chart:
           type: array
           items:
-            type: object
-            properties:
-              date:
-                type: string
-              platform_fee_vnd:
-                type: integer
-              trainer_share_vnd:
-                type: integer
+            $ref: '#/components/schemas/TrainerRevenueChartPoint'
+
+    TrainerRevenueChartPoint:
+      type: object
+      required:
+        - date
+        - sessions_count
+        - net_earnings_vnd
+      properties:
+        date:
+          type: string
+          format: date
+        sessions_count:
+          type: integer
+        net_earnings_vnd:
+          type: integer
 
     RevenueDetail:
       type: object

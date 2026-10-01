@@ -1,34 +1,38 @@
+using System.Text.Json.Serialization;
 using Fitmate.Domain.Common;
 
 namespace Fitmate.Application.Finance;
 
-public sealed record TrainerRevenueChartPoint(DateOnly Date, int SessionsCount, long NetEarningsVnd);
+public sealed record TrainerRevenueChartPoint(
+    [property: JsonPropertyName("date")] DateOnly Date,
+    [property: JsonPropertyName("sessions_count")] int SessionsCount,
+    [property: JsonPropertyName("net_earnings_vnd")] long NetEarningsVnd);
 
 public sealed record TrainerRevenueOverview(
-    string Range,
-    long TotalGrossVnd,
-    long PlatformFeeVnd,
-    long NetEarningsVnd,
-    long PendingPayoutVnd,
-    long CompletedPayoutVnd,
-    int CompletedSessionsCount,
-    IReadOnlyList<TrainerRevenueChartPoint> Chart);
+    [property: JsonPropertyName("range")] string Range,
+    [property: JsonPropertyName("total_gross_vnd")] long TotalGrossVnd,
+    [property: JsonPropertyName("platform_fee_vnd")] long PlatformFeeVnd,
+    [property: JsonPropertyName("net_earnings_vnd")] long NetEarningsVnd,
+    [property: JsonPropertyName("pending_payout_vnd")] long PendingPayoutVnd,
+    [property: JsonPropertyName("completed_payout_vnd")] long CompletedPayoutVnd,
+    [property: JsonPropertyName("completed_sessions_count")] int CompletedSessionsCount,
+    [property: JsonPropertyName("chart")] IReadOnlyList<TrainerRevenueChartPoint> Chart);
 
 public sealed record TrainerRevenueItem(
-    Guid AppointmentId,
-    DateTime Date,
-    long GrossVnd,
-    long PlatformFeeVnd,
-    long NetVnd,
-    AppointmentStatus Status,
-    long PaidOutVnd = 0,
-    string SettlementStatus = "pending_review");
+    [property: JsonPropertyName("appointment_id")] Guid AppointmentId,
+    [property: JsonPropertyName("date")] DateTime Date,
+    [property: JsonPropertyName("gross_vnd")] long GrossVnd,
+    [property: JsonPropertyName("platform_fee_vnd")] long PlatformFeeVnd,
+    [property: JsonPropertyName("net_vnd")] long NetVnd,
+    [property: JsonPropertyName("status")] [property: JsonConverter(typeof(JsonStringEnumConverter))] AppointmentStatus Status,
+    [property: JsonPropertyName("paid_out_vnd")] long PaidOutVnd = 0,
+    [property: JsonPropertyName("settlement_status")] string SettlementStatus = "pending_review");
 
 public sealed record TrainerRevenueHistoryPage(
-    IReadOnlyList<TrainerRevenueItem> Items,
-    int Total,
-    int Page,
-    int PageSize);
+    [property: JsonPropertyName("items")] IReadOnlyList<TrainerRevenueItem> Items,
+    [property: JsonPropertyName("total")] int Total,
+    [property: JsonPropertyName("page")] int Page,
+    [property: JsonPropertyName("pageSize")] int PageSize);
 
 public sealed record TrainerSettlementRequest(
     Guid PtUserId,
