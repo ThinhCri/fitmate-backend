@@ -242,7 +242,6 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("password/forgot")]
-    [HttpPost("forgot-password")]
     [AllowAnonymous]
     [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> ForgotPassword(
@@ -267,7 +266,6 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("password/reset")]
-    [HttpPost("reset-password")]
     [AllowAnonymous]
     [EnableRateLimiting("AuthLimiter")]
     public async Task<IActionResult> ResetPassword(
@@ -310,7 +308,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("password/change")]
-    [HttpPost("change-password")]
+    [HttpPost("/api/v1/users/me/password")]
     [Authorize]
     public async Task<IActionResult> ChangePassword(
         [FromBody] ChangePasswordRequest request,

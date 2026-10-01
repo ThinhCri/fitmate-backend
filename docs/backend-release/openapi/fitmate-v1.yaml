@@ -250,6 +250,8 @@ paths:
       responses:
         '202':
           description: Email đã được gửi nếu user tồn tại
+        '400':
+          $ref: '#/components/responses/ValidationError'
         '429':
           $ref: '#/components/responses/RateLimited'
 
@@ -288,6 +290,33 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+
+  /auth/password/change:
+    post:
+      tags: [Auth]
+      summary: Đổi password (yêu cầu current password)
+      operationId: authChangePassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [current_password, new_password]
+              properties:
+                current_password:
+                  type: string
+                new_password:
+                  type: string
+                  minLength: 12
+                  maxLength: 128
+      responses:
+        '204':
+          description: No Content
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /users/me:
     get:

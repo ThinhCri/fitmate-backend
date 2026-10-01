@@ -321,11 +321,20 @@ public class RouteOpenApiParityTests
             }
         }
 
+        // Minimal API / middleware endpoints mapped in Program.cs
+        routes.Add(new RuntimeRoute("GET", "/health/live", false, "Program", "MapHealthChecks"));
+        routes.Add(new RuntimeRoute("GET", "/api/v1/health/live", false, "Program", "MapHealthChecks"));
+        routes.Add(new RuntimeRoute("GET", "/health/ready", false, "Program", "MapHealthChecks"));
+        routes.Add(new RuntimeRoute("GET", "/api/v1/health/ready", false, "Program", "MapHealthChecks"));
+
         return routes;
     }
 
     private static string CombineRoutes(string controllerRoute, string actionRoute)
     {
+        if (actionRoute.StartsWith('/') || actionRoute.StartsWith("~/"))
+            return actionRoute.TrimStart('~');
+
         if (string.IsNullOrEmpty(controllerRoute))
             return actionRoute;
         if (string.IsNullOrEmpty(actionRoute))
@@ -367,13 +376,13 @@ public class RouteOpenApiParityTests
         for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            var trimmed = line.TrimEnd();
-            if (string.IsNullOrWhiteSpace(trimmed)) continue;
+            var content = line.Trim();
+            if (string.IsNullOrWhiteSpace(content)) continue;
 
             var indent = line.Length - line.TrimStart().Length;
 
             // Path entry at indent 2: "  /auth/register:"
-            var pathMatch = Regex.Match(trimmed, @"^(/[a-zA-Z0-9_\-{}/]*):$");
+            var pathMatch = Regex.Match(content, @"^(/[a-zA-Z0-9_\-{}/]*):$");
             if (indent == 2 && pathMatch.Success)
             {
                 FlushOperation(operations, currentPath, currentMethod, currentOperationId,
@@ -389,7 +398,7 @@ public class RouteOpenApiParityTests
             }
 
             // Method entry at indent 4: "    post:"
-            var methodMatch = Regex.Match(trimmed,
+            var methodMatch = Regex.Match(content,
                 @"^(get|post|put|patch|delete|head|options):$", RegexOptions.IgnoreCase);
             if (indent == 4 && currentPath != null && methodMatch.Success)
             {
@@ -407,44 +416,63 @@ public class RouteOpenApiParityTests
             // Inside a method block (indent > 4)
             if (currentMethod != null && indent > 4)
             {
-                var opIdMatch = Regex.Match(trimmed, @"^operationId:\s*(.+)$");
+                var opIdMatch = Regex.Match(content, @"^operationId:\s*(.+)$");
                 if (opIdMatch.Success)
                 {
                     currentOperationId = opIdMatch.Groups[1].Value.Trim();
                     continue;
                 }
 
-                if (trimmed.StartsWith("security:"))
+                if (content.StartsWith("security:"))
                 {
-                    if (trimmed.Contains("[]"))
+                    if (content.Contains("[]"))
                         hasEmptySecurity = true;
                     continue;
                 }
 
-                if (trimmed == "parameters:")
+                if (content == "parameters:")
                 {
                     inParameters = true;
                     continue;
                 }
 
-                if (inParameters && trimmed.StartsWith("- name:"))
+                if (inParameters)
                 {
-                    var paramName = Regex.Match(trimmed, @"name:\s*(\w+)").Groups[1].Value;
-                    // Look ahead for 'in: path'
-                    if (i + 1 < lines.Length && lines[i + 1].TrimStart().StartsWith("in: path"))
+                    if (content.Contains("IdPath"))
                     {
-                        currentPathParams.Add(paramName);
+                        currentPathParams.Add("id");
+                    }
+                    else if (Regex.IsMatch(content, @"in:\s*path") && Regex.IsMatch(content, @"name:\s*(\w+)"))
+                    {
+                        var m = Regex.Match(content, @"name:\s*(\w+)");
+                        currentPathParams.Add(m.Groups[1].Value);
+                    }
+                    else if (content.StartsWith("- name:"))
+                    {
+                        var paramName = Regex.Match(content, @"name:\s*(\w+)").Groups[1].Value;
+                        if (i + 1 < lines.Length && lines[i + 1].Trim().StartsWith("in: path"))
+                        {
+                            currentPathParams.Add(paramName);
+                        }
+                    }
+                    else if (content.StartsWith("- in: path"))
+                    {
+                        if (i + 1 < lines.Length && lines[i + 1].Trim().StartsWith("name:"))
+                        {
+                            var paramName = Regex.Match(lines[i + 1].Trim(), @"name:\s*(\w+)").Groups[1].Value;
+                            currentPathParams.Add(paramName);
+                        }
                     }
                 }
             }
 
             // Reset when leaving path/method scope
-            if (indent <= 2 && currentPath != null && !pathMatch.Success && !trimmed.StartsWith("#"))
+            if (indent <= 2 && currentPath != null && !pathMatch.Success && !content.StartsWith("#"))
             {
                 FlushOperation(operations, currentPath, currentMethod, currentOperationId,
                     currentPathParams, hasEmptySecurity);
                 currentMethod = null;
-                if (!trimmed.EndsWith(":") || indent < 2)
+                if (!content.EndsWith(":") || indent < 2)
                     currentPath = null;
             }
         }
