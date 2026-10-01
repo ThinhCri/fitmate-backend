@@ -1393,7 +1393,7 @@ paths:
     post:
       tags: [Bookings]
       summary: Đổi slot booking (Bãi bỏ - 410 Gone)
-      description: Endpoint này đã bị bãi bỏ theo DEC-051 và Reschedule Branch A (BR-05). Luôn trả về HTTP 410 Gone. Sử dụng luồng đề xuất đổi lịch qua /me/bookings/{id}/reschedule-requests.
+      description: Endpoint này đã bị bãi bỏ theo DEC-051 và Reschedule Branch A (BR-05). Luôn trả về HTTP 410 Gone. Sử dụng luồng đề xuất đổi lịch qua POST /api/v1/bookings/{id}/reschedule-requests.
       operationId: rescheduleMyBooking
       deprecated: true
       parameters:
@@ -1427,7 +1427,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BookingRescheduleRequest'
+                $ref: '#/components/schemas/BookingRescheduleResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
         '401':
@@ -1462,7 +1462,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BookingRescheduleRequest'
+                $ref: '#/components/schemas/BookingRescheduleResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1501,7 +1501,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BookingRescheduleRequest'
+                $ref: '#/components/schemas/BookingRescheduleResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1534,7 +1534,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BookingRescheduleRequest'
+                $ref: '#/components/schemas/BookingRescheduleResponse'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -4876,9 +4876,9 @@ components:
 
     CreateRescheduleRequestBody:
       type: object
-      required: [newSlotStartUtc, reason]
+      required: [new_slot_start_utc, reason]
       properties:
-        newSlotStartUtc:
+        new_slot_start_utc:
           type: string
           format: date-time
           description: UTC start time của slot mới muốn dời tới
@@ -4889,47 +4889,57 @@ components:
     RejectRescheduleRequestBody:
       type: object
       properties:
-        rejectionReason:
+        rejection_reason:
           type: string
           nullable: true
           description: Lý do từ chối
 
-    BookingRescheduleRequest:
+    BookingRescheduleResponse:
       type: object
-      required: [id, appointmentId, requestedByUserId, oldSlotStartUtc, newSlotStartUtc, durationMinutes, status, reason, deadlineUtc, createdAtUtc]
+      required:
+        - id
+        - appointment_id
+        - requested_by_user_id
+        - old_slot_start_utc
+        - new_slot_start_utc
+        - duration_minutes
+        - status
+        - reason
+        - deadline_utc
+        - created_at_utc
       properties:
         id:
           type: string
           format: uuid
-        appointmentId:
+        appointment_id:
           type: string
           format: uuid
-        requestedByUserId:
+        requested_by_user_id:
           type: string
           format: uuid
-        oldSlotStartUtc:
+        old_slot_start_utc:
           type: string
           format: date-time
-        newSlotStartUtc:
+        new_slot_start_utc:
           type: string
           format: date-time
-        durationMinutes:
+        duration_minutes:
           type: integer
         status:
           $ref: '#/components/schemas/RescheduleRequestStatus'
         reason:
           type: string
-        deadlineUtc:
+        deadline_utc:
           type: string
           format: date-time
-        createdAtUtc:
+        created_at_utc:
           type: string
           format: date-time
-        respondedAtUtc:
+        responded_at_utc:
           type: string
           format: date-time
           nullable: true
-        rejectionReason:
+        rejection_reason:
           type: string
           nullable: true
 

@@ -181,7 +181,7 @@ public class BookingsController : ControllerBase
             body.Reason,
             ct);
 
-        return Ok(req);
+        return Ok(BookingRescheduleResponse.FromDomain(req));
     }
 
     /// <summary>Accept a pending reschedule request (Other party only, atomic slot swap).</summary>
@@ -197,7 +197,7 @@ public class BookingsController : ControllerBase
             requestId,
             ct);
 
-        return Ok(req);
+        return Ok(BookingRescheduleResponse.FromDomain(req));
     }
 
     /// <summary>Reject a pending reschedule request (Other party only).</summary>
@@ -215,7 +215,7 @@ public class BookingsController : ControllerBase
             body?.RejectionReason,
             ct);
 
-        return Ok(req);
+        return Ok(BookingRescheduleResponse.FromDomain(req));
     }
 
     /// <summary>Cancel a pending reschedule request (Requester only).</summary>
@@ -231,7 +231,7 @@ public class BookingsController : ControllerBase
             requestId,
             ct);
 
-        return Ok(req);
+        return Ok(BookingRescheduleResponse.FromDomain(req));
     }
 
     private static DateTime EnsureUtc(DateTime dt) =>
@@ -282,6 +282,10 @@ public sealed record BookingHoldStatusResponse(
     [property: JsonPropertyName("is_active")] bool IsActive
 );
 public sealed record CancelBookingRequest([property: JsonPropertyName("reason")] string Reason);
-public sealed record RescheduleRequest(DateTime NewSlotStartUtc);
-public sealed record CreateRescheduleRequestBody(DateTime NewSlotStartUtc, string Reason);
-public sealed record RejectRescheduleRequestBody(string? RejectionReason);
+public sealed record CreateRescheduleRequestBody(
+    [property: JsonPropertyName("new_slot_start_utc")] DateTime NewSlotStartUtc,
+    [property: JsonPropertyName("reason")] string Reason
+);
+public sealed record RejectRescheduleRequestBody(
+    [property: JsonPropertyName("rejection_reason")] string? RejectionReason
+);
