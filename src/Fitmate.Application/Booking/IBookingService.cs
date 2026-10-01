@@ -24,9 +24,6 @@ public interface IBookingService
     /// <summary>PT complete booking (InProgress → Completed). Domain-rules.md §3.2.</summary>
     Task<Appointment> CompleteAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
 
-    /// <summary>Member reschedule: kiểm slot mới còn Open.</summary>
-    Task<Appointment> RescheduleAsync(Guid memberId, Guid appointmentId, DateTime newSlotStartUtc, CancellationToken ct);
-
     /// <summary>List booking của member (phân trang).</summary>
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct);
 

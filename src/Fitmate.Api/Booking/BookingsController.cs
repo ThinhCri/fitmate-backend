@@ -118,16 +118,18 @@ public class BookingsController : ControllerBase
         return Ok(appt);
     }
 
-    /// <summary>Member reschedule: đổi slot booking (transaction check slot mới trước khi release slot cũ).</summary>
+    /// <summary>Legacy reschedule route has been retired in favor of two-party reschedule requests (Branch A / BR-05).</summary>
     [HttpPost("me/bookings/{id:guid}/reschedule")]
-    public async Task<ActionResult<Appointment>> Reschedule(
-        [FromServices] ICurrentUserAccessor current,
-        Guid id,
-        [FromBody] RescheduleRequest body,
-        CancellationToken ct)
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status410Gone)]
+    public IActionResult RescheduleLegacy(Guid id)
     {
-        var appt = await _booking.RescheduleAsync(current.GetUserIdOrThrow(), id, EnsureUtc(body.NewSlotStartUtc), ct);
-        return Ok(appt);
+        return StatusCode(StatusCodes.Status410Gone, new ProblemDetails
+        {
+            Status = StatusCodes.Status410Gone,
+            Title = "Endpoint Retired",
+            Detail = "Direct rescheduling has been retired. Please use POST /api/v1/bookings/{id}/reschedule-requests to propose a reschedule under the Two-Party Consent workflow.",
+            Extensions = { ["code"] = "BOOKING_RESCHEDULE_ENDPOINT_RETIRED" }
+        });
     }
 
     /// <summary>Member list booking của mình (phân trang).</summary>

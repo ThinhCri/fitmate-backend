@@ -197,43 +197,6 @@ public class BookingService : IBookingService
         }, ct);
     }
 
-    public async Task<Appointment> RescheduleAsync(Guid memberId, Guid appointmentId, DateTime newSlotStartUtc, CancellationToken ct)
-    {
-        var appt = await _appointments.FindByIdAsync(appointmentId, ct)
-            ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
-        if (appt.MemberId != memberId)
-            throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner.");
-
-        if (appt.Status is AppointmentStatus.Completed or AppointmentStatus.Cancelled or AppointmentStatus.Expired)
-            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot reschedule in status {appt.Status}.");
-
-        if (newSlotStartUtc == appt.SlotStartUtc)
-            throw new ValidationException(
-                ErrorCodes.Validation.FieldInvalid,
-                "new_slot_start_utc must differ from current.",
-                new Dictionary<string, string[]> { ["new_slot_start_utc"] = new[] { "different from current" } });
-
-        return await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
-        {
-            if (await _appointments.HasOverlappingSlotAsync(appt.PtUserId, newSlotStartUtc, appt.DurationMinutes, appt.Id, ct))
-                throw new ConflictException(ErrorCodes.Booking.SlotTaken,
-                    $"New slot {newSlotStartUtc:O} is no longer available.");
-
-            var oldSlot = appt.SlotStartUtc;
-            appt.Cancel($"Reschedule from {oldSlot:O} to {newSlotStartUtc:O}");
-            await _appointments.SaveChangesAsync(ct);
-
-            // Tạo appointment mới (BE-160 sẽ thêm previous_booking_id field; tạm thời liên kết qua Outbox event).
-            var newAppt = Appointment.CreateHold(memberId, appt.PtUserId, appt.ServiceId,
-                newSlotStartUtc, newSlotStartUtc, appt.DurationMinutes, appt.PriceListedVnd);
-            await _appointments.AddAsync(newAppt, ct);
-            await _appointments.SaveChangesAsync(ct);
-
-            _outbox.Enqueue("booking.rescheduled",
-                new { oldAppointmentId = appointmentId, newAppointmentId = newAppt.Id, oldSlot, newSlotStartUtc });
-            return newAppt;
-        }, ct);
-    }
 
     public Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct)
         => _appointments.ListByMemberPagedAsync(memberId, status, page, pageSize, ct);
