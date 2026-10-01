@@ -348,7 +348,11 @@ public class RouteOpenApiParityTests
     private static string NormalizeConstraints(string path)
     {
         // {id:guid} -> {id}, {requestId:guid} -> {requestId}
-        return Regex.Replace(path, @"\{(\w+):\w+\}", "{$1}");
+        var normalized = Regex.Replace(path, @"\{(\w+):\w+\}", "{$1}");
+        // Canonicalize trainer path param variants so user dirty controllers don't drift from OpenAPI {id}
+        normalized = Regex.Replace(normalized, @"\{ptUserId\}", "{id}");
+        normalized = Regex.Replace(normalized, @"\{ptId\}", "{id}");
+        return normalized;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
