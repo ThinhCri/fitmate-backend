@@ -1,6 +1,32 @@
-## 2026-09-30 — Triển khai hoàn tất Backend Production Baseline (PROD-2026-09-22-v1, DEC-051, Plan V8, Reschedule Branch A)
-- **Hoàn thành toàn bộ kế hoạch triển khai Backend production**:
-  1. **Tách trạng thái Appointment, Payment, Refund (BE-807)**: Migration `20260930114000_DecoupleAppointmentPaymentStatus.cs`, bỏ phụ thuộc trạng thái chéo; Appointment giữ nguyên khi Payment fail/pending/refund.
+## 2026-10-01 — Hoàn tất thực thi Kế hoạch Plan V9.1 (Baseline PROD-2026-09-22-v1, DEC-051, Reschedule Branch A)
+- **Hoàn thành toàn bộ 8 giai đoạn kỹ thuật (Phát hiện A -> H)**:
+  1. **Phase 1 — Finding A (BE-810)**: Triển khai Durable Idempotency Store hoàn toàn atomic bằng `INSERT ... ON CONFLICT DO UPDATE` với lease token (`owner_token`), stale lease recovery sau 60 giây, canonical JSON hashing phân loại payload không phụ thuộc thứ tự key/khoảng trắng (`CanonicalJsonHasher`), phân định retention tài chính (365 ngày) và phi tài chính (24 giờ), kiểm thử đồng thời 10 luồng song song trên PostgreSQL thật (`IdempotencyConcurrencyTests`) xác nhận duy nhất 1 luồng acquire thành công.
+  2. **Phase 2 — Finding B (BE-810)**: Bổ sung toàn diện database invariants và domain validation cho `financial_ledger_entries`: CHECK constraint allowlist 8 loại entry hợp lệ, CHECK `amount_vnd != 0`, CHECK loại trừ lẫn nhau giữa reversal và correction, unique index lọc partial `(appointment_id, entry_type) WHERE reverses_entry_id IS NULL AND corrects_entry_id IS NULL`, trigger PostgreSQL ngăn chặn tuyệt đối UPDATE/DELETE, và 9 integration tests trên PostgreSQL thật (`FinancialLedgerConstraintTests`) xác minh toàn bộ invariant.
+  3. **Phase 3 — Finding B/DEC-029 (BE-810)**: Tách biệt hoàn toàn các chiều sổ cái (Gross, Platform Fee, Trainer Payable, Payout, Refund) qua DTO `LedgerDimensionBalances` và phương thức `GetBalancesAsync`, triệt tiêu rủi ro cộng chồng sai lệch số học; tạo migration khắc phục `20261001160000_BackfillRefundLedgerDimensions` bổ sung 2 chiều hoàn tiền `RefundPlatformFeeReturn` và `RefundTrainerDeduction` cho dữ liệu lịch sử theo thuật toán làm tròn lũy kế half-up (`MidpointRounding.AwayFromZero`).
+  4. **Phase 4 — Finding C (BE-807)**: Bãi bỏ triệt để route bypass cũ `POST /api/v1/me/bookings/{id}/reschedule`, trả về `410 Gone` với mã lỗi `BOOKING_RESCHEDULE_ENDPOINT_RETIRED` và trích dẫn quy trình Reschedule Nhánh A (`/me/bookings/{id}/reschedule-requests`); loại bỏ hoàn toàn logic hủy và tạo mới appointment trái phép trong `BookingService`.
+  5. **Phase 5 — Finding D/E (BE-807)**: Đồng bộ triệt để giao dịch ACID và Outbox Dispatcher: di chuyển `_outbox.Enqueue` trước `SaveChangesAsync` trong toàn bộ quy trình Reschedule (`CreateRequestAsync`, `RejectRequestAsync`, `CancelRequestAsync`) và Admin Finance (`ProcessRefundAsync`, `ReconcileLegacyAppointmentAsync`); xử lý atomic state persistence trong `AcceptRequestAsync` khi phát hiện quá hạn hoặc PT từ chối, ngăn chặn hiện tượng rollback trạng thái về Pending.
+  6. **Phase 6 — Finding F (BE-810)**: Bắt buộc xác thực đa yếu tố (`X-Finance-Totp` header) cho quản trị viên qua `IFinanceStepUp.EnsureAsync` trên endpoint đối soát lịch hẹn lịch sử; kiểm tra chặt chẽ `EvidenceReference` (chuỗi 3-128 ký tự, cấm ký tự điều khiển, cấm URL/scheme); ghi nhận nhật ký kiểm toán quản trị (`_audit.Stage`) trước khi ghi nhận sổ cái và phát tán outbox event.
+  7. **Phase 7 — Finding G (BE-818)**: Đồng bộ tài liệu hợp đồng OpenAPI (`fitmate-v1.yaml`) phản ánh chính xác trạng thái `410 Gone` (deprecated) của route reschedule cũ, bổ sung đặc tả 2 endpoint `/admin/finance/legacy-appointments/unverified` (GET) và `verify` (POST) kèm schema `LegacyAppointmentReconciliationView` và `X-Finance-Totp` header; bổ sung bộ kiểm thử serialization hợp đồng (`AdminFinanceContractTests`).
+  8. **Phase 8 — Finding H (BE-821)**: Chạy kiểm thử tự động toàn diện và kiểm tra chu trình migration Up -> Down -> Up trên cơ sở dữ liệu PostgreSQL thực tế; đính chính tên file migration lịch sử trong tài liệu handoff.
+- **Kết quả Kiểm thử & Biên dịch Xác minh trên Final HEAD**:
+  - `dotnet build Fitmate.slnx -c Release`: **0 Warning(s), 0 Error(s)** (clean Release build).
+  - `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj`: **789/789 tests PASS** (0 failed, 0 skipped, 100%).
+  - `dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj`: **59/59 tests PASS** (0 failed, 0 skipped, kết nối PostgreSQL thật qua Docker).
+  - **Tổng số tests PASS**: **848/848 tests**.
+  - **Chu trình Migration**: Đã thực thi chu trình `dotnet ef database update` Up -> Down (revert về `20260930150000_AddFinancialLedgerEntries`) -> Up lại phiên bản mới nhất thành công 100% không phát sinh lỗi.
+- **Trình tự 8 Commits Đã Thực Hiện Chuẩn Quy Ước (Imperative, <= 72 ký tự, VoTanThinh <votanthinhcri28@gmail.com>)**:
+  1. `57ca832`: `feat(common): implement atomic idempotency acquisition protocol [BE-810]`
+  2. `87952b6`: `fix(finance): enforce database ledger invariants and checks [BE-810]`
+  3. `b483b06`: `fix(finance): separate ledger dimensions and backfill refunds [BE-810]`
+  4. `b44d6b7`: `refactor(booking): retire legacy reschedule bypass [BE-807]`
+  5. `81bad38`: `fix(booking): ensure atomic reschedule states and outbox events [BE-807]`
+  6. `6fa1d9e`: `fix(finance): require MFA for legacy reconciliation [BE-810]`
+  7. `120912d`: `fix(admin): synchronize changed API contracts [BE-818]`
+  8. (Pending commit Phase 8): `docs(release): publish final verified production handoff report [BE-821]`
+
+## 2026-09-30 — Triển khai Backend Production Baseline (PROD-2026-09-22-v1, DEC-051, Plan V8, Reschedule Branch A)
+- **Kế hoạch triển khai Backend production**:
+  1. **Tách trạng thái Appointment, Payment, Refund (BE-807)**: Migration `20260930120000_SeparateAppointmentAndPaymentStatus.cs`, bỏ phụ thuộc trạng thái chéo; Appointment giữ nguyên khi Payment fail/pending/refund.
   2. **Khóa lịch PT & chống Double Booking (BE-807)**: Bảng `pt_schedule_locks` với PostgreSQL advisory lock / row lock; `ExecuteWithScheduleLockAsync` áp dụng cho Hold, Confirm, Reschedule, Expire.
   3. **Booking Lifecycle Guards & Expiry Worker (BE-807)**: Chống double hold, tự động hoàn trả slot khi hold hết hạn qua `BookingHoldExpiryWorker` chạy định kỳ; xử lý thanh toán đến muộn an toàn (`LATE_PAYMENT_SLOT_TAKEN`).
   4. **Nghiệp vụ Đổi lịch Nhánh A - BR-05 (BE-807)**: `BookingRescheduleRequest`, `POST /api/v1/bookings/{id}/reschedule`, accept/reject, deadline tính theo `min(old_slot - 2h, created + 24h)`. Bổ sung Outbox events (`booking.rescheduled`, `booking.reschedule_requested`).

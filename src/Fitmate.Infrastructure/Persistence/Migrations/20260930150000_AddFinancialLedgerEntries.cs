@@ -31,7 +31,7 @@ public sealed class AddFinancialLedgerEntries : Migration
                 CONSTRAINT fk_financial_ledger_entries_appointments FOREIGN KEY (appointment_id) REFERENCES appointments (id) ON DELETE RESTRICT,
                 CONSTRAINT fk_financial_ledger_entries_payments FOREIGN KEY (payment_id) REFERENCES payments (id) ON DELETE RESTRICT,
                 CONSTRAINT fk_financial_ledger_entries_refunds FOREIGN KEY (refund_id) REFERENCES refunds (id) ON DELETE RESTRICT,
-                CONSTRAINT fk_financial_ledger_entries_manual_pt_settlements FOREIGN KEY (settlement_id) REFERENCES manual_pt_settlements (appointment_id) ON DELETE RESTRICT,
+                CONSTRAINT fk_financial_ledger_entries_manual_pt_settlements FOREIGN KEY (settlement_id) REFERENCES manual_pt_settlements ("AppointmentId") ON DELETE RESTRICT,
                 CONSTRAINT fk_financial_ledger_entries_reverses FOREIGN KEY (reverses_entry_id) REFERENCES financial_ledger_entries (id) ON DELETE RESTRICT,
                 CONSTRAINT fk_financial_ledger_entries_corrects FOREIGN KEY (corrects_entry_id) REFERENCES financial_ledger_entries (id) ON DELETE RESTRICT
             );
@@ -71,12 +71,12 @@ public sealed class AddFinancialLedgerEntries : Migration
                 source_event_id, correlation_id, created_by_user_id, created_at_utc, metadata_version, metadata_json
             )
             SELECT
-                gen_random_uuid(), 'GrossBookingFee', a.actual_paid_vnd, a.completed_at_utc, a.id, a.payment_id,
+                gen_random_uuid(), 'GrossBookingFee', a."ActualPaidVnd", a.completed_at_utc, a.id, a."PaymentId",
                 'migration-backfill:completed', a.id::text, 'system-migration', now(), 1, '{}'::jsonb
             FROM appointments a
             WHERE a.appointment_status = 4 
               AND a.completed_at_utc IS NOT NULL 
-              AND a.actual_paid_vnd > 0
+              AND a."ActualPaidVnd" > 0
             ON CONFLICT DO NOTHING;
 
             INSERT INTO financial_ledger_entries (
@@ -84,12 +84,12 @@ public sealed class AddFinancialLedgerEntries : Migration
                 source_event_id, correlation_id, created_by_user_id, created_at_utc, metadata_version, metadata_json
             )
             SELECT
-                gen_random_uuid(), 'PlatformCommission', a.platform_fee_vnd, a.completed_at_utc, a.id, a.payment_id,
+                gen_random_uuid(), 'PlatformCommission', a."PlatformFeeVnd", a.completed_at_utc, a.id, a."PaymentId",
                 'migration-backfill:completed', a.id::text, 'system-migration', now(), 1, '{}'::jsonb
             FROM appointments a
             WHERE a.appointment_status = 4 
               AND a.completed_at_utc IS NOT NULL 
-              AND a.actual_paid_vnd > 0
+              AND a."ActualPaidVnd" > 0
             ON CONFLICT DO NOTHING;
 
             INSERT INTO financial_ledger_entries (
@@ -97,12 +97,12 @@ public sealed class AddFinancialLedgerEntries : Migration
                 source_event_id, correlation_id, created_by_user_id, created_at_utc, metadata_version, metadata_json
             )
             SELECT
-                gen_random_uuid(), 'TrainerPayable', a.trainer_share_vnd, a.completed_at_utc, a.id, a.payment_id,
+                gen_random_uuid(), 'TrainerPayable', a."TrainerShareVnd", a.completed_at_utc, a.id, a."PaymentId",
                 'migration-backfill:completed', a.id::text, 'system-migration', now(), 1, '{}'::jsonb
             FROM appointments a
             WHERE a.appointment_status = 4 
               AND a.completed_at_utc IS NOT NULL 
-              AND a.actual_paid_vnd > 0
+              AND a."ActualPaidVnd" > 0
             ON CONFLICT DO NOTHING;
 
             -- Backfill legacy succeeded refunds WITH verified succeeded timestamp only
@@ -111,10 +111,10 @@ public sealed class AddFinancialLedgerEntries : Migration
                 source_event_id, correlation_id, created_by_user_id, created_at_utc, metadata_version, metadata_json
             )
             SELECT
-                gen_random_uuid(), 'RefundGrossReduction', -r.amount_vnd, r.succeeded_at_utc, r.appointment_id, r.payment_id, r.id,
+                gen_random_uuid(), 'RefundGrossReduction', -r."AmountVnd", r.succeeded_at_utc, r."AppointmentId", r."PaymentId", r.id,
                 'migration-backfill:refund', r.id::text, 'system-migration', now(), 1, '{}'::jsonb
             FROM refunds r
-            WHERE r.status = 1 
+            WHERE r."Status" = 1 
               AND r.succeeded_at_utc IS NOT NULL
             ON CONFLICT DO NOTHING;
 
@@ -124,11 +124,11 @@ public sealed class AddFinancialLedgerEntries : Migration
                 source_event_id, correlation_id, created_by_user_id, created_at_utc, metadata_version, metadata_json
             )
             SELECT
-                gen_random_uuid(), 'TrainerPayout', -s.amount_vnd, s.transferred_at, s.appointment_id, s.payment_id, s.appointment_id,
-                'migration-backfill:payout', s.appointment_id::text, 'system-migration', now(), 1, '{}'::jsonb
+                gen_random_uuid(), 'TrainerPayout', -s."AmountVnd", s."TransferredAt", s."AppointmentId", s."PaymentId", s."AppointmentId",
+                'migration-backfill:payout', s."AppointmentId"::text, 'system-migration', now(), 1, '{}'::jsonb
             FROM manual_pt_settlements s
-            WHERE s.status = 'paid' 
-              AND s.transferred_at IS NOT NULL
+            WHERE s."Status" = 'paid' 
+              AND s."TransferredAt" IS NOT NULL
             ON CONFLICT DO NOTHING;
             """);
     }
