@@ -81,9 +81,13 @@ public class AdminFinanceController : ControllerBase
     public async Task<IActionResult> VerifyLegacyAppointment(
         Guid id,
         [FromBody] VerifyLegacyAppointmentRequest body,
+        [FromHeader(Name = "X-Finance-Totp")] string? totp = null,
         CancellationToken ct = default)
     {
         RequireKey();
+        if (string.IsNullOrWhiteSpace(totp))
+            throw new DomainException("MFA_REQUIRED", "X-Finance-Totp header is required for legacy appointment verification.", 403);
+
         var adminId = GetUserId();
         var result = await _svc.ReconcileLegacyAppointmentAsync(adminId, id, body, ct);
         return Ok(new

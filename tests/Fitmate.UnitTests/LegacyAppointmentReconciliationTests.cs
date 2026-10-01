@@ -79,7 +79,10 @@ public class LegacyAppointmentReconciliationTests
         ledgerMock.Setup(l => l.AddEntriesAsync(It.IsAny<IEnumerable<FinancialLedgerEntry>>(), It.IsAny<CancellationToken>()))
             .Callback<IEnumerable<FinancialLedgerEntry>, CancellationToken>((entries, _) => addedEntries.AddRange(entries));
 
-        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outbox, ledgerMock.Object);
+        var stepUpMock = new Mock<IFinanceStepUp>();
+        var auditMock = new Mock<Fitmate.Application.Trainers.IAuditLogger>();
+
+        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outbox, ledgerMock.Object, stepUpMock.Object, auditMock.Object);
 
         var verifiedCompletedAtUtc = slotStart.AddHours(1); // 1 hour after slot start
         var request = new VerifyLegacyAppointmentRequest(
@@ -91,6 +94,9 @@ public class LegacyAppointmentReconciliationTests
 
         result.LegacyCompletionTimeUnknown.Should().BeFalse();
         result.CompletedAtUtc.Should().Be(verifiedCompletedAtUtc);
+
+        stepUpMock.Verify(s => s.EnsureAsync(adminId, It.IsAny<CancellationToken>()), Times.Once);
+        auditMock.Verify(a => a.Stage("legacy_appointment.reconciled", "Appointment", appt.Id, adminId, request.Reason), Times.Once);
 
         // Verify ledger entries created
         addedEntries.Should().HaveCount(3);
@@ -120,8 +126,10 @@ public class LegacyAppointmentReconciliationTests
         storeMock.Setup(s => s.FindAppointmentByIdAsync(appt.Id, It.IsAny<CancellationToken>())).ReturnsAsync(appt);
         var authzMock = new Mock<IAuthorizationGuard>();
         var outbox = new CapturingOutbox();
+        var ledgerMock = new Mock<IFinancialLedgerStore>();
+        var stepUpMock = new Mock<IFinanceStepUp>();
 
-        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outbox);
+        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outbox, ledgerMock.Object, stepUpMock.Object);
 
         var request = new VerifyLegacyAppointmentRequest(
             VerifiedCompletedAtUtc: DateTime.UtcNow.AddDays(1), // in future!
@@ -130,5 +138,69 @@ public class LegacyAppointmentReconciliationTests
 
         var act = () => service.ReconcileLegacyAppointmentAsync(adminId, appt.Id, request, CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Theory]
+    [InlineData("ab")] // < 3 chars
+    [InlineData("https://example.com/evidence")] // url forbidden
+    [InlineData("http://evil.com/doc")] // http forbidden
+    [InlineData("file://secret.txt")] // file scheme
+    [InlineData("ftp://files.org")] // ftp scheme
+    [InlineData("doc\ninvalid")] // control char newline
+    [InlineData("doc\tinvalid")] // control char tab
+    public async Task ReconcileLegacyAppointmentAsync_WhenEvidenceReferenceInvalid_ThrowsValidationException(string badEvidence)
+    {
+        var adminId = Guid.NewGuid();
+        var slotStart = DateTime.UtcNow.AddDays(-1);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slotStart, slotStart, 60, 500_000);
+        appt.ForceStatusForTesting(AppointmentStatus.Completed);
+        appt.SetLegacyData(5, null, true);
+
+        var storeMock = new Mock<IAdminFinanceStore>();
+        storeMock.Setup(s => s.FindAppointmentByIdAsync(appt.Id, It.IsAny<CancellationToken>())).ReturnsAsync(appt);
+        var authzMock = new Mock<IAuthorizationGuard>();
+        var outbox = new CapturingOutbox();
+        var ledgerMock = new Mock<IFinancialLedgerStore>();
+        var stepUpMock = new Mock<IFinanceStepUp>();
+
+        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outbox, ledgerMock.Object, stepUpMock.Object);
+
+        var request = new VerifyLegacyAppointmentRequest(
+            VerifiedCompletedAtUtc: slotStart.AddMinutes(30),
+            Reason: "Xác nhận hợp lệ",
+            EvidenceReference: badEvidence);
+
+        var act = () => service.ReconcileLegacyAppointmentAsync(adminId, appt.Id, request, CancellationToken.None);
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task ReconcileLegacyAppointmentAsync_WhenStepUpFails_ThrowsException()
+    {
+        var adminId = Guid.NewGuid();
+        var slotStart = DateTime.UtcNow.AddDays(-1);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slotStart, slotStart, 60, 500_000);
+        appt.ForceStatusForTesting(AppointmentStatus.Completed);
+        appt.SetLegacyData(5, null, true);
+
+        var storeMock = new Mock<IAdminFinanceStore>();
+        storeMock.Setup(s => s.FindAppointmentByIdAsync(appt.Id, It.IsAny<CancellationToken>())).ReturnsAsync(appt);
+        var authzMock = new Mock<IAuthorizationGuard>();
+        var outbox = new CapturingOutbox();
+        var ledgerMock = new Mock<IFinancialLedgerStore>();
+        var stepUpMock = new Mock<IFinanceStepUp>();
+        stepUpMock.Setup(s => s.EnsureAsync(adminId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DomainException("MFA_REQUIRED", "MFA step up required.", 403));
+
+        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outbox, ledgerMock.Object, stepUpMock.Object);
+
+        var request = new VerifyLegacyAppointmentRequest(
+            VerifiedCompletedAtUtc: slotStart.AddMinutes(30),
+            Reason: "Xác nhận hợp lệ",
+            EvidenceReference: "EVID-VALID-123");
+
+        var act = () => service.ReconcileLegacyAppointmentAsync(adminId, appt.Id, request, CancellationToken.None);
+        var ex = await act.Should().ThrowAsync<DomainException>();
+        ex.Which.Code.Should().Be("MFA_REQUIRED");
     }
 }

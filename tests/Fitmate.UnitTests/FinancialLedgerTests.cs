@@ -160,7 +160,9 @@ public class FinancialLedgerTests
         storeMock.Setup(s => s.CountLedgerAsync(It.IsAny<LedgerEntryType?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(rows.Count);
 
-        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outboxMock.Object);
+        var ledgerMock = new Mock<IFinancialLedgerStore>();
+        var stepUpMock = new Mock<IFinanceStepUp>();
+        var service = new AdminFinanceService(storeMock.Object, authzMock.Object, outboxMock.Object, ledgerMock.Object, stepUpMock.Object);
 
         var result = await service.GetLedgerAsync(Guid.NewGuid(), null, 1, 10, CancellationToken.None);
 

@@ -118,8 +118,24 @@ public class AdminFinanceServiceTests
     private static FinanceBookingRow PaidRow(long actual, long fee, long share, DateTime utc, bool completed = false, bool refunded = false, long refundedAmount = 0)
         => new(Guid.NewGuid(), utc, actual, fee, share, refundedAmount, IsPaid: !completed && !refunded, IsCompleted: completed, IsRefunded: refunded);
 
-    private static AdminFinanceService NewService(IAdminFinanceStore store, string? requiredRole = "Admin", CapturingOutbox? outbox = null)
-        => new(store, new RoleRequireAuthz { RequiredRole = requiredRole }, outbox ?? new CapturingOutbox());
+    private static AdminFinanceService NewService(
+        IAdminFinanceStore store,
+        string? requiredRole = "Admin",
+        CapturingOutbox? outbox = null,
+        IFinancialLedgerStore? ledger = null,
+        IFinanceStepUp? stepUp = null,
+        Fitmate.Application.Trainers.IAuditLogger? audit = null)
+    {
+        var ledgerMock = ledger ?? new Mock<IFinancialLedgerStore>().Object;
+        var stepUpMock = stepUp ?? new Mock<IFinanceStepUp>().Object;
+        return new AdminFinanceService(
+            store,
+            new RoleRequireAuthz { RequiredRole = requiredRole },
+            outbox ?? new CapturingOutbox(),
+            ledgerMock,
+            stepUpMock,
+            audit);
+    }
 
     [Fact]
     public async Task Overview_AggregatesGmv_Fee_Share_Refunded()
@@ -146,8 +162,7 @@ public class AdminFinanceServiceTests
     [Fact]
     public async Task Overview_NonAdmin_Forbidden()
     {
-        var authz = new RoleRequireAuthz { RequiredRole = "Pt" }; // khác Admin
-        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz, new CapturingOutbox());
+        var svc = NewService(new InMemoryFinanceStore(), requiredRole: "Pt");
         var act = () => svc.GetOverviewAsync(Guid.NewGuid(), FinanceRange._30d, CancellationToken.None);
         await act.Should().ThrowAsync<ForbiddenException>();
     }
@@ -230,8 +245,7 @@ public class AdminFinanceServiceTests
     [Fact]
     public async Task Ledger_NonAdmin_Forbidden()
     {
-        var authz = new RoleRequireAuthz { RequiredRole = "Pt" };
-        var svc = new AdminFinanceService(new InMemoryFinanceStore(), authz, new CapturingOutbox());
+        var svc = NewService(new InMemoryFinanceStore(), requiredRole: "Pt");
         var act = () => svc.GetLedgerAsync(Guid.NewGuid(), null, 1, 50, CancellationToken.None);
         await act.Should().ThrowAsync<ForbiddenException>();
     }
@@ -399,7 +413,7 @@ public class AdminFinanceServiceTests
 
         var stepUpMock = new Mock<IFinanceStepUp>();
         var adminId = Guid.NewGuid();
-        var svc = new AdminFinanceService(store, new RoleRequireAuthz { RequiredRole = "Admin" }, outbox, null, stepUpMock.Object);
+        var svc = NewService(store, requiredRole: "Admin", outbox: outbox, stepUp: stepUpMock.Object);
 
         var req = new CreateRefundRequest(payment.Id, 200_000, "Valid reason here");
         await svc.ProcessRefundAsync(adminId, req, CancellationToken.None);

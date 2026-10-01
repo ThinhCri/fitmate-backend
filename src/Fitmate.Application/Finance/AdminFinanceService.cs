@@ -19,8 +19,9 @@ public class AdminFinanceService : IAdminFinanceService
     private readonly IAdminFinanceStore _store;
     private readonly IAuthorizationGuard _authz;
     private readonly IOutboxDispatcher _outbox;
-    private readonly IFinancialLedgerStore? _ledger;
-    private readonly IFinanceStepUp? _stepUp;
+    private readonly IFinancialLedgerStore _ledger;
+    private readonly IFinanceStepUp _stepUp;
+    private readonly Fitmate.Application.Trainers.IAuditLogger? _audit;
 
     private const int MaxPageSize = 100;
     private const int DefaultPageSize = 50;
@@ -29,14 +30,16 @@ public class AdminFinanceService : IAdminFinanceService
         IAdminFinanceStore store,
         IAuthorizationGuard authz,
         IOutboxDispatcher outbox,
-        IFinancialLedgerStore? ledger = null,
-        IFinanceStepUp? stepUp = null)
+        IFinancialLedgerStore ledger,
+        IFinanceStepUp stepUp,
+        Fitmate.Application.Trainers.IAuditLogger? audit = null)
     {
-        _store = store;
-        _authz = authz;
-        _outbox = outbox;
-        _ledger = ledger;
-        _stepUp = stepUp;
+        _store = store ?? throw new ArgumentNullException(nameof(store));
+        _authz = authz ?? throw new ArgumentNullException(nameof(authz));
+        _outbox = outbox ?? throw new ArgumentNullException(nameof(outbox));
+        _ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
+        _stepUp = stepUp ?? throw new ArgumentNullException(nameof(stepUp));
+        _audit = audit;
     }
 
     public async Task<FinanceOverview> GetOverviewAsync(Guid adminUserId, FinanceRange range, CancellationToken ct)
@@ -141,10 +144,7 @@ public class AdminFinanceService : IAdminFinanceService
     public async Task<RefundView> ProcessRefundAsync(Guid adminUserId, CreateRefundRequest request, CancellationToken ct)
     {
         await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
-        if (_stepUp != null)
-        {
-            await _stepUp.EnsureAsync(adminUserId, ct);
-        }
+        await _stepUp.EnsureAsync(adminUserId, ct);
 
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Reason phải có ít nhất 5 ký tự.",
@@ -177,26 +177,21 @@ public class AdminFinanceService : IAdminFinanceService
 
         await _store.AddRefundAsync(refund, ct);
 
-        if (_ledger != null)
+        var platformFeeVnd = appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
+        var refundedSoFarAfter = payment.RefundedSoFarVnd;
+        var cumFeeBefore = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarBefore / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
+        var cumFeeAfter = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarAfter / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
+        var refundFee = cumFeeAfter - cumFeeBefore;
+        var refundTrainer = request.AmountVnd - refundFee;
+        var occurredAt = refund.SucceededAtUtc ?? DateTime.UtcNow;
+
+        var adjEntries = new[]
         {
-            var platformFeeVnd = appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
-            var refundedSoFarAfter = payment.RefundedSoFarVnd;
-            var cumFeeBefore = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarBefore / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
-            var cumFeeAfter = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarAfter / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
-            var refundFee = cumFeeAfter - cumFeeBefore;
-            var refundTrainer = request.AmountVnd - refundFee;
-            var occurredAt = refund.SucceededAtUtc ?? DateTime.UtcNow;
-
-            var adjEntries = new[]
-            {
-                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundGrossReduction, -request.AmountVnd, occurredAt, adminUserId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.processed:{refund.Id}"),
-                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundPlatformFeeReturn, -refundFee, occurredAt, adminUserId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.processed:{refund.Id}"),
-                FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundTrainerDeduction, -refundTrainer, occurredAt, adminUserId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.processed:{refund.Id}")
-            };
-            await _ledger.AddEntriesAsync(adjEntries, ct);
-        }
-
-        await _store.SaveChangesAsync(ct);
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundGrossReduction, -request.AmountVnd, occurredAt, adminUserId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.processed:{refund.Id}"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundPlatformFeeReturn, -refundFee, occurredAt, adminUserId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.processed:{refund.Id}"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundTrainerDeduction, -refundTrainer, occurredAt, adminUserId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.processed:{refund.Id}")
+        };
+        await _ledger.AddEntriesAsync(adjEntries, ct);
 
         _outbox.Enqueue("finance.refund_processed", new
         {
@@ -209,6 +204,8 @@ public class AdminFinanceService : IAdminFinanceService
             status = payment.Status.ToString(),
             adminUserId
         });
+
+        await _store.SaveChangesAsync(ct);
 
         return new RefundView(
             refund.Id,
@@ -233,14 +230,29 @@ public class AdminFinanceService : IAdminFinanceService
         CancellationToken ct)
     {
         await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+        await _stepUp.EnsureAsync(adminUserId, ct);
 
         if (string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length < 5)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Reason phải có ít nhất 5 ký tự.",
                 new Dictionary<string, string[]> { ["reason"] = new[] { "min 5 chars" } });
 
-        if (string.IsNullOrWhiteSpace(request.EvidenceReference))
-            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "EvidenceReference không được để trống.",
-                new Dictionary<string, string[]> { ["evidenceReference"] = new[] { "required" } });
+        if (string.IsNullOrWhiteSpace(request.EvidenceReference) || request.EvidenceReference.Trim().Length < 3 || request.EvidenceReference.Trim().Length > 128)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "EvidenceReference must be between 3 and 128 characters.",
+                new Dictionary<string, string[]> { ["evidenceReference"] = new[] { "length 3-128" } });
+
+        if (request.EvidenceReference.Any(char.IsControl))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "EvidenceReference cannot contain control characters.",
+                new Dictionary<string, string[]> { ["evidenceReference"] = new[] { "no control characters" } });
+
+        if (request.EvidenceReference.Contains("://", StringComparison.OrdinalIgnoreCase) ||
+            request.EvidenceReference.StartsWith("http:", StringComparison.OrdinalIgnoreCase) ||
+            request.EvidenceReference.StartsWith("https:", StringComparison.OrdinalIgnoreCase) ||
+            request.EvidenceReference.StartsWith("ftp:", StringComparison.OrdinalIgnoreCase) ||
+            request.EvidenceReference.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "EvidenceReference cannot be a URL or contain forbidden schemes.",
+                new Dictionary<string, string[]> { ["evidenceReference"] = new[] { "forbidden scheme" } });
+        }
 
         if (request.VerifiedCompletedAtUtc.Kind != DateTimeKind.Utc)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "VerifiedCompletedAtUtc must be UTC.",
@@ -262,7 +274,7 @@ public class AdminFinanceService : IAdminFinanceService
 
         appt.ReconcileLegacyCompletion(request.VerifiedCompletedAtUtc);
 
-        if (_ledger != null && appt.ActualPaidVnd > 0 && !await _ledger.HasEntriesForAppointmentAsync(appt.Id, ct))
+        if (appt.ActualPaidVnd > 0 && !await _ledger.HasEntriesForAppointmentAsync(appt.Id, ct))
         {
             var entries = new[]
             {
@@ -273,12 +285,14 @@ public class AdminFinanceService : IAdminFinanceService
             await _ledger.AddEntriesAsync(entries, ct);
         }
 
+        _audit?.Stage("legacy_appointment.reconciled", "Appointment", appt.Id, adminUserId, request.Reason);
+
         _outbox.Enqueue("finance.legacy_appointment_verified", new
         {
             appointmentId = appt.Id,
             verifiedCompletedAtUtc = request.VerifiedCompletedAtUtc,
             reason = request.Reason,
-            evidenceReference = request.EvidenceReference,
+            evidenceReference = request.EvidenceReference.Trim(),
             adminUserId
         });
 
