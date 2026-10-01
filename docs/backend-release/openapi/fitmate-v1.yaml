@@ -1048,23 +1048,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
-  /bookings/confirm:
+  /bookings/holds/{id}:
+    get:
+      tags: [Bookings]
+      summary: Lookup hold (Owner-scoped) kiểm tra TTL trước khi thanh toán
+      operationId: getBookingHold
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [holdId, expiresAt, isActive]
+                properties:
+                  holdId:
+                    type: string
+                    format: uuid
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  isActive:
+                    type: boolean
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /bookings/{id}/confirm:
     post:
       tags: [Bookings]
-      summary: Xác nhận booking sau khi thanh toán
-      operationId: confirmBooking
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [hold_id, payment_id]
-              properties:
-                hold_id:
-                  type: string
-                payment_id:
-                  type: string
+      summary: PT confirm/accept booking
+      operationId: confirmBookingById
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
       responses:
         '200':
           description: OK
@@ -1072,18 +1091,67 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Appointment'
-        '402':
-          description: Payment chưa thanh toán
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /me/bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Lấy chi tiết booking theo ID (Member hoặc PT)
+      operationId: getMyBookingDetail
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
-        '410':
-          description: Hold đã hết hạn
+                $ref: '#/components/schemas/Appointment'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /me/bookings/{id}/confirm:
+    post:
+      tags: [Bookings]
+      summary: PT confirm/accept booking (alias under /me)
+      operationId: confirmMyBooking
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/Appointment'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /me/bookings/{id}/start:
+    post:
+      tags: [Bookings]
+      summary: PT bắt đầu buổi tập (Confirmed -> InProgress)
+      operationId: startMyBooking
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /me/bookings:
     get:
@@ -1287,6 +1355,14 @@ paths:
           description: Redirect về app
 
   /payments/vnpay/ipn:
+    get:
+      tags: [Payments]
+      summary: VNPay IPN webhook (GET query callback)
+      operationId: vnpayIpnGet
+      security: []
+      responses:
+        '200':
+          description: OK (always; VNPay yêu cầu)
     post:
       tags: [Payments]
       summary: VNPay IPN webhook
