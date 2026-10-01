@@ -4,6 +4,7 @@ info:
   description: |
     Source of truth cho Android app + Admin Web.
     Quy ước: xem docs/backend-release/api-contract.md.
+    Frozen contract baseline v1 (BE-801) - 2026-10-01.
   version: 1.0.0
   contact:
     name: Fitmate Backend

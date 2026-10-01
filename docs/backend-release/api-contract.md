@@ -40,3 +40,10 @@ Production lỗi phải show error/unavailable; không fallback mock.
 
 ## Payment/settlement override — 2026-09-26
 User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.
+
+## Contract baseline freeze — 2026-10-01 (BE-801)
+Contract v1 chính thức đóng băng (frozen) giữa Backend, Mobile App (`FitmateAI_FE\mobile`), và Admin Web (`FitmateWebApp`).
+- Tự động kiểm tra parity qua bộ test: `RouteOpenApiParityTests`, `DtoSerializationContractTests`, `ContractSecurityCoverageTests`.
+- 100% routes và operations đã đối chiếu khớp (0 route missing, 0 phantom operation, 0 mismatch về security/path parameter).
+- Wire JSON conventions: snake_case cho domain properties; camelCase cho existing pagination metadata; integer VNĐ; ISO 8601 UTC.
+
