@@ -979,6 +979,21 @@ paths:
                 $ref: '#/components/schemas/Service'
 
   /me/services/{id}:
+    get:
+      tags: [Services]
+      summary: Chi tiết dịch vụ
+      operationId: getMyService
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Service'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       tags: [Services]
       summary: Cập nhật dịch vụ
@@ -1152,6 +1167,25 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /me/dashboard:
+    get:
+      tags: [Users]
+      summary: Dashboard và tiến độ ngày của user
+      operationId: getMyDashboard
+      parameters:
+        - in: query
+          name: date
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummaryView'
 
   /me/bookings:
     get:
@@ -1559,20 +1593,29 @@ paths:
               schema:
                 $ref: '#/components/schemas/RevenueSummary'
 
-  /me/revenue/{bookingId}:
+  /me/revenue/history:
     get:
       tags: [Finance]
-      summary: Revenue detail theo booking
-      operationId: getMyRevenueDetail
+      summary: Lịch sử doanh thu từng booking của PT
+      operationId: getMyRevenueHistory
       parameters:
-        - name: bookingId
-          in: path
-          required: true
+        - in: query
+          name: page
           schema:
-            type: string
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 20
       responses:
         '200':
           description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainerRevenueHistoryPage'
           content:
             application/json:
               schema:
@@ -2609,6 +2652,140 @@ paths:
       responses:
         '204':
           description: No Content
+
+  /support/tickets:
+    get:
+      tags: [Support]
+      summary: Danh sách ticket hỗ trợ của tôi
+      operationId: listMySupportTickets
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSupportTicketsResult'
+    post:
+      tags: [Support]
+      summary: Tạo ticket hỗ trợ mới
+      operationId: createSupportTicket
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSupportTicketRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /support/tickets/{id}:
+    get:
+      tags: [Support]
+      summary: Chi tiết ticket hỗ trợ
+      operationId: getSupportTicket
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /support/tickets/{id}/reply:
+    post:
+      tags: [Support]
+      summary: Phản hồi ticket hỗ trợ
+      operationId: replySupportTicket
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplySupportTicketRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetail'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /support/tickets/{id}/close:
+    post:
+      tags: [Support]
+      summary: Đóng ticket hỗ trợ
+      operationId: closeSupportTicket
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /uploads:
+    post:
+      tags: [Storage]
+      summary: Tải lên tệp tin và nhận signed URL
+      operationId: uploadFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [category, file]
+              properties:
+                category:
+                  type: string
+                  description: Danh mục tệp (avatars, certificates, support, posts)
+                file:
+                  type: string
+                  format: binary
+                  description: Tệp tin tải lên
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /admin/users:
     get:
@@ -4483,6 +4660,166 @@ components:
     RescheduleRequestStatus:
       type: string
       enum: [Pending, Accepted, Rejected, Expired, Cancelled]
+
+
+    DashboardSummaryView:
+      type: object
+      required: [date, nutrition, workout, net_calories, streak]
+      properties:
+        date:
+          type: string
+          format: date
+        nutrition:
+          type: object
+          properties:
+            total_calories: { type: integer }
+            protein_g: { type: integer }
+            carbs_g: { type: integer }
+            fat_g: { type: integer }
+            target_calories: { type: integer, nullable: true }
+        workout:
+          type: object
+          properties:
+            total_calories_burned: { type: integer }
+            duration_minutes: { type: integer }
+            completed_sessions_count: { type: integer }
+        net_calories:
+          type: integer
+        streak:
+          type: object
+          properties:
+            current_streak_days: { type: integer }
+            longest_streak_days: { type: integer }
+        latest_weight:
+          type: object
+          nullable: true
+          properties:
+            weight_kg: { type: number }
+            recorded_at: { type: string, format: date-time }
+        upcoming_appointment:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            pt_user_id: { type: string, format: uuid }
+            pt_name: { type: string, nullable: true }
+            slot_start_utc: { type: string, format: date-time }
+            duration_minutes: { type: integer }
+            status: { type: string }
+
+    TrainerRevenueHistoryPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrainerRevenueItem'
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    TrainerRevenueItem:
+      type: object
+      required: [appointmentId, date, grossVnd, platformFeeVnd, netVnd, status]
+      properties:
+        appointmentId: { type: string, format: uuid }
+        date: { type: string, format: date-time }
+        grossVnd: { type: integer }
+        platformFeeVnd: { type: integer }
+        netVnd: { type: integer }
+        status: { $ref: '#/components/schemas/AppointmentStatus' }
+        paidOutVnd: { type: integer }
+        settlementStatus: { type: string }
+
+    CreateSupportTicketRequest:
+      type: object
+      required: [subject, category, message]
+      properties:
+        subject: { type: string }
+        category: { type: string }
+        priority: { type: string, nullable: true }
+        message: { type: string }
+        attachment_urls:
+          type: array
+          items: { type: string }
+          nullable: true
+        booking_id: { type: string, format: uuid, nullable: true }
+
+    ReplySupportTicketRequest:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+        attachment_urls:
+          type: array
+          items: { type: string }
+          nullable: true
+
+    SupportTicketMessage:
+      type: object
+      required: [id, sender_id, is_admin, content, attachment_urls, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        sender_id: { type: string, format: uuid }
+        is_admin: { type: boolean }
+        content: { type: string }
+        attachment_urls:
+          type: array
+          items: { type: string }
+        created_at: { type: string, format: date-time }
+
+    SupportTicketSummary:
+      type: object
+      required: [id, user_id, subject, category, priority, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        subject: { type: string }
+        category: { type: string }
+        priority: { type: string }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        closed_at: { type: string, format: date-time, nullable: true }
+
+    SupportTicketDetail:
+      type: object
+      required: [id, user_id, subject, category, priority, status, created_at, updated_at, messages]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        subject: { type: string }
+        category: { type: string }
+        priority: { type: string }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        closed_at: { type: string, format: date-time, nullable: true }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/SupportTicketMessage' }
+
+    PagedSupportTicketsResult:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SupportTicketSummary' }
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }
+
+    UploadResponse:
+      type: object
+      required: [storageKey, uri, signedUrl]
+      properties:
+        storageKey: { type: string }
+        uri: { type: string }
+        signedUrl: { type: string }
 
     Payment:
       type: object
