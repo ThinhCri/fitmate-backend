@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json.Serialization;
 using Fitmate.Application.Social;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
@@ -93,5 +94,5 @@ public class FriendsController : ControllerBase
     }
 }
 
-public sealed record SendFriendRequestBody(Guid ToUserId);
-public sealed record FriendRequestActionBody(string Action);
+public sealed record SendFriendRequestBody([property: JsonPropertyName("to_user_id")] Guid ToUserId);
+public sealed record FriendRequestActionBody([property: JsonPropertyName("action")] string Action);

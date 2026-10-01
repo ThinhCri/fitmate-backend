@@ -2317,9 +2317,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/FriendSummary'
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FriendSummary'
+                  nextCursor:
+                    type: string
+                    nullable: true
 
   /social/friends/{userId}:
     delete:
@@ -2397,9 +2403,15 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/BlockedSummary'
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BlockedSummary'
+                  nextCursor:
+                    type: string
+                    nullable: true
 
   /social/blocks/{userId}:
     delete:
@@ -5812,15 +5824,41 @@ components:
         note:
           type: string
 
-    Post:
+    PostAuthor:
       type: object
+      required: [id, display_name]
       properties:
         id:
           type: string
+          format: uuid
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+
+    Post:
+      type: object
+      required:
+        - id
+        - author_id
+        - author
+        - content
+        - tags
+        - visibility
+        - is_knowledge
+        - reactions_count
+        - comments_count
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
         author_id:
           type: string
+          format: uuid
         author:
-          $ref: '#/components/schemas/UserSummary'
+          $ref: '#/components/schemas/PostAuthor'
         content:
           type: string
         image_url:
@@ -5842,10 +5880,6 @@ components:
           type: integer
         comments_count:
           type: integer
-        my_reaction:
-          type: string
-          enum: [heart, flame, smile]
-          nullable: true
         created_at:
           type: string
           format: date-time
@@ -5874,15 +5908,25 @@ components:
 
     Comment:
       type: object
+      required:
+        - id
+        - post_id
+        - author_id
+        - author
+        - text
+        - created_at
       properties:
         id:
           type: string
+          format: uuid
         post_id:
           type: string
+          format: uuid
         author_id:
           type: string
+          format: uuid
         author:
-          $ref: '#/components/schemas/UserSummary'
+          $ref: '#/components/schemas/PostAuthor'
         text:
           type: string
         created_at:
@@ -5930,13 +5974,22 @@ components:
 
     FriendRequest:
       type: object
+      required:
+        - id
+        - sender_id
+        - recipient_id
+        - status
+        - created_at
       properties:
         id:
           type: string
+          format: uuid
         sender_id:
           type: string
+          format: uuid
         recipient_id:
           type: string
+          format: uuid
         status:
           type: string
           enum: [pending, accepted, rejected, cancelled]
@@ -5946,9 +5999,14 @@ components:
 
     FriendSummary:
       type: object
+      required:
+        - id
+        - display_name
+        - friends_since
       properties:
         id:
           type: string
+          format: uuid
         display_name:
           type: string
         avatar_url:
@@ -5960,12 +6018,15 @@ components:
 
     FriendRelationStatus:
       type: object
+      required:
+        - relation
       properties:
         relation:
           type: string
           enum: [none, outgoing_pending, incoming_pending, friends, blocked_either]
         request_id:
           type: string
+          format: uuid
           nullable: true
         request_created_at:
           type: string
@@ -5974,9 +6035,13 @@ components:
 
     BlockedSummary:
       type: object
+      required:
+        - id
+        - blocked_at
       properties:
         id:
           type: string
+          format: uuid
         blocked_at:
           type: string
           format: date-time

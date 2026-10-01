@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
 
@@ -5,23 +6,28 @@ namespace Fitmate.Application.Social;
 
 public enum FeedScope { Public, Friends }
 
-public sealed record PostAuthor(Guid Id, string DisplayName, string? AvatarUrl);
+public sealed record PostAuthor(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("display_name")] string DisplayName,
+    [property: JsonPropertyName("avatar_url")] string? AvatarUrl);
 
-    public sealed record PostView(
-    Guid Id,
-    Guid AuthorId,
-    PostAuthor Author,
-    string Content,
-    string? ImageUrl,
-    string? Link,
-    IReadOnlyList<string> Tags,
-    string Visibility,
-    bool IsKnowledge,
-    int ReactionsCount,
-    int CommentsCount,
-    DateTime CreatedAt);
+public sealed record PostView(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("author_id")] Guid AuthorId,
+    [property: JsonPropertyName("author")] PostAuthor Author,
+    [property: JsonPropertyName("content")] string Content,
+    [property: JsonPropertyName("image_url")] string? ImageUrl,
+    [property: JsonPropertyName("link")] string? Link,
+    [property: JsonPropertyName("tags")] IReadOnlyList<string> Tags,
+    [property: JsonPropertyName("visibility")] string Visibility,
+    [property: JsonPropertyName("is_knowledge")] bool IsKnowledge,
+    [property: JsonPropertyName("reactions_count")] int ReactionsCount,
+    [property: JsonPropertyName("comments_count")] int CommentsCount,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt);
 
-public sealed record PostPage(IReadOnlyList<PostView> Items, string? NextCursor);
+public sealed record PostPage(
+    [property: JsonPropertyName("items")] IReadOnlyList<PostView> Items,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor);
 
 public sealed record PostInput(
     string Content,
@@ -32,14 +38,16 @@ public sealed record PostInput(
     bool IsKnowledge);
 
 public sealed record CommentView(
-    Guid Id,
-    Guid PostId,
-    Guid AuthorId,
-    PostAuthor Author,
-    string Text,
-    DateTime CreatedAt);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("post_id")] Guid PostId,
+    [property: JsonPropertyName("author_id")] Guid AuthorId,
+    [property: JsonPropertyName("author")] PostAuthor Author,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt);
 
-public sealed record CommentPage(IReadOnlyList<CommentView> Items, string? NextCursor);
+public sealed record CommentPage(
+    [property: JsonPropertyName("items")] IReadOnlyList<CommentView> Items,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor);
 
 /// <summary>BE-211: đổi từ ReportTargetKind (3 value) sang ReportTargetType (4 value theo DEC-028).
 /// Controller parse string → enum tương ứng.</summary>

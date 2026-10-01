@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json.Serialization;
 using Fitmate.Application.Social;
 using Fitmate.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
@@ -55,4 +56,4 @@ public class BlocksController : ControllerBase
     }
 }
 
-public sealed record BlockBody(Guid UserId);
+public sealed record BlockBody([property: JsonPropertyName("user_id")] Guid UserId);

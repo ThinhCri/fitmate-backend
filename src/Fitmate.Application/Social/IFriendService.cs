@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
 
@@ -47,35 +48,41 @@ public interface IBlockService
 }
 
 public sealed record FriendRequestView(
-    Guid Id,
-    Guid SenderId,
-    Guid RecipientId,
-    string Status,
-    DateTime CreatedAt);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("sender_id")] Guid SenderId,
+    [property: JsonPropertyName("recipient_id")] Guid RecipientId,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt);
 
 public sealed record FriendRequestDetailedView(
-    Guid Id,
-    Guid SenderId,
-    Guid RecipientId,
-    string Status,
-    DateTime CreatedAt,
-    FriendSummary? Sender,
-    FriendSummary? Recipient);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("sender_id")] Guid SenderId,
+    [property: JsonPropertyName("recipient_id")] Guid RecipientId,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt,
+    [property: JsonPropertyName("sender")] FriendSummary? Sender,
+    [property: JsonPropertyName("recipient")] FriendSummary? Recipient);
 
 public sealed record FriendSummary(
-    Guid Id,
-    string DisplayName,
-    string? AvatarUrl,
-    DateTime FriendsSince);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("display_name")] string DisplayName,
+    [property: JsonPropertyName("avatar_url")] string? AvatarUrl,
+    [property: JsonPropertyName("friends_since")] DateTime FriendsSince);
 
-public sealed record FriendPage(IReadOnlyList<FriendSummary> Items, string? NextCursor);
+public sealed record FriendPage(
+    [property: JsonPropertyName("items")] IReadOnlyList<FriendSummary> Items,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor);
 
-public sealed record BlockedSummary(Guid Id, DateTime BlockedAt);
+public sealed record BlockedSummary(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("blocked_at")] DateTime BlockedAt);
 
-public sealed record BlockListPage(IReadOnlyList<BlockedSummary> Items, string? NextCursor);
+public sealed record BlockListPage(
+    [property: JsonPropertyName("items")] IReadOnlyList<BlockedSummary> Items,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor);
 
 /// <summary>BE-181: trạng thái quan hệ 2 chiều cho UI.</summary>
 public sealed record FriendRequestStatusView(
-    string Relation, // none | outgoing_pending | incoming_pending | friends | blocked_either
-    Guid? RequestId,
-    DateTime? RequestCreatedAt);
+    [property: JsonPropertyName("relation")] string Relation, // none | outgoing_pending | incoming_pending | friends | blocked_either
+    [property: JsonPropertyName("request_id")] Guid? RequestId,
+    [property: JsonPropertyName("request_created_at")] DateTime? RequestCreatedAt);

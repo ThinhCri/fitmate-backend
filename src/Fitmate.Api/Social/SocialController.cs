@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json.Serialization;
 using Fitmate.Application.Social;
 using Fitmate.Domain.Social;
 using Fitmate.Domain.Common;
@@ -158,15 +159,21 @@ public class SocialController : ControllerBase
 }
 
 public sealed record PostInputDto(
-    string Content,
-    string? ImageStorageKey,
-    string? Link,
-    List<string>? Tags,
-    string Visibility,
-    bool? IsKnowledge);
+    [property: JsonPropertyName("content")] string Content,
+    [property: JsonPropertyName("image_storage_key")] string? ImageStorageKey,
+    [property: JsonPropertyName("link")] string? Link,
+    [property: JsonPropertyName("tags")] List<string>? Tags,
+    [property: JsonPropertyName("visibility")] string Visibility,
+    [property: JsonPropertyName("is_knowledge")] bool? IsKnowledge);
 
-public sealed record CreateCommentBody(string Text);
+public sealed record CreateCommentBody(
+    [property: JsonPropertyName("text")] string Text);
 
-public sealed record ReactionBody(string Type);
+public sealed record ReactionBody(
+    [property: JsonPropertyName("type")] string Type);
 
-public sealed record ReportBody(string TargetType, Guid TargetId, string Reason, string? Details);
+public sealed record ReportBody(
+    [property: JsonPropertyName("target_type")] string TargetType,
+    [property: JsonPropertyName("target_id")] Guid TargetId,
+    [property: JsonPropertyName("reason")] string Reason,
+    [property: JsonPropertyName("details")] string? Details);
