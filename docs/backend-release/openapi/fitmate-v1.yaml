@@ -919,28 +919,19 @@ paths:
   /me/bookings/{id}/reschedule:
     post:
       tags: [Bookings]
-      summary: Đổi slot booking
+      summary: Đổi slot booking (Bãi bỏ - 410 Gone)
+      description: Endpoint này đã bị bãi bỏ theo DEC-051 và Reschedule Branch A (BR-05). Luôn trả về HTTP 410 Gone. Sử dụng luồng đề xuất đổi lịch qua /me/bookings/{id}/reschedule-requests.
       operationId: rescheduleMyBooking
+      deprecated: true
       parameters:
         - $ref: '#/components/parameters/IdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [new_slot_start_utc]
-              properties:
-                new_slot_start_utc:
-                  type: string
-                  format: date-time
       responses:
-        '200':
-          description: OK
+        '410':
+          description: Endpoint đã bị bãi bỏ
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Appointment'
+                $ref: '#/components/schemas/ProblemDetails'
 
   /me/bookings/{id}/complete:
     post:
@@ -2447,6 +2438,81 @@ paths:
                   total:
                     type: integer
 
+  /admin/finance/legacy-appointments/unverified:
+    get:
+      tags: [Admin]
+      summary: Danh sách lịch hẹn lịch sử chưa đối soát
+      operationId: getUnverifiedLegacyAppointments
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LegacyAppointmentReconciliationView'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/finance/legacy-appointments/{id}/verify:
+    post:
+      tags: [Admin]
+      summary: Xác minh và đối soát lịch hẹn lịch sử
+      operationId: verifyLegacyAppointment
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/FinanceTotp'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [verifiedCompletedAtUtc, reason, evidenceReference]
+              properties:
+                verifiedCompletedAtUtc:
+                  type: string
+                  format: date-time
+                reason:
+                  type: string
+                  minLength: 5
+                evidenceReference:
+                  type: string
+                  minLength: 3
+                  maxLength: 128
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  appointmentId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                  completedAtUtc:
+                    type: string
+                    format: date-time
+                  legacyCompletionTimeUnknown:
+                    type: boolean
+        '400':
+          description: Validation error
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: MFA required or Forbidden
+        '404':
+          description: Appointment not found
+        '409':
+          description: Appointment not completed or conflict
+
   /admin/reports:
     get:
       tags: [Admin]
@@ -3064,6 +3130,19 @@ components:
             $ref: '#/components/schemas/ProblemDetails'
 
   schemas:
+    LegacyAppointmentReconciliationView:
+      type: object
+      properties:
+        id: {type: string, format: uuid}
+        memberId: {type: string, format: uuid}
+        ptUserId: {type: string, format: uuid}
+        slotStartUtc: {type: string, format: date-time}
+        actualPaidVnd: {type: integer, format: int64}
+        platformFeeVnd: {type: integer, format: int64}
+        trainerShareVnd: {type: integer, format: int64}
+        status: {type: string}
+        legacyCompletionTimeUnknown: {type: boolean}
+        completedAtUtc: {type: string, format: date-time, nullable: true}
     ManualTransferRequest:
       type: object
       required: [bankReference, evidenceReference, transferredAt]
