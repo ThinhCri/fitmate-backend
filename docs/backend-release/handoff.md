@@ -1,3 +1,12 @@
+## 2026-10-02 — Hoàn tất verification sau review và đóng băng lại Mobile API contract
+- **Trạng thái**: `FROZEN-V1`.
+- Sửa UAT Journey 08 gửi canonical request field `user_id` thay cho contract cũ `userId`; test riêng pass 1/1.
+- `dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj -c Release --no-restore`: PASS, 61/61, 0 failed, 0 skipped.
+- Build Release: PASS, 0 warnings, 0 errors. Unit tests: PASS, 879/879.
+- Frozen OpenAPI revision: `74b223497f2a075f295644afcf5f9bcad897b66e`.
+- Frozen OpenAPI SHA256 (raw file bytes): `4637c6ad3a323df062ba4b4b5c97ef3d7beb75c475ba44fc1f4b54b8fd827804`.
+- Mobile client được phép generate từ đúng revision/hash trên. Không dùng hash stabilization cũ `3f513f3f...`.
+
 ## 2026-10-02 — Mở lại verification Mobile API contract sau review
 - **Trạng thái**: `CONTRACT_STABILIZATION_IN_PROGRESS`; thay thế tuyên bố `FROZEN-V1` ngay bên dưới cho tới khi integration suite chạy pass.
 - **Đã sửa**:
