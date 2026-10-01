@@ -1610,6 +1610,56 @@ paths:
               schema:
                 $ref: '#/components/schemas/WorkoutPlan'
 
+
+  /me/workout/plans/{id}:
+    get:
+      tags: [Workout]
+      summary: Chi tiết workout plan
+      operationId: getMyWorkoutPlan
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Workout]
+      summary: Cập nhật workout plan
+      operationId: updateMyWorkoutPlan
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkoutPlanInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkoutPlan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Workout]
+      summary: Xóa workout plan
+      operationId: deleteMyWorkoutPlan
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /me/workout/sessions:
     get:
       tags: [Workout]
@@ -4552,6 +4602,25 @@ components:
           type: integer
         target_calories_burn:
           type: integer
+        exercises:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExerciseInput'
+
+
+    UpdateWorkoutPlanInput:
+      type: object
+      properties:
+        day_of_week:
+          type: string
+        workout_name:
+          type: string
+        duration_minutes:
+          type: integer
+        target_calories_burn:
+          type: integer
+        is_completed:
+          type: boolean
         exercises:
           type: array
           items:
