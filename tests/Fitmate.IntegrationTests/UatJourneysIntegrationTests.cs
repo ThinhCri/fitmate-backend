@@ -361,7 +361,7 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
 
         // 1. Thiết lập chặn hai chiều (User A chặn User B)
         var clientA = _factory.CreateAuthenticatedClient(role: "Member", userId: userA);
-        var blockReq = new { userId = userB };
+        var blockReq = new { user_id = userB };
         var blockResp = await clientA.PostAsJsonAsync("/api/v1/social/blocks", blockReq);
         blockResp.StatusCode.Should().BeOneOf(HttpStatusCode.OK, HttpStatusCode.NoContent, HttpStatusCode.Created);
 
