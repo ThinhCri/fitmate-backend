@@ -1,39 +1,40 @@
+using System.Text.Json.Serialization;
+
 namespace Fitmate.Application.Dashboard;
 
 public sealed record DashboardSummaryView(
-    DateOnly Date,
-    NutritionSummaryView Nutrition,
-    WorkoutSummaryView Workout,
-    int NetCalories,
-    StreakView Streak,
-    LatestWeightView? LatestWeight,
-    UpcomingAppointmentSummaryView? UpcomingAppointment);
+    [property: JsonPropertyName("date")] DateOnly Date,
+    [property: JsonPropertyName("nutrition")] NutritionSummaryView Nutrition,
+    [property: JsonPropertyName("workout")] WorkoutSummaryView Workout,
+    [property: JsonPropertyName("net_calories")] int NetCalories,
+    [property: JsonPropertyName("streak")] StreakView Streak,
+    [property: JsonPropertyName("latest_weight")] LatestWeightView? LatestWeight,
+    [property: JsonPropertyName("upcoming_appointment")] UpcomingAppointmentSummaryView? UpcomingAppointment);
 
 public sealed record NutritionSummaryView(
-    int TotalCalories,
-    int ProteinG,
-    int CarbsG,
-    int FatG,
-    int? TargetCalories);
+    [property: JsonPropertyName("total_calories")] int TotalCalories,
+    [property: JsonPropertyName("protein_g")] int ProteinG,
+    [property: JsonPropertyName("carbs_g")] int CarbsG,
+    [property: JsonPropertyName("fat_g")] int FatG,
+    [property: JsonPropertyName("target_calories")] int? TargetCalories);
 
 public sealed record WorkoutSummaryView(
-    int TotalCaloriesBurned,
-    int DurationMinutes,
-    int CompletedSessionsCount);
+    [property: JsonPropertyName("total_calories_burned")] int TotalCaloriesBurned,
+    [property: JsonPropertyName("duration_minutes")] int DurationMinutes,
+    [property: JsonPropertyName("completed_sessions_count")] int CompletedSessionsCount);
 
 public sealed record StreakView(
-    int CurrentStreakDays,
-    int LongestStreakDays);
+    [property: JsonPropertyName("current_streak_days")] int CurrentStreakDays,
+    [property: JsonPropertyName("longest_streak_days")] int LongestStreakDays);
 
 public sealed record LatestWeightView(
-    decimal WeightKg,
-    DateTime RecordedAt);
+    [property: JsonPropertyName("weight_kg")] decimal WeightKg,
+    [property: JsonPropertyName("recorded_at")] DateTime RecordedAt);
 
 public sealed record UpcomingAppointmentSummaryView(
-    Guid Id,
-    Guid PtUserId,
-    string? PtName,
-    DateTime SlotStartUtc,
-    int DurationMinutes,
-    string Status);
-
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("pt_user_id")] Guid PtUserId,
+    [property: JsonPropertyName("pt_name")] string? PtName,
+    [property: JsonPropertyName("slot_start_utc")] DateTime SlotStartUtc,
+    [property: JsonPropertyName("duration_minutes")] int DurationMinutes,
+    [property: JsonPropertyName("status")] string Status);

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Fitmate.Application.Auth.Contracts;
 
 /// <summary>
@@ -5,45 +7,62 @@ namespace Fitmate.Application.Auth.Contracts;
 /// Theo OpenAPI <c>RegisterRequest</c> schema.
 /// </summary>
 public record RegisterRequest(
-    string Email,
-    string Password,
-    string FullName,
-    string Role,
-    decimal? HeightCm,
-    decimal? WeightKg,
-    string? Gender,
-    DateOnly? Birthday,
-    string? FitnessGoal,
-    List<string>? TrainingDays,
-    string? Specialty,
-    int? ExperienceYears,
-    long? PricePerSessionVnd,
-    string? Timezone);
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("password")] string Password,
+    [property: JsonPropertyName("full_name")] string FullName,
+    [property: JsonPropertyName("role")] string Role,
+    [property: JsonPropertyName("height_cm")] decimal? HeightCm = null,
+    [property: JsonPropertyName("weight_kg")] decimal? WeightKg = null,
+    [property: JsonPropertyName("gender")] string? Gender = null,
+    [property: JsonPropertyName("birthday")] DateOnly? Birthday = null,
+    [property: JsonPropertyName("fitness_goal")] string? FitnessGoal = null,
+    [property: JsonPropertyName("training_days")] List<string>? TrainingDays = null,
+    [property: JsonPropertyName("specialty")] string? Specialty = null,
+    [property: JsonPropertyName("experience_years")] int? ExperienceYears = null,
+    [property: JsonPropertyName("price_per_session_vnd")] long? PricePerSessionVnd = null,
+    [property: JsonPropertyName("timezone")] string? Timezone = null);
 
-public record LoginRequest(string Email, string Password, string? DeviceLabel, string? Code = null, bool UseRecoveryCode = false);
+public record LoginRequest(
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("password")] string Password,
+    [property: JsonPropertyName("device_label")] string? DeviceLabel = null,
+    [property: JsonPropertyName("code")] string? Code = null,
+    [property: JsonPropertyName("use_recovery_code")] bool UseRecoveryCode = false);
 
-public record RefreshRequest(string RefreshToken);
-public record VerifyAdminLoginRequest(string ChallengeId, string Code, bool UseRecoveryCode = false);
+public record RefreshRequest(
+    [property: JsonPropertyName("refresh_token")] string RefreshToken);
 
-public record ForgotPasswordRequest(string Email);
+public record VerifyAdminLoginRequest(
+    [property: JsonPropertyName("challenge_id")] string ChallengeId,
+    [property: JsonPropertyName("code")] string Code,
+    [property: JsonPropertyName("use_recovery_code")] bool UseRecoveryCode = false);
 
-public record ResetPasswordRequest(string Token, string NewPassword, string? Email = null);
+public record ForgotPasswordRequest(
+    [property: JsonPropertyName("email")] string Email);
 
-public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+public record ResetPasswordRequest(
+    [property: JsonPropertyName("token")] string Token,
+    [property: JsonPropertyName("new_password")] string NewPassword,
+    [property: JsonPropertyName("email")] string? Email = null);
 
-public record LogoutRequest(string? RefreshToken = null);
+public record ChangePasswordRequest(
+    [property: JsonPropertyName("current_password")] string CurrentPassword,
+    [property: JsonPropertyName("new_password")] string NewPassword);
+
+public record LogoutRequest(
+    [property: JsonPropertyName("refresh_token")] string? RefreshToken = null);
 
 public record PasswordResetPayload(Guid UserId, string Email, string Token, string FullName);
 
 public record UserSummaryDto(
-    Guid Id,
-    string Email,
-    string? AvatarUrl,
-    string FullName,
-    string Role);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("avatar_url")] string? AvatarUrl,
+    [property: JsonPropertyName("full_name")] string FullName,
+    [property: JsonPropertyName("role")] string Role);
 
 public record AuthResponse(
-    string AccessToken,
-    string RefreshToken,
-    int ExpiresIn,
-    UserSummaryDto User);
+    [property: JsonPropertyName("access_token")] string AccessToken,
+    [property: JsonPropertyName("refresh_token")] string RefreshToken,
+    [property: JsonPropertyName("expires_in")] int ExpiresIn,
+    [property: JsonPropertyName("user")] UserSummaryDto User);

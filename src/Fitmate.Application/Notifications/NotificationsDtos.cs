@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Notifications;
 
@@ -7,31 +8,32 @@ namespace Fitmate.Application.Notifications;
 // ─── Query ─────────────────────────────────────────────────────────────────
 
 public sealed record NotificationView(
-    Guid Id,
-    NotificationType Type,
-    string Title,
-    string Message,
-    string? Summary,
-    JsonElement? Payload,
-    Guid? SourceEventId,
-    string? SourceType,
-    bool Read,
-    DateTime CreatedAt);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonConverter(typeof(JsonStringEnumConverter<NotificationType>))]
+    [property: JsonPropertyName("type")] NotificationType Type,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("message")] string Message,
+    [property: JsonPropertyName("summary")] string? Summary,
+    [property: JsonPropertyName("payload")] JsonElement? Payload,
+    [property: JsonPropertyName("source_event_id")] Guid? SourceEventId,
+    [property: JsonPropertyName("source_type")] string? SourceType,
+    [property: JsonPropertyName("read")] bool Read,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt);
 
 public sealed record NotificationPage(
-    IReadOnlyList<NotificationView> Items,
-    int Total);
+    [property: JsonPropertyName("items")] IReadOnlyList<NotificationView> Items,
+    [property: JsonPropertyName("total")] int Total);
 
 // ─── Command ─────────────────────────────────────────────────────────────────
 
 public sealed record RegisterDeviceRequest(
-    string DeviceToken,
-    string Platform,  // "android" | "ios" | "web"
-    string Provider); // "fcm" | "expo"
+    [property: JsonPropertyName("device_token")] string DeviceToken,
+    [property: JsonPropertyName("platform")] string Platform,  // "android" | "ios" | "web"
+    [property: JsonPropertyName("provider")] string Provider); // "fcm" | "expo"
 
 public sealed record RegisterDeviceResult(
-    Guid DeviceId,
-    DateTime RegisteredAt);
+    [property: JsonPropertyName("device_id")] Guid DeviceId,
+    [property: JsonPropertyName("registered_at")] DateTime RegisteredAt);
 
 // ─── Internal (used by dispatcher) ───────────────────────────────────────────
 

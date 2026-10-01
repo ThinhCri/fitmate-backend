@@ -1,57 +1,58 @@
+using System.Text.Json.Serialization;
 using Fitmate.Domain.Support;
 
 namespace Fitmate.Application.Support;
 
 public record CreateSupportTicketRequest(
-    string Subject,
-    string Category,
-    string? Priority,
-    string Message,
-    List<string>? AttachmentUrls, Guid? BookingId = null);
+    [property: JsonPropertyName("subject")] string Subject,
+    [property: JsonPropertyName("category")] string Category,
+    [property: JsonPropertyName("priority")] string? Priority,
+    [property: JsonPropertyName("message")] string Message,
+    [property: JsonPropertyName("attachment_urls")] List<string>? AttachmentUrls,
+    [property: JsonPropertyName("booking_id")] Guid? BookingId = null);
 
 public record ReplySupportTicketRequest(
-    string Message,
-    List<string>? AttachmentUrls);
+    [property: JsonPropertyName("message")] string Message,
+    [property: JsonPropertyName("attachment_urls")] List<string>? AttachmentUrls);
 
 public record AdminChangeStatusRequest(
-    string Status);
+    [property: JsonPropertyName("status")] string Status);
 
 public record SupportTicketMessageDto(
-    Guid Id,
-    Guid SenderId,
-    bool IsAdmin,
-    string Content,
-    List<string> AttachmentUrls,
-    DateTime CreatedAt);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("sender_id")] Guid SenderId,
+    [property: JsonPropertyName("is_admin")] bool IsAdmin,
+    [property: JsonPropertyName("content")] string Content,
+    [property: JsonPropertyName("attachment_urls")] List<string> AttachmentUrls,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt);
 
 public record SupportTicketSummaryDto(
-    Guid Id,
-    Guid UserId,
-    string Subject,
-    string Category,
-    string Priority,
-    string Status,
-    DateTime CreatedAt,
-    DateTime UpdatedAt,
-    DateTime? ResolvedAt,
-    DateTime? ClosedAt);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("user_id")] Guid UserId,
+    [property: JsonPropertyName("subject")] string Subject,
+    [property: JsonPropertyName("category")] string Category,
+    [property: JsonPropertyName("priority")] string Priority,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTime UpdatedAt,
+    [property: JsonPropertyName("resolved_at")] DateTime? ResolvedAt,
+    [property: JsonPropertyName("closed_at")] DateTime? ClosedAt);
 
 public record SupportTicketDetailDto(
-    Guid Id,
-    Guid UserId,
-    string Subject,
-    string Category,
-    string Priority,
-    string Status,
-    DateTime CreatedAt,
-    DateTime UpdatedAt,
-    DateTime? ResolvedAt,
-    DateTime? ClosedAt,
-    IReadOnlyList<SupportTicketMessageDto> Messages);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("user_id")] Guid UserId,
+    [property: JsonPropertyName("subject")] string Subject,
+    [property: JsonPropertyName("category")] string Category,
+    [property: JsonPropertyName("priority")] string Priority,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt,
+    [property: JsonPropertyName("updated_at")] DateTime UpdatedAt,
+    [property: JsonPropertyName("resolved_at")] DateTime? ResolvedAt,
+    [property: JsonPropertyName("closed_at")] DateTime? ClosedAt,
+    [property: JsonPropertyName("messages")] IReadOnlyList<SupportTicketMessageDto> Messages);
 
 public record PagedSupportTicketsResult(
-    IReadOnlyList<SupportTicketSummaryDto> Items,
-    int Total,
-    int Page,
-    int PageSize);
-
+    [property: JsonPropertyName("items")] IReadOnlyList<SupportTicketSummaryDto> Items,
+    [property: JsonPropertyName("total")] int Total,
+    [property: JsonPropertyName("page")] int Page,
+    [property: JsonPropertyName("page_size")] int PageSize);

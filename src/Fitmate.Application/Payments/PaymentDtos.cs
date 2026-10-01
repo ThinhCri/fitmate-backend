@@ -5,9 +5,10 @@ using System.Text.Json.Serialization;
 namespace Fitmate.Application.Payments;
 
 public sealed record PaymentView(
-    Guid Id,
+    [property: JsonPropertyName("id")] Guid Id,
     [property: JsonPropertyName("appointment_id")] Guid AppointmentId,
-    PaymentMethod Method,
+    [property: JsonPropertyName("method")] PaymentMethod Method,
+    [property: JsonPropertyName("status")]
     [property: JsonConverter(typeof(JsonStringEnumConverter<PaymentStatus>))] PaymentStatus Status,
     [property: JsonPropertyName("amount_vnd")] long AmountVnd,
     [property: JsonPropertyName("refunded_so_far_vnd")] long RefundedSoFarVnd,
@@ -20,6 +21,8 @@ public sealed record CreatePaymentRequest
 {
     [JsonPropertyName("hold_id")]
     public required Guid HoldId { get; init; }
+
+    [JsonPropertyName("method")]
     public required PaymentMethod Method { get; init; }
 }
 
