@@ -5682,6 +5682,7 @@ components:
       properties:
         id:
           type: string
+          format: uuid
         food_name:
           type: string
         image_url:
@@ -5707,6 +5708,9 @@ components:
         confirmed:
           type: boolean
         logged_at:
+          type: string
+          format: date-time
+        created_at:
           type: string
           format: date-time
 
@@ -5764,14 +5768,21 @@ components:
     MealSchedule:
       type: object
       properties:
+        id:
+          type: string
+          format: uuid
         breakfast:
           type: string
+          nullable: true
         lunch:
           type: string
+          nullable: true
         dinner:
           type: string
+          nullable: true
         snack:
           type: string
+          nullable: true
 
     NutritionScanResult:
       type: object
