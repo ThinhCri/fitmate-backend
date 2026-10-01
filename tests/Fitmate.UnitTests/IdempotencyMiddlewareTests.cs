@@ -17,6 +17,75 @@ public class IdempotencyMiddlewareTests
     private sealed class InMemoryStore : IIdempotencyStore
     {
         public Dictionary<string, IdempotencyRecord> Items { get; } = new();
+
+        public Task<IdempotencyAcquireResult> TryAcquireAsync(
+            string key,
+            string payloadHash,
+            Guid ownerToken,
+            TimeSpan leaseDuration,
+            bool isFinancial,
+            TimeSpan? ttl,
+            string? actorUserId,
+            string? operationName,
+            CancellationToken ct)
+        {
+            if (!Items.TryGetValue(key, out var rec))
+            {
+                var newRec = IdempotencyRecord.CreateAcquired(key, payloadHash, ownerToken, leaseDuration, isFinancial, ttl, actorUserId, operationName);
+                Items[key] = newRec;
+                return Task.FromResult(IdempotencyAcquireResult.Acquired(newRec));
+            }
+
+            if (!string.Equals(rec.PayloadHash, payloadHash, StringComparison.Ordinal))
+            {
+                return Task.FromResult(IdempotencyAcquireResult.PayloadConflict());
+            }
+
+            if (rec.Status == IdempotencyRecord.StatusCompleted)
+            {
+                return Task.FromResult(IdempotencyAcquireResult.Replay(rec));
+            }
+
+            if (rec.Status == IdempotencyRecord.StatusProcessing && rec.LeaseExpiresAt > DateTime.UtcNow)
+            {
+                return Task.FromResult(IdempotencyAcquireResult.InProgress(rec));
+            }
+
+            var takeover = IdempotencyRecord.CreateAcquired(key, payloadHash, ownerToken, leaseDuration, isFinancial, ttl, actorUserId, operationName);
+            Items[key] = takeover;
+            return Task.FromResult(IdempotencyAcquireResult.Acquired(takeover));
+        }
+
+        public Task<bool> CompleteAsync(string key, Guid ownerToken, int statusCode, string? responseBody, CancellationToken ct)
+        {
+            if (Items.TryGetValue(key, out var rec) && rec.OwnerToken == ownerToken)
+            {
+                rec.Complete(statusCode, responseBody, ownerToken);
+                return Task.FromResult(true);
+            }
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> FailAsync(string key, Guid ownerToken, CancellationToken ct)
+        {
+            if (Items.TryGetValue(key, out var rec) && rec.OwnerToken == ownerToken)
+            {
+                rec.Fail(ownerToken);
+                return Task.FromResult(true);
+            }
+            return Task.FromResult(false);
+        }
+
+        public Task<bool> ReleaseAsync(string key, Guid ownerToken, CancellationToken ct)
+        {
+            if (Items.TryGetValue(key, out var rec) && rec.OwnerToken == ownerToken)
+            {
+                Items.Remove(key);
+                return Task.FromResult(true);
+            }
+            return Task.FromResult(false);
+        }
+
         public Task<IdempotencyLookup> FindAsync(string key, string payloadHash, CancellationToken ct)
         {
             if (!Items.TryGetValue(key, out var rec)) return Task.FromResult(new IdempotencyLookup(null, false, false));

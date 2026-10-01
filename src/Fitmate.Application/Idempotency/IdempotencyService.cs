@@ -3,36 +3,44 @@ using Fitmate.Domain.Outbox;
 namespace Fitmate.Application.Idempotency;
 
 /// <summary>
-/// Service điều phối idempotency theo DEC-011 + api-contract.md §11.
+/// Service điều phối idempotency theo DEC-011 + api-contract.md §11 + Plan v9.1.
 /// </summary>
-/// <remarks>
-/// Luồng:
-/// <list type="number">
-/// <item>Client gửi header <c>Idempotency-Key</c> + payload.</item>
-/// <item>Service hash payload + tra store:
-/// <list type="bullet">
-/// <item>Key chưa có → trả <see cref="IdempotencyDecision.Proceed"/>.</item>
-/// <item>Key có + hash khớp + còn hạn → trả <see cref="IdempotencyDecision.Replay"/> + response cũ.</item>
-/// <item>Key có + hash khác → trả <see cref="IdempotencyDecision.Conflict"/>.</item>
-/// <item>Key có + hết hạn → coi như key mới.</item>
-/// </list>
-/// </item>
-/// <item>Sau khi Controller xử lý xong, gọi <see cref="StoreAsync"/> để ghi response snapshot.</item>
-/// </list>
-/// </remarks>
 public interface IIdempotencyService
 {
+    Task<IdempotencyAcquireResult> AcquireAsync(
+        string key,
+        string payloadHash,
+        Guid ownerToken,
+        bool isFinancial,
+        string? actorUserId,
+        string? operationName,
+        CancellationToken ct);
+
+    Task<bool> CompleteAsync(
+        string key,
+        Guid ownerToken,
+        int statusCode,
+        string? responseBody,
+        CancellationToken ct);
+
+    Task<bool> FailAsync(
+        string key,
+        Guid ownerToken,
+        CancellationToken ct);
+
+    Task<bool> ReleaseAsync(
+        string key,
+        Guid ownerToken,
+        CancellationToken ct);
+
     Task<IdempotencyDecision> CheckAsync(string key, string payloadHash, CancellationToken ct);
 
     Task StoreAsync(string key, string payloadHash, int statusCode, string responseBody, CancellationToken ct);
 }
 
 /// <summary>
-/// Kết quả check idempotency.
+/// Kết quả check idempotency (legacy compatibility).
 /// </summary>
-/// <param name="Kind"><see cref="IdempotencyDecisionKind"/>.</param>
-/// <param name="StatusCode">HTTP status code lưu lại (cho Replay).</param>
-/// <param name="ResponseBody">JSON response lưu lại (cho Replay).</param>
 public sealed record IdempotencyDecision(
     IdempotencyDecisionKind Kind,
     int StatusCode = 0,

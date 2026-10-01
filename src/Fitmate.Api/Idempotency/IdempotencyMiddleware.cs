@@ -1,21 +1,17 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Fitmate.Api.Errors;
 using Fitmate.Application.Idempotency;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
 namespace Fitmate.Api.Idempotency;
 
 /// <summary>
-/// Middleware validate + replay cho header <c>Idempotency-Key</c> theo DEC-011 + api-contract.md §11.
+/// Middleware validate + replay cho header <c>Idempotency-Key</c> theo DEC-011 + api-contract.md §11 + Plan v9.1.
 /// Chỉ áp dụng cho mutation (POST/PUT/PATCH/DELETE) mà có header. Endpoint GET/anonymous vẫn chạy bình thường.
 /// </summary>
-/// <remarks>
-/// Middleware wrap response bằng <see cref="IdempotencyResponseBody"/> để capture status + body
-/// sau khi Controller chạy xong, lưu vào <see cref="IIdempotencyService"/> để replay sau.
-/// </remarks>
 public class IdempotencyMiddleware
 {
     private const string HeaderName = "Idempotency-Key";
@@ -47,8 +43,8 @@ public class IdempotencyMiddleware
             return;
         }
 
-        var key = keyValues.ToString().Trim();
-        if (!LooksLikeKey(key))
+        var clientKey = keyValues.ToString().Trim();
+        if (!LooksLikeKey(clientKey))
         {
             await WriteProblemAsync(context, StatusCodes.Status400BadRequest,
                 title: "Invalid Idempotency-Key",
@@ -59,31 +55,57 @@ public class IdempotencyMiddleware
             return;
         }
 
-        // An identical key from another actor or endpoint must never replay money or private data.
         var actor = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
             ?? context.User.FindFirst("sub")?.Value;
-        if (string.IsNullOrWhiteSpace(actor)) { await _next(context); return; }
-        key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
-            $"{actor}\n{context.Request.Method}\n{context.Request.Path}\n{key}")));
+        if (string.IsNullOrWhiteSpace(actor))
+        {
+            await _next(context);
+            return;
+        }
+
+        // StorageKey = SHA256(actor\nmethod\npath\nclientKey)
+        var operation = context.Request.Path.Value ?? string.Empty;
+        var keyRaw = $"{actor}\n{context.Request.Method}\n{operation}\n{clientKey}";
+        var storageKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(keyRaw)));
 
         // Enable buffering để Controller đọc lại body sau khi middleware hash xong.
         context.Request.EnableBuffering();
         var bodyBytes = await ReadBodyAsync(context.Request);
         context.Request.Body.Position = 0;
 
-        var payloadHash = ComputeHash(bodyBytes, context.Request.ContentType);
-
-        var decision = await service.CheckAsync(key, payloadHash, context.RequestAborted);
-
-        switch (decision.Kind)
+        string payloadHash;
+        try
         {
-            case IdempotencyDecisionKind.Replay:
-                _logger.LogInformation("Idempotency replay: key={Key}, status={Status}", key, decision.StatusCode);
-                await WriteReplayAsync(context, decision.StatusCode, decision.ResponseBody ?? string.Empty);
-                return;
+            payloadHash = CanonicalJsonHasher.ComputeHash(bodyBytes, context.Request.ContentType);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "Malformed JSON body in idempotent request key={Key}", clientKey);
+            await WriteProblemAsync(context, StatusCodes.Status400BadRequest,
+                title: "Invalid JSON",
+                code: ErrorCodes.GeneralBadRequest,
+                typeSlug: "idempotency/invalid-json",
+                detail: "Malformed JSON payload.",
+                traceId: FitmateProblemDetails.ResolveTraceId(context));
+            return;
+        }
 
-            case IdempotencyDecisionKind.Conflict:
-                _logger.LogWarning("Idempotency conflict: key={Key}", key);
+        var ownerToken = Guid.NewGuid();
+        var isFinancial = IsFinancialPath(context.Request.Path);
+
+        var acquireResult = await service.AcquireAsync(
+            storageKey,
+            payloadHash,
+            ownerToken,
+            isFinancial,
+            actor,
+            $"{context.Request.Method} {operation}",
+            context.RequestAborted);
+
+        switch (acquireResult.Status)
+        {
+            case IdempotencyAcquireStatus.PayloadConflict:
+                _logger.LogWarning("Idempotency conflict: key={Key}", clientKey);
                 await WriteProblemAsync(context, StatusCodes.Status409Conflict,
                     title: "Idempotency key conflict",
                     code: ErrorCodes.IdempotencyConflict,
@@ -92,8 +114,8 @@ public class IdempotencyMiddleware
                     traceId: FitmateProblemDetails.ResolveTraceId(context));
                 return;
 
-            case IdempotencyDecisionKind.InProgress:
-                _logger.LogWarning("Idempotency in progress: key={Key}", key);
+            case IdempotencyAcquireStatus.InProgress:
+                _logger.LogWarning("Idempotency in progress: key={Key}", clientKey);
                 await WriteProblemAsync(context, StatusCodes.Status409Conflict,
                     title: "Request in progress",
                     code: ErrorCodes.IdempotencyInProgress,
@@ -102,44 +124,77 @@ public class IdempotencyMiddleware
                     traceId: FitmateProblemDetails.ResolveTraceId(context));
                 return;
 
-            case IdempotencyDecisionKind.Proceed:
+            case IdempotencyAcquireStatus.Replay:
+                var rec = acquireResult.Record;
+                var statusCode = rec?.StatusCode ?? StatusCodes.Status200OK;
+                var responseBody = rec?.ResponseBody ?? string.Empty;
+                _logger.LogInformation("Idempotency replay: key={Key}, status={Status}", clientKey, statusCode);
+                await WriteReplayAsync(context, statusCode, responseBody);
+                return;
+
+            case IdempotencyAcquireStatus.Acquired:
             default:
-                // Capture response rồi store sau khi Controller xử lý xong.
+            {
+                var originalBody = context.Response.Body;
+                await using var buffer = new MemoryStream();
+                context.Response.Body = buffer;
+
+                bool mutationSucceeded = false;
+                try
                 {
-                    var originalBody = context.Response.Body;
-                    await using var buffer = new MemoryStream();
-                    context.Response.Body = buffer;
+                    await _next(context);
 
-                    try
+                    mutationSucceeded = context.Response.StatusCode >= 200 && context.Response.StatusCode < 300
+                                        || context.Response.StatusCode == StatusCodes.Status409Conflict;
+
+                    buffer.Position = 0;
+                    var capturedResponse = await new StreamReader(buffer, Encoding.UTF8).ReadToEndAsync();
+                    buffer.Position = 0;
+                    await buffer.CopyToAsync(originalBody);
+
+                    if (mutationSucceeded)
                     {
-                        await _next(context);
-
-                        buffer.Position = 0;
-                        var responseBody = await new StreamReader(buffer, Encoding.UTF8).ReadToEndAsync();
-                        buffer.Position = 0;
-                        await buffer.CopyToAsync(originalBody);
-
-                        // Chỉ store 2xx và 409 (xem ShouldStore). 400/422 cố tình KHÔNG lưu để
-                        // operator sửa payload rồi retry với cùng key vẫn tới được controller.
-                        if (ShouldStore(context.Response.StatusCode))
+                        var bodyToStore = ShouldStorePath(context.Request.Path) ? capturedResponse : null;
+                        var completed = await service.CompleteAsync(storageKey, ownerToken, context.Response.StatusCode, bodyToStore, context.RequestAborted);
+                        if (!completed && isFinancial)
                         {
-                            try
-                            {
-                                await service.StoreAsync(key, payloadHash, context.Response.StatusCode, responseBody, context.RequestAborted);
-                            }
-                            catch (Exception ex)
-                            {
-                                // Store fail không block response — log + tiếp tục.
-                                _logger.LogError(ex, "Idempotency store failed for key={Key}", key);
-                            }
+                            _logger.LogError("Idempotency lease lost for financial mutation storageKey={Key}", storageKey);
+                            throw new InvalidOperationException("Failed to complete financial idempotency record: lease ownership lost.");
                         }
                     }
-                    finally
+                    else if (context.Response.StatusCode is StatusCodes.Status400BadRequest
+                             or StatusCodes.Status401Unauthorized
+                             or StatusCodes.Status403Forbidden
+                             or StatusCodes.Status422UnprocessableEntity)
                     {
-                        context.Response.Body = originalBody;
+                        await service.ReleaseAsync(storageKey, ownerToken, context.RequestAborted);
+                    }
+                    else
+                    {
+                        await service.FailAsync(storageKey, ownerToken, context.RequestAborted);
                     }
                 }
+                catch
+                {
+                    if (!mutationSucceeded)
+                    {
+                        try
+                        {
+                            await service.FailAsync(storageKey, ownerToken, CancellationToken.None);
+                        }
+                        catch
+                        {
+                            // ignore secondary failure handling exceptions
+                        }
+                    }
+                    throw;
+                }
+                finally
+                {
+                    context.Response.Body = originalBody;
+                }
                 return;
+            }
         }
     }
 
@@ -154,32 +209,27 @@ public class IdempotencyMiddleware
         return buffer.ToArray();
     }
 
-    private static string ComputeHash(byte[] body, string? contentType)
+    private static bool IsFinancialPath(PathString path)
     {
-        // Hash cả content-type + body để chống client đổi Content-Type nhưng giữ body.
-        var prefix = $"{(contentType ?? string.Empty)}\n";
-        var prefixBytes = Encoding.UTF8.GetBytes(prefix);
-        var combined = new byte[prefixBytes.Length + body.Length];
-        Buffer.BlockCopy(prefixBytes, 0, combined, 0, prefixBytes.Length);
-        Buffer.BlockCopy(body, 0, combined, prefixBytes.Length, body.Length);
-        return Convert.ToHexString(SHA256.HashData(combined)).ToLowerInvariant();
+        var p = path.Value ?? string.Empty;
+        return p.Contains("/payments/", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("/refunds/", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("/settlements/", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("/finance/", StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    /// Decide which responses should be persisted for idempotent replay.
-    /// </summary>
-    /// <remarks>
-    /// Only 2xx and hard conflicts (409) are cached. Validation responses
-    /// (400, 422) are NOT stored: retrying after the operator fixes the
-    /// request must reach the controller again. 401/403/429 are never
-    /// cached (auth or throttling; replay must not bypass them), and 5xx
-    /// responses are never cached either — a failed mutation is unknown
-    /// to the caller, so replaying it would report a success that never
-    /// happened. The client must re-check state before retrying.
-    /// </remarks>
-    private static bool ShouldStore(int statusCode) =>
-        statusCode is >= 200 and < 300
-        || statusCode == StatusCodes.Status409Conflict;
+    private static bool ShouldStorePath(PathString path)
+    {
+        var p = path.Value ?? string.Empty;
+        if (p.Contains("/auth/", StringComparison.OrdinalIgnoreCase) ||
+            p.Contains("/totp", StringComparison.OrdinalIgnoreCase) ||
+            p.Contains("/recovery", StringComparison.OrdinalIgnoreCase) ||
+            p.Contains("/step-up", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        return true;
+    }
 
     private static async Task WriteReplayAsync(HttpContext context, int statusCode, string body)
     {

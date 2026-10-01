@@ -34,8 +34,14 @@ public class IdempotencyRecordConfiguration : IEntityTypeConfiguration<Idempoten
         e.Property(x => x.StatusCode).IsRequired();
         e.Property(x => x.ResponseBody).HasColumnType("jsonb");
         e.Property(x => x.CreatedAt).IsRequired();
-        e.Property(x => x.ExpiresAt).IsRequired();
+        e.Property(x => x.ExpiresAt);
         e.Property(x => x.Status).HasMaxLength(32).HasDefaultValue("completed").IsRequired();
+        e.Property(x => x.OwnerToken).IsRequired();
+        e.Property(x => x.LeaseExpiresAt).IsRequired();
+        e.Property(x => x.IsFinancial).IsRequired().HasDefaultValue(false);
+        e.Property(x => x.ActorUserId).HasMaxLength(64);
+        e.Property(x => x.OperationName).HasMaxLength(128);
         e.HasIndex(x => new { x.Key, x.Status });
+        e.HasIndex(x => new { x.IsFinancial, x.ExpiresAt });
     }
 }
