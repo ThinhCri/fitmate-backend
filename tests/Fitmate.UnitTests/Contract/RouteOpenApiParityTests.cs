@@ -4,6 +4,8 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi.Readers;
 
 namespace Fitmate.UnitTests.Contract;
 
@@ -21,6 +23,10 @@ namespace Fitmate.UnitTests.Contract;
 /// - Path parameter without declaration
 /// - Declared parameter not in path
 /// - Security requirement mismatches
+/// - Duplicate YAML mapping keys (such as duplicate content: in responses)
+/// - Unresolved $ref schema and response references
+/// - Missing response descriptions
+/// - OpenApiReader diagnostic errors
 /// </summary>
 public class RouteOpenApiParityTests
 {
@@ -54,6 +60,7 @@ public class RouteOpenApiParityTests
     /// Operations declared in OpenAPI but NOT implemented at runtime because
     /// the capability is not yet available. Each entry documents:
     /// operation, reason, task ID, removal condition, expected capability state.
+    /// STRICT RULE: ONLY AI operations pending implementation are permitted.
     /// </summary>
     private static readonly CapabilityAllowlistEntry[] CapabilityNotImplementedAllowlist =
     {
@@ -65,13 +72,92 @@ public class RouteOpenApiParityTests
             "Remove when AI adapter is integrated and verified", "disabled"),
         new("POST /api/v1/chat/ai/messages", "AI companion not implemented", "BE-817",
             "Remove when AI adapter is integrated and verified", "disabled"),
-        new("POST /api/v1/payments/vnpay/ipn", "VNPay legacy — payOS is current provider", "BE-400",
-            "Remove when VNPay adapter is fully retired or re-integrated", "disabled"),
-        new("GET /api/v1/payments/vnpay/return", "VNPay legacy — payOS is current provider", "BE-400",
-            "Remove when VNPay adapter is fully retired or re-integrated", "disabled"),
-        new("GET /api/v1/admin/payments", "Consolidated under /admin/finance/ledger", "BE-150",
-            "Remove when standalone endpoint is deprecated", "disabled"),
     };
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 0. OpenAPI Document Strict Validation (Diagnostic, Duplicate Keys, Refs)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public void OpenApi_Document_Must_Be_Valid_Without_Diagnostic_Errors()
+    {
+        var (_, diagnostic) = LoadOpenApiDocument();
+        diagnostic.Errors.Should().BeEmpty(
+            "OpenAPI document must not have reader diagnostic errors:\n" +
+            string.Join("\n", diagnostic.Errors.Select(e => $"{e.Pointer}: {e.Message}")));
+    }
+
+    [Fact]
+    public void OpenApi_Must_Not_Have_Duplicate_Yaml_Mapping_Keys()
+    {
+        var (_, diagnostic) = LoadOpenApiDocument();
+        var duplicateKeyErrors = diagnostic.Errors
+            .Where(e => e.Message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        duplicateKeyErrors.Should().BeEmpty(
+            "OpenAPI YAML must not have duplicate mapping keys (e.g. duplicate content: blocks):\n" +
+            string.Join("\n", duplicateKeyErrors.Select(e => $"{e.Pointer}: {e.Message}")));
+    }
+
+    [Fact]
+    public void OpenApi_Responses_Must_Have_Descriptions()
+    {
+        var (doc, _) = LoadOpenApiDocument();
+        doc.Should().NotBeNull();
+        if (doc.Paths == null) return;
+        var missingDescriptions = new List<string>();
+
+        foreach (var (path, pathItem) in doc.Paths)
+        {
+            foreach (var (method, op) in pathItem.Operations)
+            {
+                foreach (var (statusCode, resp) in op.Responses)
+                {
+                    if (string.IsNullOrWhiteSpace(resp.Description))
+                    {
+                        missingDescriptions.Add($"{method} {path} [{statusCode}]: response missing description");
+                    }
+                }
+            }
+        }
+
+        missingDescriptions.Should().BeEmpty(
+            "all responses must have non-empty description:\n" +
+            string.Join("\n", missingDescriptions));
+    }
+
+    [Fact]
+    public void OpenApi_Schema_References_Must_Resolve()
+    {
+        var (doc, _) = LoadOpenApiDocument();
+        doc.Should().NotBeNull();
+        if (doc.Components == null) return;
+        var declaredSchemas = doc.Components.Schemas.Keys.ToHashSet(StringComparer.Ordinal);
+        var declaredResponses = doc.Components.Responses.Keys.ToHashSet(StringComparer.Ordinal);
+
+        var specPath = FindOpenApiSpecPath();
+        var lines = File.ReadAllLines(specPath);
+        var unresolved = new List<string>();
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var match = Regex.Match(lines[i], @"\$ref:\s*['""]?#/components/(schemas|responses)/([a-zA-Z0-9_\-]+)['""]?");
+            if (match.Success)
+            {
+                var type = match.Groups[1].Value;
+                var name = match.Groups[2].Value;
+                if (type == "schemas" && !declaredSchemas.Contains(name))
+                    unresolved.Add($"Line {i + 1}: unresolved schema reference '#/components/schemas/{name}'");
+                else if (type == "responses" && !declaredResponses.Contains(name))
+                    unresolved.Add($"Line {i + 1}: unresolved response reference '#/components/responses/{name}'");
+            }
+        }
+
+        unresolved.Should().BeEmpty(
+            "all schema and response $refs must resolve:\n" +
+            string.Join("\n", unresolved));
+    }
 
     // ═══════════════════════════════════════════════════════════════════════
     // 1. Runtime routes missing from OpenAPI
@@ -353,159 +439,190 @@ public class RouteOpenApiParityTests
 
     private static string NormalizeConstraints(string path)
     {
-        // {id:guid} -> {id}, {requestId:guid} -> {requestId}
-        var normalized = Regex.Replace(path, @"\{(\w+):\w+\}", "{$1}");
-        // Canonicalize trainer path param variants so user dirty controllers don't drift from OpenAPI {id}
-        normalized = Regex.Replace(normalized, @"\{ptUserId\}", "{id}");
-        normalized = Regex.Replace(normalized, @"\{ptId\}", "{id}");
-        return normalized;
+        // Strip route constraints only: {id:guid} -> {id}, {requestId:guid} -> {requestId}
+        return Regex.Replace(path, @"\{(\w+):\w+\}", "{$1}");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // OpenAPI YAML parsing (minimal, no external dependency)
+    // OpenAPI Document Loading & Validation (OpenAPI.NET Parser)
     // ═══════════════════════════════════════════════════════════════════════
 
-    private static List<OpenApiOperation> ParseOpenApiOperations()
+    private static (OpenApiDocument Document, OpenApiDiagnostic Diagnostic) LoadOpenApiDocument()
+    {
+        var specPath = FindOpenApiSpecPath();
+        using var stream = File.OpenRead(specPath);
+        var reader = new OpenApiStreamReader();
+        var doc = reader.Read(stream, out var diagnostic);
+        return (doc, diagnostic);
+    }
+
+    private static HashSet<string> GetExplicitAnonymousOperations()
     {
         var specPath = FindOpenApiSpecPath();
         var lines = File.ReadAllLines(specPath);
-        return ParseOperationsFromLines(lines);
-    }
-
-    internal static List<OpenApiOperation> ParseOperationsFromLines(string[] lines)
-    {
-        var operations = new List<OpenApiOperation>();
+        var anon = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         string? currentPath = null;
         string? currentMethod = null;
-        string? currentOperationId = null;
-        var currentPathParams = new List<string>();
-        bool hasEmptySecurity = false;
-        bool inParameters = false;
 
         for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            var content = line.Trim();
-            if (string.IsNullOrWhiteSpace(content)) continue;
-
+            var trimmed = line.Trim();
             var indent = line.Length - line.TrimStart().Length;
 
-            // Path entry at indent 2: "  /auth/register:"
-            var pathMatch = Regex.Match(content, @"^(/[a-zA-Z0-9_\-{}/]*):$");
+            var pathMatch = Regex.Match(trimmed, @"^(/[a-zA-Z0-9_\-{}/]*):$");
             if (indent == 2 && pathMatch.Success)
             {
-                FlushOperation(operations, currentPath, currentMethod, currentOperationId,
-                    currentPathParams, hasEmptySecurity);
-
                 currentPath = pathMatch.Groups[1].Value;
                 currentMethod = null;
-                currentOperationId = null;
-                currentPathParams = new List<string>();
-                hasEmptySecurity = false;
-                inParameters = false;
                 continue;
             }
 
-            // Method entry at indent 4: "    post:"
-            var methodMatch = Regex.Match(content,
-                @"^(get|post|put|patch|delete|head|options):$", RegexOptions.IgnoreCase);
+            var methodMatch = Regex.Match(trimmed, @"^(get|post|put|patch|delete|head|options):$", RegexOptions.IgnoreCase);
             if (indent == 4 && currentPath != null && methodMatch.Success)
             {
-                FlushOperation(operations, currentPath, currentMethod, currentOperationId,
-                    currentPathParams, hasEmptySecurity);
-
                 currentMethod = methodMatch.Groups[1].Value.ToUpperInvariant();
-                currentOperationId = null;
-                currentPathParams = new List<string>();
-                hasEmptySecurity = false;
-                inParameters = false;
                 continue;
             }
 
-            // Inside a method block (indent > 4)
             if (currentMethod != null && indent > 4)
             {
-                var opIdMatch = Regex.Match(content, @"^operationId:\s*(.+)$");
-                if (opIdMatch.Success)
+                if (trimmed.StartsWith("security:") && trimmed.Contains("[]"))
                 {
-                    currentOperationId = opIdMatch.Groups[1].Value.Trim();
-                    continue;
+                    anon.Add($"{currentMethod} {currentPath}");
                 }
-
-                if (content.StartsWith("security:"))
-                {
-                    if (content.Contains("[]"))
-                        hasEmptySecurity = true;
-                    continue;
-                }
-
-                if (content == "parameters:")
-                {
-                    inParameters = true;
-                    continue;
-                }
-
-                if (inParameters)
-                {
-                    if (content.Contains("IdPath"))
-                    {
-                        currentPathParams.Add("id");
-                    }
-                    else if (Regex.IsMatch(content, @"in:\s*path") && Regex.IsMatch(content, @"name:\s*(\w+)"))
-                    {
-                        var m = Regex.Match(content, @"name:\s*(\w+)");
-                        currentPathParams.Add(m.Groups[1].Value);
-                    }
-                    else if (content.StartsWith("- name:"))
-                    {
-                        var paramName = Regex.Match(content, @"name:\s*(\w+)").Groups[1].Value;
-                        if (i + 1 < lines.Length && lines[i + 1].Trim().StartsWith("in: path"))
-                        {
-                            currentPathParams.Add(paramName);
-                        }
-                    }
-                    else if (content.StartsWith("- in: path"))
-                    {
-                        if (i + 1 < lines.Length && lines[i + 1].Trim().StartsWith("name:"))
-                        {
-                            var paramName = Regex.Match(lines[i + 1].Trim(), @"name:\s*(\w+)").Groups[1].Value;
-                            currentPathParams.Add(paramName);
-                        }
-                    }
-                }
-            }
-
-            // Reset when leaving path/method scope
-            if (indent <= 2 && currentPath != null && !pathMatch.Success && !content.StartsWith("#"))
-            {
-                FlushOperation(operations, currentPath, currentMethod, currentOperationId,
-                    currentPathParams, hasEmptySecurity);
-                currentMethod = null;
-                if (!content.EndsWith(":") || indent < 2)
-                    currentPath = null;
             }
         }
 
-        // Final operation
-        FlushOperation(operations, currentPath, currentMethod, currentOperationId,
-            currentPathParams, hasEmptySecurity);
+        return anon;
+    }
+
+    private static List<OpenApiOperation> ParseOpenApiOperations()
+    {
+        var (doc, _) = LoadOpenApiDocument();
+        var operations = new List<OpenApiOperation>();
+        if (doc?.Paths == null) return operations;
+
+        var anonymousOps = GetExplicitAnonymousOperations();
+
+        foreach (var (path, pathItem) in doc.Paths)
+        {
+            foreach (var (methodType, op) in pathItem.Operations)
+            {
+                var method = methodType.ToString().ToUpperInvariant();
+                var pathParams = new List<string>();
+
+                if (op.Parameters != null)
+                {
+                    pathParams.AddRange(op.Parameters
+                        .Where(p => p.In == ParameterLocation.Path)
+                        .Select(p => p.Name));
+                }
+
+                if (pathItem.Parameters != null)
+                {
+                    pathParams.AddRange(pathItem.Parameters
+                        .Where(p => p.In == ParameterLocation.Path)
+                        .Select(p => p.Name));
+                }
+
+                bool requiresAuth = !anonymousOps.Contains($"{method} {path}");
+
+                operations.Add(new OpenApiOperation(
+                    path,
+                    method,
+                    op.OperationId ?? "",
+                    pathParams.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+                    requiresAuth));
+            }
+        }
 
         return operations;
     }
 
-    private static void FlushOperation(
-        List<OpenApiOperation> operations,
-        string? path, string? method, string? operationId,
-        List<string> pathParams, bool hasEmptySecurity)
+    internal static List<string> FindDuplicateYamlKeys(string[] lines)
     {
-        if (path != null && method != null)
+        var duplicates = new List<string>();
+        var scopes = new Stack<YamlScope>();
+        bool inMultiline = false;
+        int multilineIndent = 0;
+
+        for (int i = 0; i < lines.Length; i++)
         {
-            operations.Add(new OpenApiOperation(
-                path, method, operationId ?? "",
-                new List<string>(pathParams),
-                !hasEmptySecurity));
+            var rawLine = lines[i];
+            var trimmed = rawLine.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed) || trimmed.StartsWith('#'))
+                continue;
+
+            int indent = rawLine.Length - rawLine.TrimStart().Length;
+
+            if (inMultiline)
+            {
+                if (indent > multilineIndent)
+                    continue;
+                inMultiline = false;
+            }
+
+            if (trimmed.EndsWith('|') || trimmed.EndsWith('>') ||
+                trimmed.EndsWith("|-") || trimmed.EndsWith(">-") ||
+                trimmed.EndsWith("|+") || trimmed.EndsWith(">+"))
+            {
+                inMultiline = true;
+                multilineIndent = indent;
+            }
+
+            bool isListItem = trimmed.StartsWith("- ");
+            string lineToParse = isListItem ? trimmed[2..].Trim() : trimmed;
+
+            var keyMatch = Regex.Match(lineToParse, @"^([a-zA-Z0-9_\-/'""$#@.+]+|""[^""]+""|'[^']+'):(\s.*)?$");
+            if (!keyMatch.Success)
+                continue;
+
+            var key = keyMatch.Groups[1].Value.Trim('\'', '"');
+
+            while (scopes.Count > 0 && scopes.Peek().Indent > indent)
+            {
+                scopes.Pop();
+            }
+
+            if (scopes.Count > 0 && scopes.Peek().Indent == indent)
+            {
+                if (isListItem)
+                {
+                    scopes.Pop();
+                    var newScope = new YamlScope(indent);
+                    newScope.Keys.Add(key);
+                    scopes.Push(newScope);
+                }
+                else
+                {
+                    if (scopes.Peek().Keys.Contains(key))
+                    {
+                        duplicates.Add($"Line {i + 1}: duplicate mapping key '{key}' at indent {indent}");
+                    }
+                    else
+                    {
+                        scopes.Peek().Keys.Add(key);
+                    }
+                }
+            }
+            else
+            {
+                var newScope = new YamlScope(indent);
+                newScope.Keys.Add(key);
+                scopes.Push(newScope);
+            }
         }
+
+        return duplicates;
+    }
+
+    private sealed class YamlScope
+    {
+        public int Indent { get; }
+        public HashSet<string> Keys { get; } = new(StringComparer.Ordinal);
+        public YamlScope(int indent) => Indent = indent;
     }
 
     private static string FindOpenApiSpecPath()

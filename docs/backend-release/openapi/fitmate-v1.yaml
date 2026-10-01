@@ -1,10 +1,11 @@
-openapi: 3.1.0
+openapi: 3.0.3
 info:
   title: Fitmate API v1
   description: |
     Source of truth cho Android app + Admin Web.
     Quy ước: xem docs/backend-release/api-contract.md.
-    Frozen contract baseline v1 (BE-801) - 2026-10-01.
+    Contract status: CONTRACT_STABILIZATION_IN_PROGRESS (BE-801) - 2026-10-02.
+    Method/path parity phần lớn đã khớp; request/response schema parity đang trong quá trình ổn định; Mobile chưa được generate client từ revision này.
   version: 1.0.0
   contact:
     name: Fitmate Backend
@@ -797,14 +798,19 @@ paths:
                     type: string
                     nullable: true
 
-  /trainers/{id}:
+  /trainers/{ptUserId}:
     get:
       tags: [Trainers]
       summary: Chi tiết PT (verified only)
       operationId: getTrainer
       security: []
       parameters:
-        - $ref: '#/components/parameters/IdPath'
+        - in: path
+          name: ptUserId
+          required: true
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: OK
@@ -815,14 +821,19 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /trainers/{id}/availability:
+  /trainers/{ptId}/availability:
     get:
       tags: [Availability]
       summary: Lấy slot khả dụng của PT
       operationId: getTrainerAvailability
       security: []
       parameters:
-        - $ref: '#/components/parameters/IdPath'
+        - in: path
+          name: ptId
+          required: true
+          schema:
+            type: string
+            format: uuid
         - in: query
           name: from
           required: true
@@ -1699,10 +1710,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/TrainerRevenueHistoryPage'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RevenueDetail'
 
   /me/workout/plans:
     get:
@@ -2907,8 +2914,8 @@ paths:
           name: sort
           schema:
             type: string
-            enum: [createdAt:asc, createdAt:desc, email:asc, email:desc]
-            default: createdAt:desc
+            enum: ["createdAt:asc", "createdAt:desc", "email:asc", "email:desc"]
+            default: "createdAt:desc"
       responses:
         '200':
           description: OK
@@ -2985,12 +2992,12 @@ paths:
           schema:
             type: integer
             minimum: 1
-          default: 1
+            default: 1
         - in: query
           name: pageSize
           schema:
             type: integer
-          default: 25
+            default: 25
       responses:
         '200':
           description: OK
@@ -3078,13 +3085,14 @@ paths:
         '409':
           description: Certificate is not in a revocable state
 
-  /admin/certificates/trainer/{id}:
+  /admin/certificates/trainer/{ptUserId}:
     get:
       tags: [Admin]
       summary: List certificates of one trainer (server-side pagination)
       operationId: adminListTrainerCertificates
       parameters:
-        - $ref: '#/components/parameters/IdPath'
+        - in: path
+          name: ptUserId
           required: true
           schema:
             type: string
@@ -3095,7 +3103,7 @@ paths:
           schema:
             type: integer
             minimum: 1
-          default: 1
+            default: 1
         - in: query
           name: pageSize
           description: Items per page. Clamped to 1..100 by the server.
@@ -3103,7 +3111,7 @@ paths:
             type: integer
             minimum: 1
             maximum: 100
-          default: 25
+            default: 25
       responses:
         '200':
           description: OK
@@ -3191,12 +3199,12 @@ paths:
           schema:
             type: integer
             minimum: 1
-          default: 1
+            default: 1
         - in: query
           name: pageSize
           schema:
             type: integer
-          default: 25
+            default: 25
       responses:
         '200':
           description: OK
@@ -3229,38 +3237,6 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /admin/payments:
-    get:
-      tags: [Admin]
-      summary: Admin list payments
-      operationId: adminListPayments
-      parameters:
-        - in: query
-          name: status
-          schema:
-            $ref: '#/components/schemas/PaymentStatus'
-        - in: query
-          name: page
-          schema:
-            type: integer
-        - in: query
-          name: pageSize
-          schema:
-            type: integer
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  items:
-                    type: array
-                    items:
-                      $ref: '#/components/schemas/Payment'
-                  total:
-                    type: integer
 
   /admin/finance/reconciliation:
     get:
@@ -3897,7 +3873,7 @@ paths:
                   isSuccess: {type: boolean}
                   responseCode: {type: string}
                   transactionStatus: {type: string}
-                  providerTxnNo: {type: [string, 'null']}
+                  providerTxnNo: {type: string, nullable: true}
                   message: {type: string}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
@@ -3946,7 +3922,7 @@ paths:
               properties:
                 customerConfirmedAt: {type: string, format: date-time, description: UTC after session end}
                 trainerConfirmedAt: {type: string, format: date-time, description: UTC after session end}
-                sessionEvidenceReference: {type: string, maxLength: 200, description: Private case/storage reference, not raw health data}
+                sessionEvidenceReference: {type: string, maxLength: 200, description: 'Private case/storage reference, not raw health data'}
                 payeeEvidenceReference: {type: string, maxLength: 200}
                 noOpenDisputeConfirmed: {type: boolean, enum: [true]}
       responses:
@@ -3955,7 +3931,7 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {description: Booking/payment not found}
-        '409': {description: Not completed, pending refund, already paid, or stale financial state}
+        '409': {description: 'Not completed, pending refund, already paid, or stale financial state'}
 
   /admin/finance/manual-settlements/{appointmentId}/hold:
     post:
@@ -4003,7 +3979,7 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {description: Booking/payment not found}
-        '409': {description: Missing approval, pending refund, changed amount, reused reference or different existing receipt}
+        '409': {description: 'Missing approval, pending refund, changed amount, reused reference or different existing receipt'}
 
   /admin/finance/manual-refunds:
     get:
@@ -4073,6 +4049,11 @@ paths:
         '409': {description: Reused transfer reference or refund already processed}
 
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     FinanceTotp:
       in: header
@@ -4191,16 +4172,16 @@ components:
         status: {type: string, enum: [on_hold, approved, paid]}
         amountVnd: {type: integer, format: int64}
         reviewedBy: {type: string, format: uuid}
-        customerConfirmedAt: {type: [string, 'null'], format: date-time}
-        trainerConfirmedAt: {type: [string, 'null'], format: date-time}
-        approvedAt: {type: [string, 'null'], format: date-time}
-        sessionEvidenceReference: {type: [string, 'null']}
-        payeeEvidenceReference: {type: [string, 'null']}
-        holdReason: {type: [string, 'null']}
-        transferredBy: {type: [string, 'null'], format: uuid}
-        transferredAt: {type: [string, 'null'], format: date-time}
-        bankReference: {type: [string, 'null']}
-        transferEvidenceReference: {type: [string, 'null']}
+        customerConfirmedAt: {type: string, format: date-time, nullable: true}
+        trainerConfirmedAt: {type: string, format: date-time, nullable: true}
+        approvedAt: {type: string, format: date-time, nullable: true}
+        sessionEvidenceReference: {type: string, nullable: true}
+        payeeEvidenceReference: {type: string, nullable: true}
+        holdReason: {type: string, nullable: true}
+        transferredBy: {type: string, format: uuid, nullable: true}
+        transferredAt: {type: string, format: date-time, nullable: true}
+        bankReference: {type: string, nullable: true}
+        transferEvidenceReference: {type: string, nullable: true}
     ProblemDetails:
       type: object
       required: [type, title, status, code, traceId]
@@ -6183,9 +6164,3 @@ components:
 
 security:
   - bearerAuth: []
-
-securitySchemes:
-  bearerAuth:
-    type: http
-    scheme: bearer
-    bearerFormat: JWT
