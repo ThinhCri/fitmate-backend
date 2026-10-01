@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fitmate.Api.Auth;
 using Fitmate.Application.Booking;
 using Fitmate.Domain.Booking;
@@ -32,13 +33,12 @@ public class BookingsController : ControllerBase
         var slot = EnsureUtc(body.SlotStartUtc);
         var (hold, appt) = await _booking.CreateHoldAsync(
             current.GetUserIdOrThrow(), body.PtId, body.ServiceId, slot, ct);
-        return CreatedAtAction(nameof(GetHold), new { id = hold.Id }, new
-        {
-            holdId = hold.Id,
-            holdExpiresAt = hold.ExpiresAt,
-            appointmentId = appt.Id,
-            status = appt.Status.ToString()
-        });
+        return CreatedAtAction(nameof(GetHold), new { id = hold.Id }, new CreateBookingHoldResponse(
+            hold.Id,
+            hold.ExpiresAt,
+            appt.Id,
+            appt.Status.ToString()
+        ));
     }
 
     /// <summary>Lookup hold (Owner-scoped). Cho Member kiểm tra TTL trước khi thanh toán.</summary>
@@ -52,7 +52,7 @@ public class BookingsController : ControllerBase
         var hold = await holds.FindByIdAsync(id, ct);
         if (hold is null) return NotFound();
         if (hold.MemberId != current.GetUserIdOrThrow()) return Forbid();
-        return Ok(new { holdId = hold.Id, expiresAt = hold.ExpiresAt, isActive = hold.IsActive });
+        return Ok(new BookingHoldStatusResponse(hold.Id, hold.ExpiresAt, hold.IsActive));
     }
 
     /// <summary>Member / PT cancel. Reason ≥ 5 chars.</summary>
@@ -263,7 +263,22 @@ public class BookingsController : ControllerBase
     }
 }
 
-public sealed record CreateHoldRequest(Guid PtId, Guid ServiceId, DateTime SlotStartUtc);
+public sealed record CreateHoldRequest(
+    [property: JsonPropertyName("pt_id")] Guid PtId,
+    [property: JsonPropertyName("service_id")] Guid ServiceId,
+    [property: JsonPropertyName("slot_start_utc")] DateTime SlotStartUtc
+);
+public sealed record CreateBookingHoldResponse(
+    [property: JsonPropertyName("hold_id")] Guid HoldId,
+    [property: JsonPropertyName("hold_expires_at")] DateTime HoldExpiresAt,
+    [property: JsonPropertyName("appointment_id")] Guid AppointmentId,
+    [property: JsonPropertyName("appointment_status")] string AppointmentStatus
+);
+public sealed record BookingHoldStatusResponse(
+    [property: JsonPropertyName("hold_id")] Guid HoldId,
+    [property: JsonPropertyName("expires_at")] DateTime ExpiresAt,
+    [property: JsonPropertyName("is_active")] bool IsActive
+);
 public sealed record CancelBookingRequest(string Reason);
 public sealed record RescheduleRequest(DateTime NewSlotStartUtc);
 public sealed record CreateRescheduleRequestBody(DateTime NewSlotStartUtc, string Reason);

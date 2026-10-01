@@ -1138,8 +1138,10 @@ paths:
               properties:
                 pt_id:
                   type: string
+                  format: uuid
                 service_id:
                   type: string
+                  format: uuid
                 slot_start_utc:
                   type: string
                   format: date-time
@@ -1149,7 +1151,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BookingHold'
+                $ref: '#/components/schemas/CreateBookingHoldResponse'
         '409':
           description: Slot đã được giữ / book
           content:
@@ -1170,17 +1172,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                required: [holdId, expiresAt, isActive]
-                properties:
-                  holdId:
-                    type: string
-                    format: uuid
-                  expiresAt:
-                    type: string
-                    format: date-time
-                  isActive:
-                    type: boolean
+                $ref: '#/components/schemas/BookingHoldStatusResponse'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -4713,6 +4705,42 @@ components:
           minimum: 0
         duration_minutes:
           type: integer
+        is_active:
+          type: boolean
+
+    CreateBookingHoldResponse:
+      type: object
+      required:
+        - hold_id
+        - hold_expires_at
+        - appointment_id
+        - appointment_status
+      properties:
+        hold_id:
+          type: string
+          format: uuid
+        hold_expires_at:
+          type: string
+          format: date-time
+        appointment_id:
+          type: string
+          format: uuid
+        appointment_status:
+          $ref: '#/components/schemas/AppointmentStatus'
+
+    BookingHoldStatusResponse:
+      type: object
+      required:
+        - hold_id
+        - expires_at
+        - is_active
+      properties:
+        hold_id:
+          type: string
+          format: uuid
+        expires_at:
+          type: string
+          format: date-time
         is_active:
           type: boolean
 
