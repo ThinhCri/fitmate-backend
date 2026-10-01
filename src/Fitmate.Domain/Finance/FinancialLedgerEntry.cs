@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using Fitmate.Domain.Common;
 
 namespace Fitmate.Domain.Finance;
 
@@ -17,6 +19,17 @@ public static class FinancialLedgerEntryTypes
 
 public class FinancialLedgerEntry
 {
+    private static readonly HashSet<string> ValidEntryTypes = new(StringComparer.Ordinal)
+    {
+        FinancialLedgerEntryTypes.GrossBookingFee,
+        FinancialLedgerEntryTypes.PlatformCommission,
+        FinancialLedgerEntryTypes.TrainerPayable,
+        FinancialLedgerEntryTypes.RefundGrossReduction,
+        FinancialLedgerEntryTypes.RefundPlatformFeeReturn,
+        FinancialLedgerEntryTypes.RefundTrainerDeduction,
+        FinancialLedgerEntryTypes.TrainerPayout
+    };
+
     public Guid Id { get; private set; }
     public string EntryType { get; private set; } = string.Empty;
     public long AmountVnd { get; private set; } // Signed amount
@@ -51,6 +64,15 @@ public class FinancialLedgerEntry
         Guid? correctsEntryId = null,
         string metadataJson = "{}")
     {
+        if (string.IsNullOrWhiteSpace(entryType) || !ValidEntryTypes.Contains(entryType))
+            throw new DomainException("INVALID_LEDGER_ENTRY_TYPE", $"Invalid financial ledger entry type: '{entryType}'.");
+
+        if (amountVnd == 0)
+            throw new DomainException("INVALID_LEDGER_AMOUNT", "Financial ledger entry amount cannot be zero.");
+
+        if (reversesEntryId.HasValue && correctsEntryId.HasValue)
+            throw new DomainException("INVALID_LEDGER_RELATION", "A ledger entry cannot simultaneously be a reversal and a correction.");
+
         return new FinancialLedgerEntry
         {
             Id = Guid.NewGuid(),

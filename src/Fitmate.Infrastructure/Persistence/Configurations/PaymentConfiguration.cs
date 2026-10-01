@@ -82,7 +82,12 @@ public sealed class FinancialLedgerEntryConfiguration : IEntityTypeConfiguration
 {
     public void Configure(EntityTypeBuilder<FinancialLedgerEntry> b)
     {
-        b.ToTable("financial_ledger_entries");
+        b.ToTable("financial_ledger_entries", t =>
+        {
+            t.HasCheckConstraint("chk_ledger_entry_type", "entry_type IN ('GrossBookingFee', 'PlatformCommission', 'TrainerPayable', 'RefundGrossReduction', 'RefundPlatformFeeReturn', 'RefundTrainerDeduction', 'TrainerPayout')");
+            t.HasCheckConstraint("chk_ledger_amount_nonzero", "amount_vnd != 0");
+            t.HasCheckConstraint("chk_ledger_reverses_corrects_exclusive", "NOT (reverses_entry_id IS NOT NULL AND corrects_entry_id IS NOT NULL)");
+        });
         b.HasKey(x => x.Id);
         b.Property(x => x.Id).HasColumnName("id");
         b.Property(x => x.EntryType).HasColumnName("entry_type").HasMaxLength(64).IsRequired();
@@ -134,17 +139,27 @@ public sealed class FinancialLedgerEntryConfiguration : IEntityTypeConfiguration
         b.HasIndex(x => new { x.AppointmentId, x.EntryType })
             .HasDatabaseName("uq_ledger_appointment_recognition")
             .IsUnique()
-            .HasFilter("appointment_id IS NOT NULL AND entry_type IN ('GrossBookingFee', 'PlatformCommission', 'TrainerPayable')");
+            .HasFilter("appointment_id IS NOT NULL AND entry_type IN ('GrossBookingFee', 'PlatformCommission', 'TrainerPayable') AND reverses_entry_id IS NULL AND corrects_entry_id IS NULL");
 
         b.HasIndex(x => new { x.RefundId, x.EntryType })
             .HasDatabaseName("uq_ledger_refund_adjustment")
             .IsUnique()
-            .HasFilter("refund_id IS NOT NULL");
+            .HasFilter("refund_id IS NOT NULL AND reverses_entry_id IS NULL AND corrects_entry_id IS NULL");
 
         b.HasIndex(x => new { x.SettlementId, x.EntryType })
             .HasDatabaseName("uq_ledger_settlement_payout")
             .IsUnique()
-            .HasFilter("settlement_id IS NOT NULL");
+            .HasFilter("settlement_id IS NOT NULL AND reverses_entry_id IS NULL AND corrects_entry_id IS NULL");
+
+        b.HasIndex(x => x.ReversesEntryId)
+            .HasDatabaseName("uq_ledger_single_reversal")
+            .IsUnique()
+            .HasFilter("reverses_entry_id IS NOT NULL");
+
+        b.HasIndex(x => x.CorrectsEntryId)
+            .HasDatabaseName("uq_ledger_single_correction")
+            .IsUnique()
+            .HasFilter("corrects_entry_id IS NOT NULL");
 
         b.HasIndex(x => x.OccurredAtUtc);
     }
