@@ -351,6 +351,25 @@ paths:
                 $ref: '#/components/schemas/UserProfile'
         '400':
           $ref: '#/components/responses/ValidationError'
+    put:
+      tags: [Users]
+      summary: Cập nhật profile (PUT alias)
+      operationId: putMe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserProfileUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '400':
+          $ref: '#/components/responses/ValidationError'
     delete:
       tags: [Users]
       summary: Xóa tài khoản (yêu cầu xác nhận password)
@@ -453,6 +472,192 @@ paths:
       responses:
         '204':
           description: Device revoked
+
+  /users/{id}/profile:
+    get:
+      tags: [Users]
+      summary: Lấy thông tin public profile của người dùng
+      operationId: getPublicProfile
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicUserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /users/search:
+    get:
+      tags: [Users]
+      summary: Tìm kiếm người dùng theo tên hoặc email
+      operationId: searchUsers
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PublicUserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/preferences:
+    get:
+      tags: [Users]
+      summary: Lấy cài đặt tùy chọn cá nhân của người dùng
+      operationId: getUserPreferences
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Users]
+      summary: Cập nhật cài đặt tùy chọn cá nhân của người dùng
+      operationId: updateUserPreferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateUserPreferencesRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPreferences'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/delete-request:
+    post:
+      tags: [Users]
+      summary: Yêu cầu xóa tài khoản (grace period 30 ngày)
+      operationId: requestAccountDeletion
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccountDeletionRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/deletion-status:
+    get:
+      tags: [Users]
+      summary: Kiểm tra trạng thái xóa tài khoản
+      operationId: getAccountDeletionStatus
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/cancel-deletion:
+    post:
+      tags: [Users]
+      summary: Hủy yêu cầu xóa tài khoản trong thời gian chờ
+      operationId: cancelAccountDeletion
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/me/export:
+    post:
+      tags: [Users]
+      summary: Yêu cầu xuất dữ liệu cá nhân (GDPR/privacy compliance)
+      operationId: exportUserData
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDataExport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /public/account-deletion-request:
+    post:
+      tags: [Users]
+      summary: Yêu cầu xóa tài khoản công khai (cho store listing policy)
+      operationId: publicAccountDeletionRequest
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicAccountDeletionRequest'
+      responses:
+        '202':
+          description: Accepted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /public/account-deletion-confirm:
+    post:
+      tags: [Users]
+      summary: Xác nhận xóa tài khoản bằng token từ email
+      operationId: publicAccountDeletionConfirm
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicAccountDeletionConfirm'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionStatus'
+        '400':
+          $ref: '#/components/responses/ValidationError'
 
   /trainers:
     get:
@@ -3408,6 +3613,145 @@ components:
           items:
             type: string
         timezone:
+          type: string
+
+    PublicUserProfile:
+      type: object
+      required: [id, full_name, role, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+        role:
+          type: string
+        fitness_goal:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    UserPreferences:
+      type: object
+      required: [user_id, language, theme, timezone, notifications_enabled, email_notifications, push_notifications, health_data_sharing_consent, biometric_login_enabled, updated_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        language:
+          type: string
+        theme:
+          type: string
+        timezone:
+          type: string
+        notifications_enabled:
+          type: boolean
+        email_notifications:
+          type: boolean
+        push_notifications:
+          type: boolean
+        health_data_sharing_consent:
+          type: boolean
+        biometric_login_enabled:
+          type: boolean
+        updated_at:
+          type: string
+          format: date-time
+
+    UpdateUserPreferencesRequest:
+      type: object
+      properties:
+        language:
+          type: string
+        theme:
+          type: string
+        timezone:
+          type: string
+        notifications_enabled:
+          type: boolean
+        email_notifications:
+          type: boolean
+        push_notifications:
+          type: boolean
+        health_data_sharing_consent:
+          type: boolean
+        biometric_login_enabled:
+          type: boolean
+
+    AccountDeletionRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          nullable: true
+        password:
+          type: string
+          nullable: true
+
+    AccountDeletionStatus:
+      type: object
+      required: [user_id, status, is_pending_deletion, retention_days_remaining, has_active_bookings]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        is_pending_deletion:
+          type: boolean
+        requested_at:
+          type: string
+          format: date-time
+          nullable: true
+        scheduled_permanent_deletion_at:
+          type: string
+          format: date-time
+          nullable: true
+        retention_days_remaining:
+          type: integer
+        has_active_bookings:
+          type: boolean
+
+    UserDataExport:
+      type: object
+      required: [user_id, email, full_name, timezone, exported_at]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        full_name:
+          type: string
+        timezone:
+          type: string
+        profile:
+          $ref: '#/components/schemas/UserProfile'
+        exported_at:
+          type: string
+          format: date-time
+
+    PublicAccountDeletionRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+        reason:
+          type: string
+          nullable: true
+
+    PublicAccountDeletionConfirm:
+      type: object
+      required: [token]
+      properties:
+        token:
           type: string
 
     PTPublicProfile:
