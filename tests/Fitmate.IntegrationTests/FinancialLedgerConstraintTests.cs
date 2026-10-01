@@ -259,6 +259,9 @@ public class FinancialLedgerConstraintTests : IClassFixture<FitmateTestAppFactor
         var store = scope.ServiceProvider.GetRequiredService<Fitmate.Application.Finance.IFinancialLedgerStore>();
 
         var fromUtc = DateTime.UtcNow.AddMinutes(-5);
+        var toUtc = DateTime.UtcNow.AddMinutes(5);
+        var before = await store.GetBalancesAsync(fromUtc, toUtc, CancellationToken.None);
+
         var entries = new[]
         {
             FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, 500_000, DateTime.UtcNow, "test"),
@@ -273,10 +276,10 @@ public class FinancialLedgerConstraintTests : IClassFixture<FitmateTestAppFactor
         await store.AddEntriesAsync(entries, CancellationToken.None);
         await store.SaveChangesAsync(CancellationToken.None);
 
-        var balances = await store.GetBalancesAsync(fromUtc, DateTime.UtcNow.AddMinutes(5), CancellationToken.None);
+        var after = await store.GetBalancesAsync(fromUtc, toUtc, CancellationToken.None);
 
-        balances.GrossBalanceVnd.Should().BeGreaterThanOrEqualTo(400_000);
-        balances.PlatformFeeBalanceVnd.Should().BeGreaterThanOrEqualTo(40_000);
-        balances.TrainerPayableBalanceVnd.Should().BeGreaterThanOrEqualTo(160_000);
+        (after.GrossBalanceVnd - before.GrossBalanceVnd).Should().Be(400_000);
+        (after.PlatformFeeBalanceVnd - before.PlatformFeeBalanceVnd).Should().Be(40_000);
+        (after.TrainerPayableBalanceVnd - before.TrainerPayableBalanceVnd).Should().Be(160_000);
     }
 }
