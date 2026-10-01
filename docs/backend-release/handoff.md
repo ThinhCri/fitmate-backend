@@ -1,3 +1,25 @@
+## 2026-10-01 — Hoàn tất Ổn định Backend Contract cho Mobile App (BE-801..BE-820)
+- **Mục tiêu**: Ổn định contract giữa Backend và Mobile App (`FitmateAI_FE\mobile`), loại bỏ phỏng đoán về route, DTO, enum, pagination và error response.
+- **Tiến độ hoàn thành 14 Phases/Commits**:
+  1. `88aabc2`: `test(contract): add route and OpenAPI parity tests [BE-801]` — Bộ test phản xạ `RouteOpenApiParityTests.cs` (7 test cases kiểm tra route/OpenAPI parity, security parity, duplicate operationId, path params).
+  2. `4a5731d`: `fix(contract): stabilize JSON wire conventions [BE-801]` — Bộ test `DtoSerializationContractTests.cs` (14 test cases), chuẩn hóa `[property: JsonPropertyName("...")]` snake_case cho domain fields và camelCase cho pagination metadata.
+  3. `f801429`: `feat(auth): align authentication and session contracts [BE-802]` — Bỏ route aliases trùng trong `AuthController.cs`, gắn `/api/v1/users/me/password` alias, chuẩn hóa OpenAPI spec.
+  4. `7fcecea`: `feat(users): align profile and settings contracts [BE-804]` — Khai báo `PUT /users/me`, `GET /users/{id}/profile`, `GET /users/search`, `GET/PUT /users/me/preferences`, luồng account deletion và export dữ liệu.
+  5. `cc28808`: `feat(trainers): align trainer marketplace contracts [BE-806]` — Chuẩn hóa `GET /trainers`, `GET /trainers/{id}`, `GET /trainers/{id}/availability`, thêm review endpoints (`/trainers/{id}/reviews`) và schemas.
+  6. `0dd2548`: `feat(bookings): align booking and payment contracts [BE-808]` — Thêm `GET /bookings/holds/{id}`, `POST /bookings/{id}/confirm`, `/me/bookings/{id}/confirm`, `/me/bookings/{id}/start`, `/me/bookings/{id}`, `GET /payments/vnpay/ipn`.
+  7. `d12d5cf`: `feat(bookings): add reschedule request contracts [BE-806]` — Thêm hợp đồng dời lịch hẹn 2 bên Branch A (`POST /bookings/{id}/reschedule-requests`, `/bookings/reschedule-requests/{requestId}/accept`, `reject`, `cancel`) và schemas `BookingRescheduleRequest`.
+  8. `1c31b5e`: `feat(workout): align workout and weight contracts [BE-812]` — Bổ sung `GET/PATCH/DELETE /me/workout/plans/{id}` và schema `UpdateWorkoutPlanInput`.
+  9. `115e03c`: `feat(nutrition): align nutrition contracts [BE-814]` — Bổ sung `DELETE /me/nutrition/meals/{id}` vào OpenAPI spec.
+  10. `0ea646b`: `feat(social): align social and chat contracts [BE-816]` — Khai báo `GET /social/posts/{id}/comments`, `GET /social/friends/requests`, chuẩn hóa `{user_id}` sang `{userId}`.
+  11. `724fe8e`: `feat(support): align notifications and support contracts [BE-818]` — Bổ sung `/support/tickets` (GET, POST), `/support/tickets/{id}/*`, `/uploads` (POST), `GET /me/services/{id}`, `GET /me/dashboard`, `GET /me/revenue/history` (thay thế phantom `/me/revenue/{bookingId}`).
+  12. `401daaa`: `test(security): add contract integration security coverage [BE-820]` — Bộ test `ContractSecurityCoverageTests.cs` (4 test suites kiểm tra Admin role/policy enforcement, bảo vệ IDOR trên `/me/*`, cấm anonymous trên sensitive mutations, và kiểm tra toàn bộ số tiền VNĐ là integer). Đồng bộ các endpoint Admin trong `fitmate-v1.yaml` và `RouteOpenApiParityTests.cs`.
+  13. `7d0b81c`: `chore(contract): freeze mobile v1 contract baseline [BE-801]` — Gắn frozen baseline tag vào `fitmate-v1.yaml` và `api-contract.md`.
+  14. (Commit này): `docs(handoff): update contract baseline status [BE-801]` — Hoàn tất tài liệu bàn giao.
+- **Kết quả kiểm thử**:
+  - `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj`: **816/816 tests PASS** (100% green, 0 failed, 0 skipped).
+  - Parity discrepancies: **0 missing routes, 0 phantom operations, 0 security mismatches**.
+  - Các tệp dirty của user (`AvailabilityController.cs`, `CertificatesController.cs`, `ServicesController.cs`, `TrainersPublicController.cs`) và untracked files (`AI/`, `docs/review-handoff/`) được giữ nguyên 100%.
+
 ## 2026-10-01 — Hoàn tất thực thi Kế hoạch Plan V9.1 (Baseline PROD-2026-09-22-v1, DEC-051, Reschedule Branch A)
 - **Hoàn thành toàn bộ 8 giai đoạn kỹ thuật (Phát hiện A -> H)**:
   1. **Phase 1 — Finding A (BE-810)**: Triển khai Durable Idempotency Store hoàn toàn atomic bằng `INSERT ... ON CONFLICT DO UPDATE` với lease token (`owner_token`), stale lease recovery sau 60 giây, canonical JSON hashing phân loại payload không phụ thuộc thứ tự key/khoảng trắng (`CanonicalJsonHasher`), phân định retention tài chính (365 ngày) và phi tài chính (24 giờ), kiểm thử đồng thời 10 luồng song song trên PostgreSQL thật (`IdempotencyConcurrencyTests`) xác nhận duy nhất 1 luồng acquire thành công.
