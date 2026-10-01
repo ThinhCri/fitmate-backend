@@ -370,4 +370,72 @@ public class BookingRescheduleServiceTests
         var act = () => svc.CancelRequestAsync(ptId, req.Id, CancellationToken.None);
         await act.Should().ThrowAsync<ForbiddenException>();
     }
+
+    [Fact]
+    public async Task AcceptRequest_DeadlineExpired_MarksExpiredAndEnqueuesOutbox_AndThrowsConflict()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var reqStore = new InMemoryRescheduleStore();
+        var outbox = new CapturingOutbox();
+
+        var memberId = Guid.NewGuid();
+        var ptId = Guid.NewGuid();
+        var oldSlot = DateTime.UtcNow.AddDays(2);
+        var newSlot = DateTime.UtcNow.AddDays(3);
+
+        var appt = Appointment.CreateHold(memberId, ptId, Guid.NewGuid(), oldSlot, oldSlot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ConfirmByPt();
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = new BookingRescheduleService(apptStore, reqStore, outbox, DefaultOptions());
+        var pastDeadline = DateTime.UtcNow.AddMinutes(-10);
+        var req = BookingRescheduleRequest.Create(
+            appt.Id, memberId, appt.SlotStartUtc, newSlot, appt.DurationMinutes, "Member needs reschedule", pastDeadline);
+        reqStore.Items[req.Id] = req;
+
+        // Try to accept
+        var act = () => svc.AcceptRequestAsync(ptId, req.Id, CancellationToken.None);
+        var ex = await act.Should().ThrowAsync<ConflictException>();
+        ex.Which.Code.Should().Be("DEADLINE_EXPIRED");
+
+        reqStore.Items[req.Id].Status.Should().Be(RescheduleRequestStatus.Expired, "Status must be Expired in store");
+        outbox.Messages.Should().Contain(m => m.Type == "booking.reschedule_expired");
+    }
+
+    [Fact]
+    public async Task AcceptRequest_SlotConflict_MarksRejectedAndEnqueuesOutbox_AndThrowsConflict()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var reqStore = new InMemoryRescheduleStore();
+        var outbox = new CapturingOutbox();
+
+        var memberId = Guid.NewGuid();
+        var otherMember = Guid.NewGuid();
+        var ptId = Guid.NewGuid();
+        var oldSlot = DateTime.UtcNow.AddDays(2);
+        var newSlot = DateTime.UtcNow.AddDays(3);
+
+        var appt = Appointment.CreateHold(memberId, ptId, Guid.NewGuid(), oldSlot, oldSlot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ConfirmByPt();
+        apptStore.Items[appt.Id] = appt;
+
+        var svc = new BookingRescheduleService(apptStore, reqStore, outbox, DefaultOptions());
+        var req = await svc.CreateRequestAsync(memberId, appt.Id, newSlot, "Member needs reschedule", CancellationToken.None);
+
+        // Now another appointment takes the newSlot
+        var blockingAppt = Appointment.CreateHold(otherMember, ptId, Guid.NewGuid(), newSlot, newSlot, 60, 100_000);
+        blockingAppt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        blockingAppt.ConfirmByPt();
+        apptStore.Items[blockingAppt.Id] = blockingAppt;
+
+        // PT tries to accept, but slot is taken
+        var act = () => svc.AcceptRequestAsync(ptId, req.Id, CancellationToken.None);
+        var ex = await act.Should().ThrowAsync<ConflictException>();
+        ex.Which.Code.Should().Be("SLOT_NO_LONGER_AVAILABLE");
+
+        reqStore.Items[req.Id].Status.Should().Be(RescheduleRequestStatus.Rejected, "Status must be persisted as Rejected");
+        outbox.Messages.Should().Contain(m => m.Type == "booking.reschedule_rejected");
+    }
 }

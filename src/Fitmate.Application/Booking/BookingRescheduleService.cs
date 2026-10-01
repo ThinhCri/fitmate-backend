@@ -97,7 +97,6 @@ public class BookingRescheduleService : IBookingRescheduleService
             nowUtc);
 
         await _rescheduleStore.AddAsync(request, ct);
-        await _rescheduleStore.SaveChangesAsync(ct);
 
         _outbox.Enqueue("booking.reschedule_requested", new
         {
@@ -109,6 +108,7 @@ public class BookingRescheduleService : IBookingRescheduleService
             deadlineUtc = request.DeadlineUtc
         });
 
+        await _rescheduleStore.SaveChangesAsync(ct);
         return request;
     }
 
@@ -143,15 +143,24 @@ public class BookingRescheduleService : IBookingRescheduleService
             throw new ForbiddenException(ErrorCodes.Identity.Forbidden, "Unauthorized responder.");
         }
 
-        return await _appointmentStore.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+        ConflictException? conflictToThrow = null;
+
+        await _appointmentStore.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
         {
             var nowUtc = DateTime.UtcNow;
 
             if (nowUtc > request.DeadlineUtc)
             {
                 request.Expire();
+                _outbox.Enqueue("booking.reschedule_expired", new
+                {
+                    requestId = request.Id,
+                    appointmentId = appt.Id,
+                    expiredAtUtc = nowUtc
+                });
                 await _rescheduleStore.SaveChangesAsync(ct);
-                throw new ConflictException("DEADLINE_EXPIRED", "Reschedule request response deadline has expired.");
+                conflictToThrow = new ConflictException("DEADLINE_EXPIRED", "Reschedule request response deadline has expired.");
+                return request;
             }
 
             var isOverlapping = await _appointmentStore.HasOverlappingSlotAsync(
@@ -160,21 +169,19 @@ public class BookingRescheduleService : IBookingRescheduleService
             if (isOverlapping)
             {
                 request.Reject("SLOT_NO_LONGER_AVAILABLE", nowUtc);
-                await _rescheduleStore.SaveChangesAsync(ct);
                 _outbox.Enqueue("booking.reschedule_rejected", new
                 {
                     requestId = request.Id,
                     appointmentId = appt.Id,
                     reason = "SLOT_NO_LONGER_AVAILABLE"
                 });
-                throw new ConflictException("SLOT_NO_LONGER_AVAILABLE", "The requested slot is no longer available.");
+                await _rescheduleStore.SaveChangesAsync(ct);
+                conflictToThrow = new ConflictException("SLOT_NO_LONGER_AVAILABLE", "The requested slot is no longer available.");
+                return request;
             }
 
             appt.RescheduleSlot(request.NewSlotStartUtc, request.NewSlotStartUtc, request.DurationMinutes);
             request.Accept(nowUtc);
-
-            await _appointmentStore.SaveChangesAsync(ct);
-            await _rescheduleStore.SaveChangesAsync(ct);
 
             _outbox.Enqueue("booking.rescheduled", new
             {
@@ -185,8 +192,17 @@ public class BookingRescheduleService : IBookingRescheduleService
                 respondedByUserId = responderUserId
             });
 
+            await _appointmentStore.SaveChangesAsync(ct);
+            await _rescheduleStore.SaveChangesAsync(ct);
             return request;
         }, ct);
+
+        if (conflictToThrow != null)
+        {
+            throw conflictToThrow;
+        }
+
+        return request;
     }
 
     public async Task<BookingRescheduleRequest> RejectRequestAsync(
@@ -223,7 +239,6 @@ public class BookingRescheduleService : IBookingRescheduleService
 
         var nowUtc = DateTime.UtcNow;
         request.Reject(rejectionReason, nowUtc);
-        await _rescheduleStore.SaveChangesAsync(ct);
 
         _outbox.Enqueue("booking.reschedule_rejected", new
         {
@@ -233,6 +248,7 @@ public class BookingRescheduleService : IBookingRescheduleService
             rejectionReason
         });
 
+        await _rescheduleStore.SaveChangesAsync(ct);
         return request;
     }
 
@@ -249,7 +265,6 @@ public class BookingRescheduleService : IBookingRescheduleService
 
         var nowUtc = DateTime.UtcNow;
         request.Cancel(nowUtc);
-        await _rescheduleStore.SaveChangesAsync(ct);
 
         _outbox.Enqueue("booking.reschedule_cancelled", new
         {
@@ -258,6 +273,7 @@ public class BookingRescheduleService : IBookingRescheduleService
             cancelledByUserId = requesterUserId
         });
 
+        await _rescheduleStore.SaveChangesAsync(ct);
         return request;
     }
 }

@@ -273,8 +273,6 @@ public class AdminFinanceService : IAdminFinanceService
             await _ledger.AddEntriesAsync(entries, ct);
         }
 
-        await _store.SaveChangesAsync(ct);
-
         _outbox.Enqueue("finance.legacy_appointment_verified", new
         {
             appointmentId = appt.Id,
@@ -283,6 +281,8 @@ public class AdminFinanceService : IAdminFinanceService
             evidenceReference = request.EvidenceReference,
             adminUserId
         });
+
+        await _store.SaveChangesAsync(ct);
 
         return appt;
     }
