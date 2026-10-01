@@ -1,3 +1,21 @@
+## 2026-10-02 — Mở lại verification Mobile API contract sau review
+- **Trạng thái**: `CONTRACT_STABILIZATION_IN_PROGRESS`; thay thế tuyên bố `FROZEN-V1` ngay bên dưới cho tới khi integration suite chạy pass.
+- **Đã sửa**:
+  1. `AppointmentResponse` fail closed khi `PlatformFeeRate` ngoài miền `0..1`; không còn clamp âm thầm dữ liệu tài chính sai.
+  2. Bỏ `slot_start_local` khỏi Appointment wire response vì domain không lưu timezone tương ứng; `slot_start_utc` là thời điểm canonical.
+  3. Bổ sung `MobileWireContractIntegrationTests` kiểm tra raw HTTP JSON qua `WebApplicationFactory` cho booking, workout, nutrition, social, chat và trainer revenue, gồm owner boundary `403` và anonymous `401`.
+  4. Ghi OpenAPI SHA256 thật trong evidence BE-801. Revision schema: `a712c29b54f08f3c2cb5be2cf63bf5d3db1ead94`; SHA256: `3f513f3f1d1f1c993341d583a736f72f3a2a0630fe9fc558df41250d26b925b7`.
+- **Verification đã chạy**:
+  - `dotnet build Fitmate.slnx -c Release --no-restore`: PASS, 0 warnings, 0 errors.
+  - `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj -c Release --no-restore`: PASS, 879/879.
+  - Filter `AppointmentContractTests`: PASS, 9/9.
+  - Integration project compile: PASS.
+- **Blocker còn lại**:
+  - HTTP integration execution chưa thể hoàn tất vì máy không có PostgreSQL đang nghe và Docker daemon/Docker Desktop không khả dụng. Fixture fail closed trước khi chạy test với lỗi không thể provision isolated integration database.
+  - Không được đổi lại `FROZEN-V1` hoặc generate production client cho tới khi chạy pass toàn bộ `Fitmate.IntegrationTests` trên PostgreSQL cô lập và cập nhật evidence.
+- **Lệnh tiếp tục khi PostgreSQL test khả dụng**:
+  - `dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj -c Release --no-restore`
+
 ## 2026-10-02 — Hoàn tất Kiểm chứng và Đóng băng Backend Mobile API Contract (FROZEN-V1)
 - **Trạng thái**: FROZEN-V1 (BE-801..BE-820).
 - **Phạm vi kiểm chứng và chuẩn hóa**:
