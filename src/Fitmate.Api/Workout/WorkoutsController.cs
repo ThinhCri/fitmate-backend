@@ -30,7 +30,7 @@ public class WorkoutsController : ControllerBase
         CancellationToken ct)
     {
         var items = await _workout.ListPlansAsync(current.GetUserIdOrThrow(), ct);
-        return Ok(new { items });
+        return Ok(new WorkoutPlanListResponse(items));
     }
 
     /// <summary>Get a single workout plan with its exercises.</summary>
@@ -89,7 +89,7 @@ public class WorkoutsController : ControllerBase
         CancellationToken ct)
     {
         var items = await _workout.ListSessionsAsync(current.GetUserIdOrThrow(), from, to, ct);
-        return Ok(new { items });
+        return Ok(new WorkoutSessionListResponse(items));
     }
 
     /// <summary>Get a single session with exercise breakdown and set results.</summary>
@@ -130,7 +130,7 @@ public class WorkoutsController : ControllerBase
         CancellationToken ct)
     {
         var items = await _weight.ListAsync(current.GetUserIdOrThrow(), ct);
-        return Ok(new { items });
+        return Ok(new WeightLogListResponse(items));
     }
 
     /// <summary>Log a weight entry.</summary>

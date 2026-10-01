@@ -1718,9 +1718,13 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/WorkoutPlan'
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkoutPlan'
     post:
       tags: [Workout]
       summary: Tạo workout plan
@@ -1753,7 +1757,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WorkoutPlan'
+                $ref: '#/components/schemas/WorkoutPlanDetail'
         '404':
           $ref: '#/components/responses/NotFound'
     patch:
@@ -1811,9 +1815,13 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/WorkoutSession'
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WorkoutSession'
     post:
       tags: [Workout]
       summary: Ghi nhận phiên tập hoàn thành
@@ -1867,9 +1875,13 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/WeightLog'
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WeightLog'
     post:
       tags: [Workout]
       summary: Ghi nhận cân nặng
@@ -5260,9 +5272,19 @@ components:
 
     WorkoutPlan:
       type: object
+      required:
+        - id
+        - day_of_week
+        - workout_name
+        - duration_minutes
+        - target_calories_burn
+        - is_completed
+        - exercise_count
+        - created_at
       properties:
         id:
           type: string
+          format: uuid
         day_of_week:
           type: string
         workout_name:
@@ -5273,6 +5295,40 @@ components:
           type: integer
         is_completed:
           type: boolean
+        exercise_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    WorkoutPlanDetail:
+      type: object
+      required:
+        - id
+        - day_of_week
+        - workout_name
+        - duration_minutes
+        - target_calories_burn
+        - is_completed
+        - created_at
+        - exercises
+      properties:
+        id:
+          type: string
+          format: uuid
+        day_of_week:
+          type: string
+        workout_name:
+          type: string
+        duration_minutes:
+          type: integer
+        target_calories_burn:
+          type: integer
+        is_completed:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
         exercises:
           type: array
           items:
