@@ -1,3 +1,21 @@
+## 2026-10-02 — Hoàn tất Kiểm chứng và Đóng băng Backend Mobile API Contract (FROZEN-V1)
+- **Trạng thái**: FROZEN-V1 (BE-801..BE-820).
+- **Phạm vi kiểm chứng và chuẩn hóa**:
+  1. **OpenAPI Strict Validation (Phase III)**: Thay thế parser regex bằng parser chuẩn `Microsoft.OpenApi.Readers 1.6.31`, loại bỏ duplicate keys/YAML errors, kiểm tra $ref resolution, path parameter parity và response description bắt buộc (`RouteOpenApiParityTests.cs`).
+  2. **Booking Hold Wire Contract (Phase IV)**: Chuẩn hóa `CreateHoldRequest` wire DTO snake_case (`pt_id`, `service_id`, `slot_start_utc`), `CreateBookingHoldResponse` và `BookingHoldStatusResponse` (`BookingHoldContractTests.cs`).
+  3. **Appointment Wire DTO (Phase V)**: Tách biệt hoàn toàn `AppointmentResponse` và `AppointmentPageResponse` khỏi Domain entity `Appointment`; chuẩn hóa `platform_fee_rate_bps` thành basis points (1000 cho 10%); ẩn toàn bộ audit/internal notes; kiểm chứng serialization (`AppointmentContractTests.cs`).
+  4. **Reschedule Wire Contract (Phase VI)**: Chuẩn hóa canonical route `POST /api/v1/bookings/{id}/reschedule-requests`, DTOs `CreateRescheduleRequestBody` (`new_slot_start_utc`, `reason`), `RejectRescheduleRequestBody` (`rejection_reason`), và response DTO `BookingRescheduleResponse` (`BookingRescheduleContractTests.cs`).
+  5. **Workout Wire Contract (Phase VII)**: Chuẩn hóa 15 wire DTOs trong `WorkoutDtos.cs` sang snake_case qua `JsonPropertyName`, custom converters `SnakeCaseLower` cho enums, chuẩn hóa list responses `{ items: [...] }` (`WorkoutContractTests.cs`).
+  6. **Nutrition Wire Contract (Phase VIII)**: Chuẩn hóa 8 wire DTOs trong `NutritionDtos.cs` sang snake_case, meal sources enum converter (`manual`, `dataset`, `ai_estimate`) (`NutritionContractTests.cs`).
+  7. **Social Wire Contract (Phase IX)**: Chuẩn hóa wire DTOs cho feed, comments, reactions, friends, blocks; đồng bộ OpenAPI pagination `{ items, nextCursor }` (`SocialContractTests.cs`).
+  8. **Chat Wire Contract (Phase X)**: Chuẩn hóa wire DTOs `ChatMessageDto`, `ConversationDto`, `ChatPeer`, `SendMessageBody`, `MarkReadBody`; đồng bộ OpenAPI schema (`ChatContractTests.cs`).
+  9. **Trainer Revenue Wire Contract (Phase XI)**: Chuẩn hóa `TrainerRevenueOverview`, `TrainerRevenueChartPoint`, `TrainerRevenueHistoryPage`, `TrainerRevenueItem` sang snake_case; đồng bộ OpenAPI spec (`RevenueContractTests.cs`).
+- **Kết quả kiểm thử tự động**:
+  - `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj`: **877/877 tests PASS** (100% green, 0 failed, 0 skipped).
+  - Tất cả contract serialization tests và OpenAPI schema reflection tests đều pass.
+  - Các tệp dirty của user (`AvailabilityController.cs`, `CertificatesController.cs`, `ServicesController.cs`, `TrainersPublicController.cs`) và untracked files (`AI/`, `docs/review-handoff/`) được bảo toàn tuyệt đối.
+  - Mobile App được phép generate client từ baseline revision này.
+
 ## 2026-10-01 — Hoàn tất Ổn định Backend Contract cho Mobile App (BE-801..BE-820)
 - **Mục tiêu**: Ổn định contract giữa Backend và Mobile App (`FitmateAI_FE\mobile`), loại bỏ phỏng đoán về route, DTO, enum, pagination và error response.
 - **Tiến độ hoàn thành 14 Phases/Commits**:

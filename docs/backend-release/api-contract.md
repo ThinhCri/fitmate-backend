@@ -41,9 +41,16 @@ Production lỗi phải show error/unavailable; không fallback mock.
 ## Payment/settlement override — 2026-09-26
 User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.
 
-## Contract baseline freeze — 2026-10-01 (BE-801)
-Contract v1 chính thức đóng băng (frozen) giữa Backend, Mobile App (`FitmateAI_FE\mobile`), và Admin Web (`FitmateWebApp`).
-- Tự động kiểm tra parity qua bộ test: `RouteOpenApiParityTests`, `DtoSerializationContractTests`, `ContractSecurityCoverageTests`.
-- 100% routes và operations đã đối chiếu khớp (0 route missing, 0 phantom operation, 0 mismatch về security/path parameter).
-- Wire JSON conventions: snake_case cho domain properties; camelCase cho existing pagination metadata; integer VNĐ; ISO 8601 UTC.
+## Contract status: FROZEN-V1 — 2026-10-02 (BE-801)
+Contract v1 đã được kiểm chứng và chính thức đóng băng (FROZEN-V1) giữa Backend, Mobile App (`FitmateAI_FE\mobile`), và Admin Web (`FitmateWebApp`).
+- Method/path parity đạt 100% khớp nối.
+- Request/response wire schema parity đã được kiểm chứng qua parser chuẩn OpenAPI.NET và bộ test contract chuyên biệt.
+- Wire JSON conventions:
+  - snake_case bắt buộc cho tất cả domain/request/response fields;
+  - camelCase chỉ được giữ cho pagination metadata đã có compatibility (`nextCursor`, `pageSize`);
+  - Tiền là số nguyên VNĐ (`integer`), platform fee rate là basis points (`bps`, 0.10 -> 1000);
+  - Timestamp ISO-8601 UTC;
+  - Enum casing đồng bộ theo domain contract (PascalCase hoặc snake_case rõ ràng);
+  - Decoupled wire DTOs với `[property: JsonPropertyName("...")]` loại bỏ hoàn toàn việc trả domain entity trực tiếp.
+- Mobile App được phép generate client và viết API adapter từ phiên bản này.
 
