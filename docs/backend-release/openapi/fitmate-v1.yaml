@@ -1972,6 +1972,36 @@ paths:
           description: No Content
 
   /social/posts/{id}/comments:
+    get:
+      tags: [Social]
+      summary: Lấy danh sách bình luận của bài viết
+      operationId: listPostComments
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Comment'
+                  nextCursor:
+                    type: string
+                    nullable: true
     post:
       tags: [Social]
       summary: Comment
@@ -2046,6 +2076,29 @@ paths:
                 $ref: '#/components/schemas/Report'
 
   /social/friends/requests:
+    get:
+      tags: [Social]
+      summary: Lấy danh sách friend request đang chờ
+      operationId: listPendingFriendRequests
+      parameters:
+        - in: query
+          name: type
+          schema:
+            type: string
+            enum: [incoming, outgoing]
+            default: incoming
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FriendRequest'
     post:
       tags: [Social]
       summary: Gửi friend request
@@ -2127,14 +2180,14 @@ paths:
                 items:
                   $ref: '#/components/schemas/FriendSummary'
 
-  /social/friends/{user_id}:
+  /social/friends/{userId}:
     delete:
       tags: [Social]
       summary: Unfriend (idempotent)
       operationId: unfriend
       parameters:
         - in: path
-          name: user_id
+          name: userId
           required: true
           schema:
             type: string
@@ -2143,14 +2196,14 @@ paths:
         '204':
           description: No Content
 
-  /social/friends/status/{user_id}:
+  /social/friends/status/{userId}:
     get:
       tags: [Social]
       summary: Trạng thái quan hệ 2 chiều với user khác
       operationId: friendRelationStatus
       parameters:
         - in: path
-          name: user_id
+          name: userId
           required: true
           schema:
             type: string
@@ -2207,14 +2260,14 @@ paths:
                 items:
                   $ref: '#/components/schemas/BlockedSummary'
 
-  /social/blocks/{user_id}:
+  /social/blocks/{userId}:
     delete:
       tags: [Social]
       summary: Unblock user (KHÔNG tự khôi phục friendship)
       operationId: unblockUser
       parameters:
         - in: path
-          name: user_id
+          name: userId
           required: true
           schema:
             type: string
