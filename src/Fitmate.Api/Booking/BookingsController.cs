@@ -57,51 +57,51 @@ public class BookingsController : ControllerBase
 
     /// <summary>Member / PT cancel. Reason ≥ 5 chars.</summary>
     [HttpPost("me/bookings/{id:guid}/cancel")]
-    public async Task<ActionResult<Appointment>> CancelMyBooking(
+    public async Task<ActionResult<AppointmentResponse>> CancelMyBooking(
         [FromServices] ICurrentUserAccessor current,
         Guid id,
         [FromBody] CancelBookingRequest body,
         CancellationToken ct)
     {
         var appt = await _booking.CancelAsync(current.GetUserIdOrThrow(), id, body.Reason, ct);
-        return Ok(appt);
+        return Ok(AppointmentResponse.FromDomain(appt));
     }
 
     /// <summary>PT confirm/accept booking.</summary>
     [HttpPost("me/bookings/{id:guid}/confirm")]
     [HttpPost("bookings/{id:guid}/confirm")]
     [Authorize(Roles = "PT")]
-    public async Task<ActionResult<Appointment>> ConfirmBooking(
+    public async Task<ActionResult<AppointmentResponse>> ConfirmBooking(
         [FromServices] ICurrentUserAccessor current,
         Guid id,
         CancellationToken ct)
     {
         var appt = await _booking.ConfirmAsync(current.GetUserIdOrThrow(), id, ct);
-        return Ok(appt);
+        return Ok(AppointmentResponse.FromDomain(appt));
     }
 
     /// <summary>PT start booking.</summary>
     [HttpPost("me/bookings/{id:guid}/start")]
     [Authorize(Roles = "PT")]
-    public async Task<ActionResult<Appointment>> StartBooking(
+    public async Task<ActionResult<AppointmentResponse>> StartBooking(
         [FromServices] ICurrentUserAccessor current,
         Guid id,
         CancellationToken ct)
     {
         var appt = await _booking.StartAsync(current.GetUserIdOrThrow(), id, ct);
-        return Ok(appt);
+        return Ok(AppointmentResponse.FromDomain(appt));
     }
 
     /// <summary>PT complete.</summary>
     [HttpPost("me/bookings/{id:guid}/complete")]
     [Authorize(Roles = "PT")]
-    public async Task<ActionResult<Appointment>> CompleteMyBooking(
+    public async Task<ActionResult<AppointmentResponse>> CompleteMyBooking(
         [FromServices] ICurrentUserAccessor current,
         Guid id,
         CancellationToken ct)
     {
         var appt = await _booking.CompleteAsync(current.GetUserIdOrThrow(), id, ct);
-        return Ok(appt);
+        return Ok(AppointmentResponse.FromDomain(appt));
     }
 
     /// <summary>Get booking detail by ID.</summary>
@@ -115,7 +115,7 @@ public class BookingsController : ControllerBase
         if (appt is null) return NotFound();
         var userId = current.GetUserIdOrThrow();
         if (appt.MemberId != userId && appt.PtUserId != userId) return Forbid();
-        return Ok(appt);
+        return Ok(AppointmentResponse.FromDomain(appt));
     }
 
     /// <summary>Legacy reschedule route has been retired in favor of two-party reschedule requests (Branch A / BR-05).</summary>
@@ -144,7 +144,8 @@ public class BookingsController : ControllerBase
         var normalized = NormalizePage(page, pageSize);
         var st = ParseStatus(status);
         var (items, total) = await _booking.ListByMemberAsync(current.GetUserIdOrThrow(), st, normalized.page, normalized.pageSize, ct);
-        return Ok(new { items, total, page = normalized.page, pageSize = normalized.pageSize });
+        var viewItems = items.Select(AppointmentResponse.FromDomain).ToList();
+        return Ok(new AppointmentPageResponse(viewItems, total, normalized.page, normalized.pageSize));
     }
 
     /// <summary>PT list booking mà mình nhận.</summary>
@@ -160,7 +161,8 @@ public class BookingsController : ControllerBase
         var normalized = NormalizePage(page, pageSize);
         var st = ParseStatus(status);
         var (items, total) = await _booking.ListByPtAsync(current.GetUserIdOrThrow(), st, normalized.page, normalized.pageSize, ct);
-        return Ok(new { items, total, page = normalized.page, pageSize = normalized.pageSize });
+        var viewItems = items.Select(AppointmentResponse.FromDomain).ToList();
+        return Ok(new AppointmentPageResponse(viewItems, total, normalized.page, normalized.pageSize));
     }
 
     /// <summary>Create a reschedule request (Member or PT, Branch A rules).</summary>
@@ -279,7 +281,7 @@ public sealed record BookingHoldStatusResponse(
     [property: JsonPropertyName("expires_at")] DateTime ExpiresAt,
     [property: JsonPropertyName("is_active")] bool IsActive
 );
-public sealed record CancelBookingRequest(string Reason);
+public sealed record CancelBookingRequest([property: JsonPropertyName("reason")] string Reason);
 public sealed record RescheduleRequest(DateTime NewSlotStartUtc);
 public sealed record CreateRescheduleRequestBody(DateTime NewSlotStartUtc, string Reason);
 public sealed record RejectRescheduleRequestBody(string? RejectionReason);

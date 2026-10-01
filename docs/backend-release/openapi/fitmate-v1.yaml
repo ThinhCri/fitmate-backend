@@ -1352,6 +1352,10 @@ paths:
                       $ref: '#/components/schemas/Appointment'
                   total:
                     type: integer
+                  page:
+                    type: integer
+                  pageSize:
+                    type: integer
 
   /me/bookings/{id}/cancel:
     post:
@@ -4782,19 +4786,37 @@ components:
     Appointment:
       type: object
       description: |
-        Booking record. Theo DEC-026, tách 3 status:
-        - appointment.status: AppointmentStatus
-        - appointment.payment_status: PaymentStatus
-        - refund.status: RefundStatus
+        Booking record. Canonical wire representation for Mobile and API consumers.
+      required:
+        - id
+        - member_id
+        - pt_user_id
+        - service_id
+        - slot_start_utc
+        - slot_start_local
+        - duration_minutes
+        - status
+        - rescheduled_count
+        - price_listed_vnd
+        - discount_vnd
+        - actual_paid_vnd
+        - platform_fee_rate_bps
+        - platform_fee_vnd
+        - trainer_share_vnd
+        - policy_version
       properties:
         id:
           type: string
+          format: uuid
         member_id:
           type: string
-        pt_id:
+          format: uuid
+        pt_user_id:
           type: string
+          format: uuid
         service_id:
           type: string
+          format: uuid
         slot_start_utc:
           type: string
           format: date-time
@@ -4805,17 +4827,32 @@ components:
           type: integer
         status:
           $ref: '#/components/schemas/AppointmentStatus'
-        payment_status:
-          $ref: '#/components/schemas/PaymentStatus'
-        is_late_attendee:
-          type: boolean
-          description: |
-            Flag attendance (DEC-026). KHÔNG tự kết luận no-show. KHÔNG dùng để tính reward.
-          default: false
-        previous_booking_id:
+        hold_expires_at_utc:
           type: string
+          format: date-time
           nullable: true
-          description: Trỏ tới booking trước nếu được reschedule (audit trail).
+        acceptance_deadline_utc:
+          type: string
+          format: date-time
+          nullable: true
+        confirmed_at_utc:
+          type: string
+          format: date-time
+          nullable: true
+        started_at_utc:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at_utc:
+          type: string
+          format: date-time
+          nullable: true
+        cancelled_at_utc:
+          type: string
+          format: date-time
+          nullable: true
+        rescheduled_count:
+          type: integer
         price_listed_vnd:
           type: integer
         discount_vnd:
@@ -4833,9 +4870,8 @@ components:
           type: string
         payment_id:
           type: string
+          format: uuid
           nullable: true
-        note:
-          type: string
 
 
     CreateRescheduleRequestBody:
