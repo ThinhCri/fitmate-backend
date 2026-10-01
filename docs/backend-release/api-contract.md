@@ -41,8 +41,8 @@ Production lỗi phải show error/unavailable; không fallback mock.
 ## Payment/settlement override — 2026-09-26
 User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.
 
-## Contract status: FROZEN-V1 — 2026-10-02 (BE-801)
-Contract v1 đã được kiểm chứng và chính thức đóng băng (FROZEN-V1) giữa Backend, Mobile App (`FitmateAI_FE\mobile`), và Admin Web (`FitmateWebApp`).
+## Contract status: CONTRACT_STABILIZATION_IN_PROGRESS — 2026-10-02 (BE-801)
+Contract v1 đang được kiểm chứng giữa Backend, Mobile App (`FitmateAI_FE\mobile`), và Admin Web (`FitmateWebApp`). Chưa được coi là frozen cho tới khi HTTP integration suite chạy pass trên PostgreSQL cô lập.
 - Method/path parity đạt 100% khớp nối.
 - Request/response wire schema parity đã được kiểm chứng qua parser chuẩn OpenAPI.NET và bộ test contract chuyên biệt.
 - Wire JSON conventions:
@@ -52,5 +52,5 @@ Contract v1 đã được kiểm chứng và chính thức đóng băng (FROZEN-
   - Timestamp canonical là ISO-8601 UTC; calendar-local input luôn đi kèm timezone riêng và không xuất lại dưới dạng thời điểm mơ hồ;
   - Enum casing đồng bộ theo domain contract (PascalCase hoặc snake_case rõ ràng);
   - Decoupled wire DTOs với `[property: JsonPropertyName("...")]` loại bỏ hoàn toàn việc trả domain entity trực tiếp.
-- Mobile App được phép generate client và viết API adapter từ phiên bản này.
+- Mobile App chưa được generate production client từ revision này. Có thể tiếp tục UI/client adapter cô lập sau abstraction, nhưng phải chờ baseline hash được xác nhận sau integration run.
 

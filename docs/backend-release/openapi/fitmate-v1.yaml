@@ -4,8 +4,8 @@ info:
   description: |
     Source of truth cho Android app + Admin Web.
     Quy ước: xem docs/backend-release/api-contract.md.
-    Contract status: FROZEN-V1 (BE-801) - 2026-10-02.
-    Đã kiểm chứng đầy đủ wire contract và schema parity qua bộ test tự động (RouteOpenApiParityTests, BookingHoldContractTests, AppointmentContractTests, BookingRescheduleContractTests, WorkoutContractTests, NutritionContractTests, SocialContractTests, ChatContractTests, RevenueContractTests). Mobile App được phép generate client từ revision này.
+    Contract status: CONTRACT_STABILIZATION_IN_PROGRESS (BE-801) - 2026-10-02.
+    Unit contract verification đã pass. HTTP integration coverage đã được bổ sung nhưng chưa được chạy thành công trên PostgreSQL cô lập trong phiên này; chưa cho phép generate production client từ revision này.
   version: 1.0.0
   contact:
     name: Fitmate Backend
