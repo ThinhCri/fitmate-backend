@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json.Serialization;
 using Fitmate.Application.Chat;
 using Fitmate.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
@@ -78,5 +79,10 @@ public class ChatController : ControllerBase
     }
 }
 
-public sealed record SendMessageBody(Guid PeerUserId, string Text, Guid? ClientMessageId);
-public sealed record MarkReadBody(Guid LastReadMessageId);
+public sealed record SendMessageBody(
+    [property: JsonPropertyName("peer_user_id")] Guid PeerUserId,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId);
+
+public sealed record MarkReadBody(
+    [property: JsonPropertyName("last_read_message_id")] Guid LastReadMessageId);

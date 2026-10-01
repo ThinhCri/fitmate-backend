@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Fitmate.Domain.Chat;
 
 namespace Fitmate.Application.Chat;
@@ -42,33 +43,37 @@ public interface IChatService
 // ==================== DTOs ====================
 
 public sealed record ChatMessageDto(
-    Guid Id,
-    Guid? ConversationId,
-    Guid SenderUserId,
-    string Sender,
-    string Text,
-    DateTime CreatedAt,
-    Guid? ClientMessageId);
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("conversation_id")] Guid? ConversationId,
+    [property: JsonPropertyName("sender_user_id")] Guid SenderUserId,
+    [property: JsonPropertyName("sender")] string Sender,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt,
+    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId);
 
 public sealed record FriendSummaryDto(
-    Guid UserId,
-    string? DisplayName,
-    string? AvatarUrl);
+    [property: JsonPropertyName("user_id")] Guid UserId,
+    [property: JsonPropertyName("display_name")] string? DisplayName,
+    [property: JsonPropertyName("avatar_url")] string? AvatarUrl);
 
 public sealed record ConversationDto(
-    Guid ConversationId,
-    FriendSummaryDto Peer,
-    ChatMessageDto? LastMessage,
-    int UnreadCount,
-    DateTime LastMessageAt);
+    [property: JsonPropertyName("conversation_id")] Guid ConversationId,
+    [property: JsonPropertyName("peer")] FriendSummaryDto Peer,
+    [property: JsonPropertyName("last_message")] ChatMessageDto? LastMessage,
+    [property: JsonPropertyName("unread_count")] int UnreadCount,
+    [property: JsonPropertyName("last_message_at")] DateTime LastMessageAt);
 
-public sealed record ConversationPage(IReadOnlyList<ConversationDto> Items, string? NextCursor);
+public sealed record ConversationPage(
+    [property: JsonPropertyName("items")] IReadOnlyList<ConversationDto> Items,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor);
 
-public sealed record MessagesPage(IReadOnlyList<ChatMessageDto> Items, string? NextCursor);
+public sealed record MessagesPage(
+    [property: JsonPropertyName("items")] IReadOnlyList<ChatMessageDto> Items,
+    [property: JsonPropertyName("nextCursor")] string? NextCursor);
 
 // ==================== Request DTOs ====================
 
 public sealed record SendFriendMessageRequest(
-    Guid PeerUserId,
-    string Text,
-    Guid? ClientMessageId);
+    [property: JsonPropertyName("peer_user_id")] Guid PeerUserId,
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId);

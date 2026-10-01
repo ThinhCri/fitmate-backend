@@ -6059,8 +6059,28 @@ components:
         message_count:
           type: integer
 
+    ChatPeer:
+      type: object
+      required: [user_id]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        display_name:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+
     ChatMessage:
       type: object
+      required:
+        - id
+        - sender_user_id
+        - sender
+        - text
+        - created_at
       properties:
         id:
           type: string
@@ -6073,10 +6093,8 @@ components:
         sender_user_id:
           type: string
           format: uuid
-          nullable: true
         sender:
           type: string
-          enum: [user, ai, peer]
         text:
           type: string
           maxLength: 2000
@@ -6091,14 +6109,20 @@ components:
 
     Conversation:
       type: object
+      required:
+        - conversation_id
+        - peer
+        - unread_count
+        - last_message_at
       properties:
         conversation_id:
           type: string
           format: uuid
         peer:
-          $ref: '#/components/schemas/UserSummary'
+          $ref: '#/components/schemas/ChatPeer'
         last_message:
           $ref: '#/components/schemas/ChatMessage'
+          nullable: true
         unread_count:
           type: integer
         last_message_at:
