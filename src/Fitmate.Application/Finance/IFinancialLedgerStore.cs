@@ -6,6 +6,8 @@ using Fitmate.Domain.Finance;
 
 namespace Fitmate.Application.Finance;
 
+public record LedgerDimensionBalances(long GrossBalanceVnd, long PlatformFeeBalanceVnd, long TrainerPayableBalanceVnd);
+
 public interface IFinancialLedgerStore
 {
     Task AddEntriesAsync(IEnumerable<FinancialLedgerEntry> entries, CancellationToken ct);
@@ -19,6 +21,7 @@ public interface IFinancialLedgerStore
         int page,
         int pageSize,
         CancellationToken ct);
+    Task<LedgerDimensionBalances> GetBalancesAsync(DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
     Task<long> GetDebitCreditSumAsync(DateTime? fromUtc, DateTime? toUtc, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }

@@ -251,4 +251,32 @@ public class FinancialLedgerConstraintTests : IClassFixture<FitmateTestAppFactor
 
         await reversalAction.Should().NotThrowAsync();
     }
+
+    [Fact]
+    public async Task EfFinancialLedgerStore_GetBalancesAsync_CalculatesIsolatedDimensionsCorrectly()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var store = scope.ServiceProvider.GetRequiredService<Fitmate.Application.Finance.IFinancialLedgerStore>();
+
+        var fromUtc = DateTime.UtcNow.AddMinutes(-5);
+        var entries = new[]
+        {
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, 500_000, DateTime.UtcNow, "test"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.PlatformCommission, 50_000, DateTime.UtcNow, "test"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayable, 450_000, DateTime.UtcNow, "test"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundGrossReduction, -100_000, DateTime.UtcNow, "test"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundPlatformFeeReturn, -10_000, DateTime.UtcNow, "test"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundTrainerDeduction, -90_000, DateTime.UtcNow, "test"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayout, -200_000, DateTime.UtcNow, "test")
+        };
+
+        await store.AddEntriesAsync(entries, CancellationToken.None);
+        await store.SaveChangesAsync(CancellationToken.None);
+
+        var balances = await store.GetBalancesAsync(fromUtc, DateTime.UtcNow.AddMinutes(5), CancellationToken.None);
+
+        balances.GrossBalanceVnd.Should().BeGreaterThanOrEqualTo(400_000);
+        balances.PlatformFeeBalanceVnd.Should().BeGreaterThanOrEqualTo(40_000);
+        balances.TrainerPayableBalanceVnd.Should().BeGreaterThanOrEqualTo(160_000);
+    }
 }

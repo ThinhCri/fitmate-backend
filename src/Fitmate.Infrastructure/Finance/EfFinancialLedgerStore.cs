@@ -71,7 +71,7 @@ public class EfFinancialLedgerStore : IFinancialLedgerStore
             .ToListAsync(ct);
     }
 
-    public Task<long> GetDebitCreditSumAsync(DateTime? fromUtc, DateTime? toUtc, CancellationToken ct)
+    public async Task<LedgerDimensionBalances> GetBalancesAsync(DateTime? fromUtc, DateTime? toUtc, CancellationToken ct)
     {
         IQueryable<FinancialLedgerEntry> q = _db.FinancialLedgerEntries.AsNoTracking();
 
@@ -81,7 +81,30 @@ public class EfFinancialLedgerStore : IFinancialLedgerStore
         if (toUtc.HasValue)
             q = q.Where(e => e.OccurredAtUtc < toUtc.Value);
 
-        return q.SumAsync(e => (long?)e.AmountVnd, ct).ContinueWith(t => t.Result ?? 0L, ct);
+        var grouped = await q
+            .GroupBy(e => e.EntryType)
+            .Select(g => new { Type = g.Key, Total = g.Sum(x => x.AmountVnd) })
+            .ToListAsync(ct);
+
+        var map = grouped.ToDictionary(x => x.Type, x => x.Total);
+
+        long gross = map.GetValueOrDefault(FinancialLedgerEntryTypes.GrossBookingFee) +
+                     map.GetValueOrDefault(FinancialLedgerEntryTypes.RefundGrossReduction);
+
+        long fee = map.GetValueOrDefault(FinancialLedgerEntryTypes.PlatformCommission) +
+                   map.GetValueOrDefault(FinancialLedgerEntryTypes.RefundPlatformFeeReturn);
+
+        long payable = map.GetValueOrDefault(FinancialLedgerEntryTypes.TrainerPayable) +
+                       map.GetValueOrDefault(FinancialLedgerEntryTypes.RefundTrainerDeduction) +
+                       map.GetValueOrDefault(FinancialLedgerEntryTypes.TrainerPayout);
+
+        return new LedgerDimensionBalances(gross, fee, payable);
+    }
+
+    public async Task<long> GetDebitCreditSumAsync(DateTime? fromUtc, DateTime? toUtc, CancellationToken ct)
+    {
+        var balances = await GetBalancesAsync(fromUtc, toUtc, ct);
+        return balances.GrossBalanceVnd;
     }
 
     public Task SaveChangesAsync(CancellationToken ct)
