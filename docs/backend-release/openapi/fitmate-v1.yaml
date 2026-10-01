@@ -1823,6 +1823,18 @@ paths:
               schema:
                 $ref: '#/components/schemas/MealLog'
 
+    delete:
+      tags: [Nutrition]
+      summary: Xóa meal log
+      operationId: deleteMeal
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /me/nutrition/schedule:
     get:
       tags: [Nutrition]
