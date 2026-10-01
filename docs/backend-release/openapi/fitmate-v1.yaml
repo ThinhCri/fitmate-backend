@@ -390,6 +390,88 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /admin/auth/mfa/status:
+    get:
+      tags: [Admin]
+      summary: Lấy trạng thái MFA của admin
+      operationId: getAdminMfaStatus
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+
+  /admin/auth/mfa/setup:
+    post:
+      tags: [Admin]
+      summary: Khởi tạo thiết lập MFA
+      operationId: setupAdminMfa
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shared_key: { type: string }
+                  authenticator_uri: { type: string }
+
+  /admin/auth/mfa/verify:
+    post:
+      tags: [Admin]
+      summary: Xác minh và kích hoạt MFA
+      operationId: verifyAdminMfa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  recovery_codes:
+                    type: array
+                    items: { type: string }
+
+  /admin/auth/mfa/disable:
+    post:
+      tags: [Admin]
+      summary: Tắt MFA cho admin
+      operationId: disableAdminMfa
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [codeOrPassword]
+              properties:
+                codeOrPassword: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+
   /users/me/password:
     post:
       tags: [Users]
@@ -2841,6 +2923,23 @@ paths:
                   total:
                     type: integer
 
+  /admin/users/{id}:
+    get:
+      tags: [Admin]
+      summary: Lấy chi tiết user cho Admin
+      operationId: adminGetUser
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserSummary'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /admin/users/{id}/lock:
     post:
       tags: [Admin]
@@ -2978,14 +3077,13 @@ paths:
         '409':
           description: Certificate is not in a revocable state
 
-  /admin/certificates/trainer/{ptUserId}:
+  /admin/certificates/trainer/{id}:
     get:
       tags: [Admin]
       summary: List certificates of one trainer (server-side pagination)
       operationId: adminListTrainerCertificates
       parameters:
-        - in: path
-          name: ptUserId
+        - $ref: '#/components/parameters/IdPath'
           required: true
           schema:
             type: string
@@ -3113,34 +3211,22 @@ paths:
                   total:
                     type: integer
 
-  /admin/bookings/{id}/refund:
-    post:
+  /admin/bookings/{id}:
+    get:
       tags: [Admin]
-      summary: Force refund
-      operationId: adminForceRefund
+      summary: Lấy chi tiết booking cho Admin
+      operationId: adminGetBooking
       parameters:
         - $ref: '#/components/parameters/IdPath'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [amount_vnd, reason]
-              properties:
-                amount_vnd:
-                  type: integer
-                  minimum: 1
-                reason:
-                  type: string
-                  minLength: 5
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Refund'
+                $ref: '#/components/schemas/Appointment'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /admin/payments:
     get:
@@ -3174,6 +3260,150 @@ paths:
                       $ref: '#/components/schemas/Payment'
                   total:
                     type: integer
+
+  /admin/finance/reconciliation:
+    get:
+      tags: [Admin]
+      summary: Đối soát tài chính nền tảng
+      operationId: adminFinanceReconciliation
+      responses:
+        '200':
+          description: OK
+
+  /admin/finance/settlements:
+    post:
+      tags: [Admin]
+      summary: Quyết toán / payout cho PT
+      operationId: settleTrainer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ptUserId, amountVnd, referenceNumber]
+              properties:
+                ptUserId: { type: string, format: uuid }
+                amountVnd: { type: integer }
+                referenceNumber: { type: string }
+                note: { type: string, nullable: true }
+      responses:
+        '200':
+          description: OK
+
+  /admin/finance/refunds:
+    post:
+      tags: [Admin]
+      summary: Xử lý hoàn tiền
+      operationId: processAdminRefund
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appointmentId, reason]
+              properties:
+                appointmentId: { type: string, format: uuid }
+                amountVnd: { type: integer }
+                reason: { type: string }
+      responses:
+        '200':
+          description: OK
+
+  /admin/support/tickets:
+    get:
+      tags: [Admin]
+      summary: Danh sách support tickets cho admin
+      operationId: listAdminSupportTickets
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: category
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: pageSize
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedSupportTicketsResult'
+
+  /admin/support/tickets/{id}:
+    get:
+      tags: [Admin]
+      summary: Chi tiết ticket cho admin
+      operationId: getAdminSupportTicket
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/support/tickets/{id}/reply:
+    post:
+      tags: [Admin]
+      summary: Admin phản hồi ticket
+      operationId: adminReplySupportTicket
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReplySupportTicketRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/support/tickets/{id}/status:
+    post:
+      tags: [Admin]
+      summary: Admin cập nhật trạng thái ticket
+      operationId: adminChangeTicketStatus
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportTicketDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /admin/finance/overview:
     get:
@@ -3566,11 +3796,11 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
-  /admin/metrics/overview:
+  /admin/metrics/summary:
     get:
       tags: [Admin]
-      summary: Dashboard KPIs (legacy shape compatibility, prefer /admin/finance/overview)
-      operationId: adminMetricsOverview
+      summary: Tóm tắt metrics hệ thống có kiểm soát quyền Admin
+      operationId: adminMetricsSummary
       parameters:
         - in: query
           name: range

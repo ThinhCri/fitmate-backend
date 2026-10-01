@@ -39,11 +39,15 @@ public class RouteOpenApiParityTests
     private static readonly HashSet<string> InfrastructureRouteAllowlist = new(StringComparer.OrdinalIgnoreCase)
     {
         // Health checks — mapped in Program.cs, not via controllers
-        // Swagger/OpenAPI dev endpoints
+        "GET /health/live",
+        "GET /health/ready",
+        "GET /api/v1/health/ready",
         // Admin Prometheus metrics endpoint — internal scrape
         "GET /api/v1/admin/metrics/prometheus",
-        // Admin outbox dead-letter replay — ops-only
-        "POST /api/v1/admin/outbox/dead-letters/{id}/replay",
+        // Admin outbox dead-letter & stats — ops-only
+        "GET /api/v1/admin/outbox/dead-letter",
+        "GET /api/v1/admin/outbox/stats",
+        "POST /api/v1/admin/outbox/dead-letter/{id}/replay",
     };
 
     /// <summary>
@@ -65,6 +69,8 @@ public class RouteOpenApiParityTests
             "Remove when VNPay adapter is fully retired or re-integrated", "disabled"),
         new("GET /api/v1/payments/vnpay/return", "VNPay legacy — payOS is current provider", "BE-400",
             "Remove when VNPay adapter is fully retired or re-integrated", "disabled"),
+        new("GET /api/v1/admin/payments", "Consolidated under /admin/finance/ledger", "BE-150",
+            "Remove when standalone endpoint is deprecated", "disabled"),
     };
 
     // ═══════════════════════════════════════════════════════════════════════
