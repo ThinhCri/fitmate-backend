@@ -1282,6 +1282,148 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+
+  /bookings/{id}/reschedule-requests:
+    post:
+      tags: [Bookings]
+      summary: Đề xuất dời lịch tập
+      description: Tạo yêu cầu dời lịch hẹn giữa Member và PT (Two-Party Consent Branch A).
+      operationId: createRescheduleRequest
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRescheduleRequestBody'
+      responses:
+        '200':
+          description: Yêu cầu dời lịch được tạo thành công
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingRescheduleRequest'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Xung đột trạng thái booking hoặc slot không hợp lệ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /bookings/reschedule-requests/{requestId}/accept:
+    post:
+      tags: [Bookings]
+      summary: Chấp thuận yêu cầu dời lịch tập
+      description: Bên nhận yêu cầu chấp thuận dời lịch trước deadline.
+      operationId: acceptRescheduleRequest
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Đã chấp thuận dời lịch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingRescheduleRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Yêu cầu đã hết hạn hoặc slot mới không còn trống
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /bookings/reschedule-requests/{requestId}/reject:
+    post:
+      tags: [Bookings]
+      summary: Từ chối yêu cầu dời lịch tập
+      description: Bên nhận yêu cầu từ chối dời lịch.
+      operationId: rejectRescheduleRequest
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectRescheduleRequestBody'
+      responses:
+        '200':
+          description: Đã từ chối dời lịch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingRescheduleRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Yêu cầu không còn ở trạng thái Pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /bookings/reschedule-requests/{requestId}/cancel:
+    post:
+      tags: [Bookings]
+      summary: Hủy yêu cầu dời lịch tập
+      description: Người tạo yêu cầu hủy đề xuất dời lịch.
+      operationId: cancelRescheduleRequest
+      parameters:
+        - in: path
+          name: requestId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Đã hủy yêu cầu dời lịch
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookingRescheduleRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Yêu cầu không còn ở trạng thái Pending
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
   /me/bookings/{id}/complete:
     post:
       tags: [Bookings]
@@ -4162,6 +4304,70 @@ components:
           nullable: true
         note:
           type: string
+
+
+    CreateRescheduleRequestBody:
+      type: object
+      required: [newSlotStartUtc, reason]
+      properties:
+        newSlotStartUtc:
+          type: string
+          format: date-time
+          description: UTC start time của slot mới muốn dời tới
+        reason:
+          type: string
+          description: Lý do đề xuất dời lịch
+
+    RejectRescheduleRequestBody:
+      type: object
+      properties:
+        rejectionReason:
+          type: string
+          nullable: true
+          description: Lý do từ chối
+
+    BookingRescheduleRequest:
+      type: object
+      required: [id, appointmentId, requestedByUserId, oldSlotStartUtc, newSlotStartUtc, durationMinutes, status, reason, deadlineUtc, createdAtUtc]
+      properties:
+        id:
+          type: string
+          format: uuid
+        appointmentId:
+          type: string
+          format: uuid
+        requestedByUserId:
+          type: string
+          format: uuid
+        oldSlotStartUtc:
+          type: string
+          format: date-time
+        newSlotStartUtc:
+          type: string
+          format: date-time
+        durationMinutes:
+          type: integer
+        status:
+          $ref: '#/components/schemas/RescheduleRequestStatus'
+        reason:
+          type: string
+        deadlineUtc:
+          type: string
+          format: date-time
+        createdAtUtc:
+          type: string
+          format: date-time
+        respondedAtUtc:
+          type: string
+          format: date-time
+          nullable: true
+        rejectionReason:
+          type: string
+          nullable: true
+
+    RescheduleRequestStatus:
+      type: string
+      enum: [Pending, Accepted, Rejected, Expired, Cancelled]
 
     Payment:
       type: object
