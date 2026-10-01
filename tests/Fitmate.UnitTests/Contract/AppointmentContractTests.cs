@@ -40,7 +40,6 @@ public class AppointmentContractTests
             "pt_user_id",
             "service_id",
             "slot_start_utc",
-            "slot_start_local",
             "duration_minutes",
             "status",
             "hold_expires_at_utc",
@@ -97,6 +96,20 @@ public class AppointmentContractTests
         response.PlatformFeeRateBps.Should().Be(expectedBps);
     }
 
+    [Theory]
+    [InlineData(-0.0001)]
+    [InlineData(1.0001)]
+    public void AppointmentResponse_Rejects_PlatformFeeRate_OutsideValidRange(decimal rate)
+    {
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, rate, 0, 100_000, "v1");
+
+        var act = () => AppointmentResponse.FromDomain(appt);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*invalid platform fee rate*");
+    }
+
     [Fact]
     public void AppointmentPageResponse_Serializes_WithExactExpectedKeys()
     {
@@ -137,7 +150,6 @@ public class AppointmentContractTests
             "pt_user_id",
             "service_id",
             "slot_start_utc",
-            "slot_start_local",
             "duration_minutes",
             "status",
             "hold_expires_at_utc",

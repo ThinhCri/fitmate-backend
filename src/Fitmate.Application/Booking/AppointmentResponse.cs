@@ -13,7 +13,6 @@ public sealed record AppointmentResponse(
     [property: JsonPropertyName("pt_user_id")] Guid PtUserId,
     [property: JsonPropertyName("service_id")] Guid ServiceId,
     [property: JsonPropertyName("slot_start_utc")] DateTime SlotStartUtc,
-    [property: JsonPropertyName("slot_start_local")] DateTime SlotStartLocal,
     [property: JsonPropertyName("duration_minutes")] int DurationMinutes,
     [property: JsonPropertyName("status")] string Status,
     [property: JsonPropertyName("hold_expires_at_utc")] DateTime? HoldExpiresAtUtc,
@@ -35,8 +34,15 @@ public sealed record AppointmentResponse(
 {
     public static AppointmentResponse FromDomain(Appointment a)
     {
-        var rawBps = (int)Math.Round(a.PlatformFeeRate * 10000m, MidpointRounding.AwayFromZero);
-        var bps = Math.Clamp(rawBps, 0, 10000);
+        if (a.PlatformFeeRate is < 0m or > 1m)
+        {
+            throw new InvalidOperationException(
+                $"Appointment {a.Id} has an invalid platform fee rate outside the inclusive range 0..1.");
+        }
+
+        var bps = checked((int)Math.Round(
+            a.PlatformFeeRate * 10000m,
+            MidpointRounding.AwayFromZero));
 
         return new AppointmentResponse(
             Id: a.Id,
@@ -44,7 +50,6 @@ public sealed record AppointmentResponse(
             PtUserId: a.PtUserId,
             ServiceId: a.ServiceId,
             SlotStartUtc: a.SlotStartUtc,
-            SlotStartLocal: a.SlotStartLocal,
             DurationMinutes: a.DurationMinutes,
             Status: a.Status.ToString(),
             HoldExpiresAtUtc: a.HoldExpiresAtUtc,

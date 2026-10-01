@@ -4817,7 +4817,6 @@ components:
         - pt_user_id
         - service_id
         - slot_start_utc
-        - slot_start_local
         - duration_minutes
         - status
         - rescheduled_count
@@ -4842,9 +4841,6 @@ components:
           type: string
           format: uuid
         slot_start_utc:
-          type: string
-          format: date-time
-        slot_start_local:
           type: string
           format: date-time
         duration_minutes:

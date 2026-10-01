@@ -49,7 +49,7 @@ Contract v1 đã được kiểm chứng và chính thức đóng băng (FROZEN-
   - snake_case bắt buộc cho tất cả domain/request/response fields;
   - camelCase chỉ được giữ cho pagination metadata đã có compatibility (`nextCursor`, `pageSize`);
   - Tiền là số nguyên VNĐ (`integer`), platform fee rate là basis points (`bps`, 0.10 -> 1000);
-  - Timestamp ISO-8601 UTC;
+  - Timestamp canonical là ISO-8601 UTC; calendar-local input luôn đi kèm timezone riêng và không xuất lại dưới dạng thời điểm mơ hồ;
   - Enum casing đồng bộ theo domain contract (PascalCase hoặc snake_case rõ ràng);
   - Decoupled wire DTOs với `[property: JsonPropertyName("...")]` loại bỏ hoàn toàn việc trả domain entity trực tiếp.
 - Mobile App được phép generate client và viết API adapter từ phiên bản này.
