@@ -1,9 +1,13 @@
+using Fitmate.Infrastructure.Persistence;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Fitmate.Infrastructure.Persistence.Migrations;
 
+[DbContext(typeof(FitmateDbContext))]
+[Migration("20261002143000_CompleteMobileAccountProfile")]
 public partial class CompleteMobileAccountProfile : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
