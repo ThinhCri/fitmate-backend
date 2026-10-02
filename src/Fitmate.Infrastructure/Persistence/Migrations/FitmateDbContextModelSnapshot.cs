@@ -306,6 +306,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer");
 
+                    b.Property<string>("AvatarUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");
@@ -572,6 +576,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("Birthday")
                         .HasColumnType("date");
 
+                    b.Property<string>("Bio")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -587,6 +595,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<decimal?>("HeightCm")
                         .HasColumnType("numeric(5,2)");
 
+                    b.Property<string>("HealthNotes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.PrimitiveCollection<List<string>>("MedicalConditions")
                         .IsRequired()
                         .HasColumnType("text[]");
@@ -597,6 +609,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<string>("Phone")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
+
+                    b.PrimitiveCollection<List<string>>("PreferredTimeSlots")
+                        .IsRequired()
+                        .HasColumnType("text[]");
 
                     b.PrimitiveCollection<List<string>>("TrainingDays")
                         .IsRequired()

@@ -4423,6 +4423,10 @@ components:
         phone:
           type: string
           nullable: true
+        bio:
+          type: string
+          nullable: true
+          maxLength: 500
         gender:
           type: string
           enum: [male, female, other]
@@ -4447,6 +4451,14 @@ components:
           type: array
           items:
             type: string
+        preferred_time_slots:
+          type: array
+          items:
+            type: string
+        health_notes:
+          type: string
+          nullable: true
+          maxLength: 2000
         timezone:
           type: string
         role:
@@ -4462,6 +4474,15 @@ components:
           type: string
         phone:
           type: string
+        bio:
+          type: string
+          maxLength: 500
+        gender:
+          type: string
+          enum: [male, female, other]
+        birthday:
+          type: string
+          format: date
         height_cm:
           type: number
         weight_kg:
@@ -4480,6 +4501,15 @@ components:
           type: array
           items:
             type: string
+        preferred_time_slots:
+          type: array
+          maxItems: 12
+          items:
+            type: string
+            maxLength: 32
+        health_notes:
+          type: string
+          maxLength: 2000
         timezone:
           type: string
 

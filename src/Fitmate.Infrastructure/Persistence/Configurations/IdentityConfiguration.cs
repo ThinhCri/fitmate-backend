@@ -16,6 +16,7 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         e.ToTable("asp_net_users");
         e.HasKey(x => x.Id);
         e.Property(x => x.FullName).HasMaxLength(120).IsRequired();
+        e.Property(x => x.AvatarUrl).HasMaxLength(500);
         e.Property(x => x.Status).HasConversion<int>();
         e.Property(x => x.Timezone).HasMaxLength(64).IsRequired();
         e.Property(x => x.LastActiveAt);
@@ -57,12 +58,15 @@ public class UserProfileConfiguration : IEntityTypeConfiguration<UserProfile>
         e.Property(x => x.UserId).IsRequired();
         e.HasIndex(x => x.UserId).IsUnique();
         e.Property(x => x.Phone).HasMaxLength(32);
+        e.Property(x => x.Bio).HasMaxLength(500);
         e.Property(x => x.Gender).HasConversion<int?>();
         e.Property(x => x.HeightCm).HasColumnType("numeric(5,2)");
         e.Property(x => x.WeightKg).HasColumnType("numeric(5,2)");
         e.Property(x => x.TrainingDays).HasColumnType("text[]");
         e.Property(x => x.MedicalConditions).HasColumnType("text[]");
         e.Property(x => x.Allergies).HasColumnType("text[]");
+        e.Property(x => x.PreferredTimeSlots).HasColumnType("text[]");
+        e.Property(x => x.HealthNotes).HasMaxLength(2000);
         e.Property(x => x.MedicalSurveyDone);
     }
 }

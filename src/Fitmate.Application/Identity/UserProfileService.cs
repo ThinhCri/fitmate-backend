@@ -42,6 +42,9 @@ public class UserProfileService : IUserProfileService
         if (!string.IsNullOrWhiteSpace(request.Timezone))
             user.Timezone = request.Timezone.Trim();
 
+        if (request.AvatarUrl is not null)
+            user.AvatarUrl = string.IsNullOrWhiteSpace(request.AvatarUrl) ? null : request.AvatarUrl.Trim();
+
         user.UpdatedAt = DateTime.UtcNow;
 
         var profile = await _store.FindProfileByUserIdAsync(userId, ct);
@@ -59,6 +62,7 @@ public class UserProfileService : IUserProfileService
 
         profile.Update(
             phone: request.Phone,
+            bio: request.Bio,
             gender: gender,
             birthday: request.Birthday,
             heightCm: request.HeightCm,
@@ -66,7 +70,9 @@ public class UserProfileService : IUserProfileService
             fitnessGoal: request.FitnessGoal,
             trainingDays: request.TrainingDays,
             medicalConditions: request.MedicalConditions,
-            allergies: request.Allergies);
+            allergies: request.Allergies,
+            preferredTimeSlots: request.PreferredTimeSlots,
+            healthNotes: request.HealthNotes);
 
         await _store.SaveChangesAsync(ct);
 
@@ -86,7 +92,7 @@ public class UserProfileService : IUserProfileService
         return new PublicUserProfileDto(
             Id: user.Id,
             FullName: user.FullName,
-            AvatarUrl: null,
+            AvatarUrl: user.AvatarUrl,
             Role: role.ToLowerInvariant(),
             FitnessGoal: profile?.FitnessGoal,
             CreatedAtUtc: user.CreatedAt);
@@ -103,7 +109,7 @@ public class UserProfileService : IUserProfileService
         return results.Select(r => new PublicUserProfileDto(
             Id: r.User.Id,
             FullName: r.User.FullName,
-            AvatarUrl: null,
+            AvatarUrl: r.User.AvatarUrl,
             Role: r.Role.ToLowerInvariant(),
             FitnessGoal: r.Profile?.FitnessGoal,
             CreatedAtUtc: r.User.CreatedAt)).ToList();
@@ -122,6 +128,22 @@ public class UserProfileService : IUserProfileService
         if (req.Birthday.HasValue && req.Birthday.Value > DateOnly.FromDateTime(DateTime.UtcNow))
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Birthday cannot be in the future.",
                 new Dictionary<string, string[]> { ["birthday"] = new[] { "Birthday cannot be in the future." } });
+
+        if (req.Bio?.Length > 500)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Bio must not exceed 500 characters.",
+                new Dictionary<string, string[]> { ["bio"] = new[] { "Bio must not exceed 500 characters." } });
+
+        if (req.HealthNotes?.Length > 2000)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Health notes must not exceed 2000 characters.",
+                new Dictionary<string, string[]> { ["health_notes"] = new[] { "Health notes must not exceed 2000 characters." } });
+
+        if (req.PreferredTimeSlots?.Count > 12 || req.PreferredTimeSlots?.Any(x => x.Length > 32) == true)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Preferred time slots are invalid.",
+                new Dictionary<string, string[]> { ["preferred_time_slots"] = new[] { "Preferred time slots are invalid." } });
+
+        if (req.AvatarUrl?.Length > 500)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Avatar URL must not exceed 500 characters.",
+                new Dictionary<string, string[]> { ["avatar_url"] = new[] { "Avatar URL must not exceed 500 characters." } });
     }
 
     private static UserProfileDto MapToDto(ApplicationUser user, UserProfile profile, string role)
@@ -130,7 +152,7 @@ public class UserProfileService : IUserProfileService
             Id: user.Id,
             Email: user.Email ?? "",
             FullName: user.FullName,
-            AvatarUrl: null,
+            AvatarUrl: user.AvatarUrl,
             Phone: profile.Phone,
             Gender: profile.Gender?.ToString().ToLowerInvariant(),
             Birthday: profile.Birthday,
@@ -141,7 +163,10 @@ public class UserProfileService : IUserProfileService
             MedicalConditions: profile.MedicalConditions ?? new List<string>(),
             Allergies: profile.Allergies ?? new List<string>(),
             Timezone: user.Timezone,
-            Role: role.ToLowerInvariant());
+            Role: role.ToLowerInvariant(),
+            Bio: profile.Bio,
+            PreferredTimeSlots: profile.PreferredTimeSlots ?? new List<string>(),
+            HealthNotes: profile.HealthNotes);
     }
 }
 

@@ -204,7 +204,7 @@ public class AccountDeletionService : IAccountDeletionService
                 Id: user.Id,
                 Email: user.Email ?? "",
                 FullName: user.FullName,
-                AvatarUrl: null,
+                AvatarUrl: user.AvatarUrl,
                 Phone: profile.Phone,
                 Gender: profile.Gender?.ToString().ToLowerInvariant(),
                 Birthday: profile.Birthday,
@@ -215,7 +215,10 @@ public class AccountDeletionService : IAccountDeletionService
                 MedicalConditions: profile.MedicalConditions ?? new List<string>(),
                 Allergies: profile.Allergies ?? new List<string>(),
                 Timezone: user.Timezone,
-                Role: role.ToLowerInvariant());
+                Role: role.ToLowerInvariant(),
+                Bio: profile.Bio,
+                PreferredTimeSlots: profile.PreferredTimeSlots ?? new List<string>(),
+                HealthNotes: profile.HealthNotes);
         }
 
         return new UserDataExportDto(

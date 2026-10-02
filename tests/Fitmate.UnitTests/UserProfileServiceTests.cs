@@ -60,7 +60,10 @@ public class UserProfileServiceTests
             TrainingDays: new List<string> { "Monday", "Wednesday", "Friday" },
             MedicalConditions: new List<string> { "Asthma" },
             Allergies: new List<string> { "Peanut" },
-            Timezone: "Asia/Bangkok");
+            Timezone: "Asia/Bangkok",
+            Bio: "Huấn luyện bền vững",
+            PreferredTimeSlots: new List<string> { "18:00-19:00" },
+            HealthNotes: "Ưu tiên bài tập ít tác động");
 
         var updated = await svc.UpdateMyProfileAsync(user.Id, req, CancellationToken.None);
 
@@ -71,6 +74,9 @@ public class UserProfileServiceTests
         updated.WeightKg.Should().Be(70.0m);
         updated.FitnessGoal.Should().Be("Build muscle");
         updated.Role.Should().Be("pt");
+        updated.Bio.Should().Be("Huấn luyện bền vững");
+        updated.PreferredTimeSlots.Should().ContainSingle("18:00-19:00");
+        updated.HealthNotes.Should().Be("Ưu tiên bài tập ít tác động");
     }
 
     [Fact]

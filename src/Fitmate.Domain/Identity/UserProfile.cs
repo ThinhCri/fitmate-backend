@@ -7,6 +7,7 @@ public class UserProfile : AuditableEntity
     public Guid Id { get; private set; }
     public Guid UserId { get; private set; }
     public string? Phone { get; private set; }
+    public string? Bio { get; private set; }
     public Gender? Gender { get; private set; }
     public DateOnly? Birthday { get; private set; }
     public decimal? HeightCm { get; private set; }
@@ -15,6 +16,8 @@ public class UserProfile : AuditableEntity
     public List<string> TrainingDays { get; private set; } = new();
     public List<string> MedicalConditions { get; private set; } = new();
     public List<string> Allergies { get; private set; } = new();
+    public List<string> PreferredTimeSlots { get; private set; } = new();
+    public string? HealthNotes { get; private set; }
     public bool MedicalSurveyDone { get; private set; }
 
     private UserProfile() { }
@@ -29,6 +32,7 @@ public class UserProfile : AuditableEntity
 
     public void Update(
         string? phone = null,
+        string? bio = null,
         Gender? gender = null,
         DateOnly? birthday = null,
         decimal? heightCm = null,
@@ -36,9 +40,12 @@ public class UserProfile : AuditableEntity
         string? fitnessGoal = null,
         List<string>? trainingDays = null,
         List<string>? medicalConditions = null,
-        List<string>? allergies = null)
+        List<string>? allergies = null,
+        List<string>? preferredTimeSlots = null,
+        string? healthNotes = null)
     {
         if (phone != null) Phone = phone;
+        if (bio != null) Bio = bio;
         if (gender.HasValue) Gender = gender;
         if (birthday.HasValue) Birthday = birthday;
         if (heightCm.HasValue) HeightCm = heightCm;
@@ -51,6 +58,8 @@ public class UserProfile : AuditableEntity
             MedicalSurveyDone = medicalConditions.Count > 0;
         }
         if (allergies != null) Allergies = allergies;
+        if (preferredTimeSlots != null) PreferredTimeSlots = preferredTimeSlots;
+        if (healthNotes != null) HealthNotes = healthNotes;
         Touch();
     }
 }

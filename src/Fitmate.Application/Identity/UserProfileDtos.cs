@@ -17,7 +17,10 @@ public sealed record UserProfileDto(
     [property: JsonPropertyName("medical_conditions")] List<string> MedicalConditions,
     [property: JsonPropertyName("allergies")] List<string> Allergies,
     [property: JsonPropertyName("timezone")] string Timezone,
-    [property: JsonPropertyName("role")] string Role);
+    [property: JsonPropertyName("role")] string Role,
+    [property: JsonPropertyName("bio")] string? Bio = null,
+    [property: JsonPropertyName("preferred_time_slots")] List<string>? PreferredTimeSlots = null,
+    [property: JsonPropertyName("health_notes")] string? HealthNotes = null);
 
 public sealed record UserProfileUpdateRequest(
     [property: JsonPropertyName("full_name")] string? FullName,
@@ -31,7 +34,10 @@ public sealed record UserProfileUpdateRequest(
     [property: JsonPropertyName("training_days")] List<string>? TrainingDays,
     [property: JsonPropertyName("medical_conditions")] List<string>? MedicalConditions,
     [property: JsonPropertyName("allergies")] List<string>? Allergies,
-    [property: JsonPropertyName("timezone")] string? Timezone);
+    [property: JsonPropertyName("timezone")] string? Timezone,
+    [property: JsonPropertyName("bio")] string? Bio = null,
+    [property: JsonPropertyName("preferred_time_slots")] List<string>? PreferredTimeSlots = null,
+    [property: JsonPropertyName("health_notes")] string? HealthNotes = null);
 
 public sealed record PublicUserProfileDto(
     [property: JsonPropertyName("id")] Guid Id,

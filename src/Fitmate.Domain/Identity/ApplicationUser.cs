@@ -14,12 +14,13 @@ namespace Fitmate.Domain.Identity;
 ///   (cột <c>role</c> bị bỏ; thay bằng <c>asp_net_user_roles</c>).
 /// - Field custom: <see cref="FullName"/>, <see cref="Status"/>, <see cref="Timezone"/>,
 ///   <see cref="LastActiveAt"/>, <see cref="DeletedAt"/>.
-/// - <see cref="AvatarUrl"/> kế thừa từ base (IdentityUser có).
+/// - Avatar URL là tham chiếu media do Fitmate quản lý.
 /// - Soft delete dùng <see cref="DeletedAt"/> + global filter.
 /// </summary>
 public class ApplicationUser : IdentityUser<Guid>
 {
     public string FullName { get; set; } = null!;
+    public string? AvatarUrl { get; set; }
 
     /// <summary>
     /// Trạng thái tài khoản mở rộng (Active/Locked/PendingDeletion).
