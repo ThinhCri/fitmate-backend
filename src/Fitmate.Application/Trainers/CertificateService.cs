@@ -1,6 +1,8 @@
 using Fitmate.Application.Auth;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Trainers;
+using Fitmate.Application.Notifications;
+using Fitmate.Domain.Notifications;
 
 namespace Fitmate.Application.Trainers;
 
@@ -21,12 +23,14 @@ public class CertificateService : ICertificateService
     private readonly ICertificateStore _store;
     private readonly IAuditLogger _audit;
     private readonly IAuthorizationGuard _authz;
+    private readonly INotificationStore? _notifications;
 
-    public CertificateService(ICertificateStore store, IAuditLogger audit, IAuthorizationGuard authz)
+    public CertificateService(ICertificateStore store, IAuditLogger audit, IAuthorizationGuard authz, INotificationStore? notifications = null)
     {
         _store = store;
         _audit = audit;
         _authz = authz;
+        _notifications = notifications;
     }
 
     public async Task<Certificate> SubmitAsync(Guid ptUserId, string title, string issuedBy, string code, DateOnly issueDate, string? imageStorageKey, Guid? imageUploadedByUserId, CancellationToken ct)
@@ -72,6 +76,7 @@ public class CertificateService : ICertificateService
         cert.Approve(adminUserId); // throws ConflictException nếu không ở Pending
         var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct);
         profile?.Approve(adminUserId);
+        await AddDecisionNotificationAsync(cert.PtUserId, "Hồ sơ PT đã được duyệt", "Bạn có thể đăng nhập và sử dụng đầy đủ chức năng Huấn luyện viên.", "pt_application_approved", ct);
         // Stage audit within the same save; if SaveChanges fails the audit is rolled back together with
         // the state change so the audit cannot disappear while the change survived.
         _audit.Stage("certificate.approve", "Certificate", certId, adminUserId);
@@ -100,6 +105,7 @@ public class CertificateService : ICertificateService
         cert.Reject(adminUserId, reason); // throws ConflictException nếu không ở Pending
         var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct);
         profile?.RequestMoreInformation(adminUserId, reason.Trim());
+        await AddDecisionNotificationAsync(cert.PtUserId, "Hồ sơ PT cần bổ sung", $"Lý do: {reason.Trim()}", "pt_application_needs_information", ct);
         _audit.Stage("certificate.reject", "Certificate", certId, adminUserId, reason);
         await _store.SaveChangesAsync(ct);
         return cert;
@@ -120,11 +126,26 @@ public class CertificateService : ICertificateService
         var user = await _store.FindUserAsync(cert.PtUserId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, "PT user not found.");
         profile.RejectFraud(adminUserId, reason.Trim());
+        await AddDecisionNotificationAsync(cert.PtUserId, "Hồ sơ PT bị từ chối", "Tài khoản đã bị khóa do hồ sơ được xác định là giả mạo. Liên hệ hỗ trợ nếu cần khiếu nại.", "pt_application_rejected_fraud", ct);
         user.Status = UserStatus.Locked;
         user.UpdatedAt = DateTime.UtcNow;
         _audit.Stage("pt_application.reject_fraud", "PtProfile", profile.Id, adminUserId, reason.Trim());
         await _store.SaveChangesAsync(ct);
         return cert;
+    }
+
+    private async Task AddDecisionNotificationAsync(Guid ptUserId, string title, string message, string sourceType, CancellationToken ct)
+    {
+        if (_notifications is null) return;
+        await _notifications.AddAsync(Notification.Create(
+            ptUserId,
+            NotificationType.System,
+            title,
+            message,
+            title,
+            null,
+            Guid.NewGuid(),
+            sourceType), ct);
     }
 
     private static void ValidateFields(string title, string issuedBy, string code)
