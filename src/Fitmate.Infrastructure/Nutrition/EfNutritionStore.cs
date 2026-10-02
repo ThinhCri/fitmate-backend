@@ -20,7 +20,7 @@ public class EfNutritionStore : INutritionStore
         var q = _db.MealLogs.Where(m => m.UserId == userId && m.DeletedAt == null);
 
         if (from.HasValue) q = q.Where(m => m.LoggedAt >= from.Value);
-        if (to.HasValue) q = q.Where(m => m.LoggedAt <= to.Value);
+        if (to.HasValue) q = q.Where(m => m.LoggedAt < to.Value);
 
         return await q
             .OrderByDescending(m => m.LoggedAt)

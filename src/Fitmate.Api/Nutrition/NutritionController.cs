@@ -18,11 +18,14 @@ public class NutritionController : ControllerBase
     [HttpGet("meals")]
     public async Task<IActionResult> ListMeals(
         [FromServices] ICurrentUserAccessor current,
-        [FromQuery] DateTime? from,
-        [FromQuery] DateTime? to,
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
         CancellationToken ct)
     {
-        var meals = await _nutrition.ListMealsAsync(current.GetUserIdOrThrow(), from, to, ct);
+        var fromUtc = from?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var toUtcExclusive = to?.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
+        var meals = await _nutrition.ListMealsAsync(
+            current.GetUserIdOrThrow(), fromUtc, toUtcExclusive, ct);
         return Ok(meals);
     }
 

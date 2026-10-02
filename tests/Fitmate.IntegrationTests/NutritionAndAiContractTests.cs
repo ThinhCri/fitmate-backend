@@ -69,7 +69,9 @@ public class NutritionAndAiContractTests : IClassFixture<FitmateTestAppFactory>
         created.Calories.Should().Be(650);
 
         // Verify retrieval from PostgreSQL
-        var getResponse = await client.GetAsync("/api/v1/me/nutrition/meals");
+        var queryDate = Uri.EscapeDataString(DateOnly.FromDateTime(logRequest.LoggedAt!.Value).ToString("yyyy-MM-dd"));
+        var getResponse = await client.GetAsync(
+            $"/api/v1/me/nutrition/meals?from={queryDate}&to={queryDate}");
         getResponse.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var meals = await getResponse.Content.ReadFromJsonAsync<List<MealLogView>>();
