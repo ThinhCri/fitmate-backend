@@ -45,6 +45,12 @@ public class EfCertificateStore : ICertificateStore
     public Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct)
         => _db.Certificates.FirstOrDefaultAsync(c => c.Id == certId, ct);
 
+    public Task<PtProfile?> FindPtProfileAsync(Guid ptUserId, CancellationToken ct)
+        => _db.PtProfiles.FirstOrDefaultAsync(p => p.UserId == ptUserId, ct);
+
+    public Task<Fitmate.Domain.Identity.ApplicationUser?> FindUserAsync(Guid userId, CancellationToken ct)
+        => _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
+
     public async Task<(IReadOnlyList<Certificate> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct)
     {
         // Store assumes page≥1 + pageSize đã được Service chuẩn hoá. Defensive clamp here vẫn an toàn.

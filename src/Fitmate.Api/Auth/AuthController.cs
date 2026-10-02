@@ -4,12 +4,14 @@ using Fitmate.Application.Auth;
 using Fitmate.Application.Auth.Contracts;
 using Fitmate.Application.Common;
 using Fitmate.Domain.Identity;
+using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 
 namespace Fitmate.Api.Auth;
 
@@ -95,6 +97,20 @@ public class AuthController : ControllerBase
         if (!await _roles.RoleExistsAsync(roleName))
             await _roles.CreateAsync(new IdentityRole<Guid>(roleName));
         await _users.AddToRoleAsync(user, roleName);
+
+        if (roleName == "pt")
+        {
+            var db = HttpContext.RequestServices.GetRequiredService<FitmateDbContext>();
+            if (!await db.PtProfiles.AnyAsync(p => p.UserId == user.Id, ct))
+            {
+                db.PtProfiles.Add(PtProfile.CreateDraft(
+                    user.Id,
+                    request.Specialty,
+                    request.ExperienceYears,
+                    request.PricePerSessionVnd,
+                    bio: null));
+            }
+        }
 
         var code = await _users.GenerateUserTokenAsync(user, TokenOptions.DefaultEmailProvider, "email-verification");
         var protector = HttpContext.RequestServices.GetRequiredService<Fitmate.Application.Email.IEmailTokenProtector>();
@@ -239,7 +255,7 @@ public class AuthController : ControllerBase
             access.AccessToken,
             rotated.RawToken,
             access.ExpiresInSeconds,
-            ToUserSummary(user, role))));
+            ToUserSummary(user, role, await GetPtVerificationStatusAsync(user.Id, role, ct)))));
     }
 
     [HttpPost("logout")]
@@ -431,7 +447,7 @@ public class AuthController : ControllerBase
             access.AccessToken,
             refresh.RawToken,
             access.ExpiresInSeconds,
-            ToUserSummary(user, role));
+            ToUserSummary(user, role, await GetPtVerificationStatusAsync(user.Id, role, ct)));
     }
 
     private bool IsWeb => Request.Headers["X-Fitmate-Client"] == "admin-web";
@@ -468,8 +484,19 @@ public class AuthController : ControllerBase
         });
     }
 
-    private static UserSummaryDto ToUserSummary(ApplicationUser user, string role) =>
-        new(user.Id, user.Email ?? "", null, user.FullName, role);
+    private static UserSummaryDto ToUserSummary(ApplicationUser user, string role, string? ptVerificationStatus = null) =>
+        new(user.Id, user.Email ?? "", user.AvatarUrl, user.FullName, role, ptVerificationStatus);
+
+    private async Task<string?> GetPtVerificationStatusAsync(Guid userId, string role, CancellationToken ct)
+    {
+        if (!role.Equals("pt", StringComparison.OrdinalIgnoreCase)) return null;
+        var db = HttpContext.RequestServices.GetRequiredService<FitmateDbContext>();
+        var status = await db.PtProfiles.AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .Select(p => (PtVerificationStatus?)p.VerificationStatus)
+            .SingleOrDefaultAsync(ct);
+        return status?.ToString().ToLowerInvariant();
+    }
 
     private static string PreferredRole(IList<string> roles) =>
         roles.FirstOrDefault(r => r.Equals("Admin", StringComparison.OrdinalIgnoreCase)) ?? roles.FirstOrDefault() ?? "member";

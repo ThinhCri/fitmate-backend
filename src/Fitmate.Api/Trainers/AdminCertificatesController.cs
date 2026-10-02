@@ -103,6 +103,14 @@ public class AdminCertificatesController : ControllerBase
         var cert = await _certs.RejectAsync(id, adminId, body.Reason, ct);
         return Ok(cert);
     }
+
+    [HttpPost("{id:guid}/reject-fraud")]
+    public async Task<ActionResult<Certificate>> RejectFraud(
+        Guid id,
+        [FromServices] ICurrentUserAccessor current,
+        [FromBody] RejectCertificateRequest body,
+        CancellationToken ct) =>
+        Ok(await _certs.RejectFraudAsync(id, current.GetUserIdOrThrow(), body.Reason, ct));
 }
 
 public sealed record RejectCertificateRequest(string Reason);

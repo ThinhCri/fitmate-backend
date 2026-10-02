@@ -13,6 +13,10 @@ public class PtProfile : AuditableEntity
     public string? Bio { get; private set; }
     public decimal Rating { get; private set; }
     public int ReviewsCount { get; private set; }
+    public PtVerificationStatus VerificationStatus { get; private set; } = PtVerificationStatus.PendingDocuments;
+    public string? VerificationReason { get; private set; }
+    public DateTime? VerificationReviewedAt { get; private set; }
+    public Guid? VerificationReviewedByAdminId { get; private set; }
 
     private PtProfile() { }
 
@@ -26,9 +30,44 @@ public class PtProfile : AuditableEntity
         Bio = bio,
         Rating = 0,
         ReviewsCount = 0,
+        VerificationStatus = PtVerificationStatus.PendingDocuments,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
+
+    public void MarkPendingReview()
+    {
+        VerificationStatus = PtVerificationStatus.PendingReview;
+        VerificationReason = null;
+        Touch();
+    }
+
+    public void Approve(Guid adminId)
+    {
+        VerificationStatus = PtVerificationStatus.Approved;
+        VerificationReason = null;
+        VerificationReviewedAt = DateTime.UtcNow;
+        VerificationReviewedByAdminId = adminId;
+        Touch();
+    }
+
+    public void RequestMoreInformation(Guid adminId, string reason)
+    {
+        VerificationStatus = PtVerificationStatus.NeedsMoreInformation;
+        VerificationReason = reason;
+        VerificationReviewedAt = DateTime.UtcNow;
+        VerificationReviewedByAdminId = adminId;
+        Touch();
+    }
+
+    public void RejectFraud(Guid adminId, string reason)
+    {
+        VerificationStatus = PtVerificationStatus.RejectedFraud;
+        VerificationReason = reason;
+        VerificationReviewedAt = DateTime.UtcNow;
+        VerificationReviewedByAdminId = adminId;
+        Touch();
+    }
 
     public void Update(string? specialty, int? experienceYears, long? pricePerSessionVnd, string? bio)
     {
@@ -45,4 +84,13 @@ public class PtProfile : AuditableEntity
         ReviewsCount = reviewsCount;
         Touch();
     }
+}
+
+public enum PtVerificationStatus
+{
+    PendingDocuments = 0,
+    PendingReview = 1,
+    NeedsMoreInformation = 2,
+    Approved = 3,
+    RejectedFraud = 4
 }

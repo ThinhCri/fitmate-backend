@@ -16,6 +16,10 @@ public class PtProfileConfiguration : IEntityTypeConfiguration<PtProfile>
         e.Property(x => x.Specialty).HasMaxLength(120);
         e.Property(x => x.PricePerSessionVnd);
         e.Property(x => x.Rating).HasColumnType("numeric(3,2)");
+        e.Property(x => x.VerificationStatus).HasConversion<int>().IsRequired();
+        e.Property(x => x.VerificationReason).HasMaxLength(500);
+        e.Property(x => x.VerificationReviewedAt);
+        e.Property(x => x.VerificationReviewedByAdminId);
     }
 }
 

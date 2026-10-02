@@ -42,6 +42,8 @@ public interface ICertificateService
     /// ValidationException nếu reason không hợp lệ.
     /// </summary>
     Task<Certificate> RejectAsync(Guid certId, Guid adminUserId, string reason, CancellationToken ct);
+    Task<Certificate> RejectFraudAsync(Guid certId, Guid adminUserId, string reason, CancellationToken ct) =>
+        throw new NotSupportedException();
 }
 
 /// <summary>

@@ -71,7 +71,8 @@ public record UserSummaryDto(
     [property: JsonPropertyName("email")] string Email,
     [property: JsonPropertyName("avatar_url")] string? AvatarUrl,
     [property: JsonPropertyName("full_name")] string FullName,
-    [property: JsonPropertyName("role")] string Role);
+    [property: JsonPropertyName("role")] string Role,
+    [property: JsonPropertyName("pt_verification_status")] string? PtVerificationStatus = null);
 
 public record AuthResponse(
     [property: JsonPropertyName("access_token")] string AccessToken,

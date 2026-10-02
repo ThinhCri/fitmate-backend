@@ -20,6 +20,8 @@ public interface ICertificateStore
 {
     Task<Certificate?> FindByIdentityAsync(Guid ptUserId, string title, string issuedBy, string code, CancellationToken ct);
     Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct);
+    Task<PtProfile?> FindPtProfileAsync(Guid ptUserId, CancellationToken ct) => Task.FromResult<PtProfile?>(null);
+    Task<ApplicationUser?> FindUserAsync(Guid userId, CancellationToken ct) => Task.FromResult<ApplicationUser?>(null);
     /// <summary>
     /// Lists every certificate belonging to a PT. Bounded to <paramref name="pageSize"/>.
     /// Used by admin preview/list screens where the count can grow unbounded.

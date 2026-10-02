@@ -39,6 +39,8 @@ public class CertificateService : ICertificateService
         if (existing is not null) return existing;
 
         var cert = Certificate.Submit(ptUserId, title, issuedBy, code, issueDate, imageStorageKey, imageUploadedByUserId);
+        var profile = await _store.FindPtProfileAsync(ptUserId, ct);
+        profile?.MarkPendingReview();
         await _store.AddAsync(cert, ct);
         await _store.SaveChangesAsync(ct);
         return cert;
@@ -68,6 +70,8 @@ public class CertificateService : ICertificateService
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Certificate {certId} not found.");
 
         cert.Approve(adminUserId); // throws ConflictException nếu không ở Pending
+        var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct);
+        profile?.Approve(adminUserId);
         // Stage audit within the same save; if SaveChanges fails the audit is rolled back together with
         // the state change so the audit cannot disappear while the change survived.
         _audit.Stage("certificate.approve", "Certificate", certId, adminUserId);
@@ -94,7 +98,31 @@ public class CertificateService : ICertificateService
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Certificate {certId} not found.");
 
         cert.Reject(adminUserId, reason); // throws ConflictException nếu không ở Pending
+        var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct);
+        profile?.RequestMoreInformation(adminUserId, reason.Trim());
         _audit.Stage("certificate.reject", "Certificate", certId, adminUserId, reason);
+        await _store.SaveChangesAsync(ct);
+        return cert;
+    }
+
+    public async Task<Certificate> RejectFraudAsync(Guid certId, Guid adminUserId, string reason, CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 5 || reason.Length > 500)
+            throw new ValidationException(ErrorCodes.Trainer.CertificateMissingReason, "Reason must contain 5 to 500 characters.",
+                new Dictionary<string, string[]> { ["reason"] = new[] { "5 to 500 characters" } });
+
+        var cert = await _store.FindByIdAsync(certId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, "Certificate not found.");
+        cert.Reject(adminUserId, reason.Trim());
+        var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, "PT profile not found.");
+        var user = await _store.FindUserAsync(cert.PtUserId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, "PT user not found.");
+        profile.RejectFraud(adminUserId, reason.Trim());
+        user.Status = UserStatus.Locked;
+        user.UpdatedAt = DateTime.UtcNow;
+        _audit.Stage("pt_application.reject_fraud", "PtProfile", profile.Id, adminUserId, reason.Trim());
         await _store.SaveChangesAsync(ct);
         return cert;
     }
