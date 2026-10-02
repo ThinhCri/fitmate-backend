@@ -13,7 +13,7 @@ public class PtProfileConfiguration : IEntityTypeConfiguration<PtProfile>
         e.Property(x => x.Id).HasColumnName("id");
         e.Property(x => x.UserId).IsRequired();
         e.HasIndex(x => x.UserId).IsUnique();
-        e.Property(x => x.Specialty).HasMaxLength(120);
+        e.Property(x => x.Specialty).HasMaxLength(200);
         e.Property(x => x.PricePerSessionVnd);
         e.Property(x => x.Rating).HasColumnType("numeric(3,2)");
         e.Property(x => x.VerificationStatus).HasConversion<int>().IsRequired();

@@ -12,6 +12,7 @@ public partial class AddPtAccountVerification : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.AlterColumn<string>(name: "Specialty", table: "pt_profiles", type: "character varying(200)", maxLength: 200, nullable: true, oldClrType: typeof(string), oldType: "character varying(120)", oldMaxLength: 120, oldNullable: true);
         migrationBuilder.AddColumn<int>(name: "VerificationStatus", table: "pt_profiles", type: "integer", nullable: false, defaultValue: 0);
         migrationBuilder.AddColumn<string>(name: "VerificationReason", table: "pt_profiles", type: "character varying(500)", maxLength: 500, nullable: true);
         migrationBuilder.AddColumn<DateTime>(name: "VerificationReviewedAt", table: "pt_profiles", type: "timestamp with time zone", nullable: true);
@@ -29,6 +30,7 @@ public partial class AddPtAccountVerification : Migration
 
     protected override void Down(MigrationBuilder migrationBuilder)
     {
+        migrationBuilder.AlterColumn<string>(name: "Specialty", table: "pt_profiles", type: "character varying(120)", maxLength: 120, nullable: true, oldClrType: typeof(string), oldType: "character varying(200)", oldMaxLength: 200, oldNullable: true);
         migrationBuilder.DropColumn(name: "VerificationStatus", table: "pt_profiles");
         migrationBuilder.DropColumn(name: "VerificationReason", table: "pt_profiles");
         migrationBuilder.DropColumn(name: "VerificationReviewedAt", table: "pt_profiles");
