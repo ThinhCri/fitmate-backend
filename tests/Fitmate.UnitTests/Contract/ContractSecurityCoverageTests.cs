@@ -74,6 +74,8 @@ public class ContractSecurityCoverageTests
             "POST /api/v1/auth/revoke",
             "POST /api/v1/auth/password/forgot",
             "POST /api/v1/auth/password/reset",
+            "POST /api/v1/auth/email/verify",
+            "POST /api/v1/auth/email/resend",
             "POST /api/v1/public/account-deletion-request",
             "POST /api/v1/public/account-deletion-confirm",
             "POST /api/v1/admin/auth/login/verify",

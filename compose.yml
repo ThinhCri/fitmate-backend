@@ -42,8 +42,6 @@ services:
       DB_USER: ${DB_USER:-fitmate}
       DB_PASSWORD: ${DB_PASSWORD}
       DB_SSLMODE: ${DB_SSLMODE:-prefer}
-      SMTP_HOST: mailhog
-      SMTP_PORT: 1025
       # Disable push by default in local so the smoke endpoint stack is simpler; toggle in .env for full E2E.
       FEATURE_PUSH_ENABLED: ${FEATURE_PUSH_ENABLED:-false}
     depends_on:

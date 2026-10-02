@@ -32,6 +32,8 @@ using Fitmate.Application.Notifications.Handlers;
 using Fitmate.Application.Workout;
 using Fitmate.Application.Nutrition;
 using Fitmate.Application.Payments;
+using Fitmate.Application.Email;
+using Fitmate.Application.Email.Handlers;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Threading.RateLimiting;
@@ -173,6 +175,24 @@ builder.Services.AddScoped<IValidator<RefreshRequest>, RefreshRequestValidator>(
 builder.Services.AddScoped<IValidator<ForgotPasswordRequest>, ForgotPasswordRequestValidator>();
 builder.Services.AddScoped<IValidator<ResetPasswordRequest>, ResetPasswordRequestValidator>();
 builder.Services.AddScoped<IValidator<ChangePasswordRequest>, ChangePasswordRequestValidator>();
+builder.Services.AddScoped<IValidator<VerifyEmailRequest>, VerifyEmailRequestValidator>();
+builder.Services.AddScoped<IValidator<ResendEmailVerificationRequest>, ResendEmailVerificationRequestValidator>();
+
+// Transactional email: SMTP transport + durable outbox handlers.
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection(EmailOptions.SectionName));
+if (builder.Environment.IsProduction())
+{
+    (builder.Configuration.GetSection(EmailOptions.SectionName).Get<EmailOptions>() ?? new EmailOptions())
+        .ValidateForProduction();
+}
+builder.Services.AddSingleton<IEmailTemplateRenderer, EmailTemplateRenderer>();
+builder.Services.AddSingleton<IEmailTokenProtector, Fitmate.Infrastructure.Email.DataProtectionEmailTokenProtector>();
+builder.Services.AddScoped<IEmailSender, Fitmate.Infrastructure.Email.MailKitEmailSender>();
+builder.Services.AddScoped<IOutboxHandler, EmailVerificationOutboxHandler>();
+builder.Services.AddScoped<IOutboxHandler, PasswordResetEmailOutboxHandler>();
+builder.Services.AddScoped<IOutboxHandler, AccountDeletionEmailOutboxHandler>();
+builder.Services.AddScoped<IOutboxHandler, SupportReplyEmailOutboxHandler>();
+builder.Services.AddScoped<IOutboxHandler, SecurityWarningEmailOutboxHandler>();
 
 // BE-040: Trainer + Certificate services.
 builder.Services.AddScoped<IPtProfileStore, Fitmate.Infrastructure.Trainers.EfPtProfileStore>();

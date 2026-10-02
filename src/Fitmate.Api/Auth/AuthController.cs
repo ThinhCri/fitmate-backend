@@ -4,6 +4,7 @@ using Fitmate.Application.Auth;
 using Fitmate.Application.Auth.Contracts;
 using Fitmate.Application.Common;
 using Fitmate.Domain.Identity;
+using Fitmate.Infrastructure.Persistence;
 using FluentValidation;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -95,8 +96,14 @@ public class AuthController : ControllerBase
             await _roles.CreateAsync(new IdentityRole<Guid>(roleName));
         await _users.AddToRoleAsync(user, roleName);
 
-        var issued = await IssueTokensAsync(user, roleName, null, ct);
-        return StatusCode(201, ClientResponse(issued));
+        var code = await _users.GenerateUserTokenAsync(user, TokenOptions.DefaultEmailProvider, "email-verification");
+        var protector = HttpContext.RequestServices.GetRequiredService<Fitmate.Application.Email.IEmailTokenProtector>();
+        var outbox = HttpContext.RequestServices.GetRequiredService<Fitmate.Application.Outbox.IOutboxDispatcher>();
+        outbox.Enqueue("auth.email_verification", new Fitmate.Application.Email.Handlers.EmailVerificationPayloadDto(
+            user.Id, user.Email!, protector.Protect(code), user.FullName, DateTime.UtcNow.AddMinutes(5)));
+        await HttpContext.RequestServices.GetRequiredService<FitmateDbContext>().SaveChangesAsync(ct);
+
+        return StatusCode(201, new RegistrationPendingResponse(true, user.Email!, 300));
     }
 
     [HttpPost("login")]
@@ -133,6 +140,17 @@ public class AuthController : ControllerBase
         }
         if (!signInResult.Succeeded)
             return MakeUnauthorized("Invalid email or password.");
+
+        // Do not reveal registration/verification state until ownership is proven
+        // with the correct password. This prevents account enumeration and OTP spam.
+        if (!user.EmailConfirmed)
+        {
+            var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
+            var prob = FitmateProblemDetails.Create(403, "Email verification required",
+                ErrorCodes.AuthEmailNotVerified, "email-not-verified",
+                "Verify your email address before signing in.", trace);
+            return StatusCode(403, prob);
+        }
 
         var role = PreferredRole(await _users.GetRolesAsync(user));
         if (role.Equals("admin", StringComparison.OrdinalIgnoreCase))
@@ -248,6 +266,8 @@ public class AuthController : ControllerBase
         [FromBody] ForgotPasswordRequest request,
         [FromServices] IValidator<ForgotPasswordRequest> validator,
         [FromServices] Fitmate.Application.Outbox.IOutboxDispatcher outbox,
+        [FromServices] Fitmate.Application.Email.IEmailTokenProtector protector,
+        [FromServices] FitmateDbContext db,
         CancellationToken ct)
     {
         var validation = await validator.ValidateAsync(request, ct);
@@ -258,11 +278,68 @@ public class AuthController : ControllerBase
         if (user is not null && !user.IsDeleted && user.Status != Domain.Common.UserStatus.Locked)
         {
             var token = await _users.GeneratePasswordResetTokenAsync(user);
-            outbox.Enqueue("auth.password_reset_requested", new PasswordResetPayload(user.Id, user.Email!, token, user.FullName));
+            outbox.Enqueue("auth.password_reset_requested", new Fitmate.Application.Email.Handlers.PasswordResetPayloadDto(
+                user.Id, user.Email!, protector.Protect(token), user.FullName, DateTime.UtcNow.AddMinutes(15)));
+            await db.SaveChangesAsync(ct);
         }
 
         // Return 202 Accepted neutrally to prevent email enumeration attacks
         return Accepted(new { message = "If the email address is registered, instructions to reset your password have been sent." });
+    }
+
+    [HttpPost("email/verify")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthLimiter")]
+    public async Task<IActionResult> VerifyEmail(
+        [FromBody] VerifyEmailRequest request,
+        [FromServices] IValidator<VerifyEmailRequest> validator,
+        CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid) return BadRequest(ValidationProblem(validation));
+
+        var user = await _users.FindByEmailAsync(request.Email);
+        if (user is null || user.IsDeleted || user.EmailConfirmed)
+            return MakeUnauthorized("Invalid or expired verification code.");
+
+        var valid = await _users.VerifyUserTokenAsync(
+            user, TokenOptions.DefaultEmailProvider, "email-verification", request.Code);
+        if (!valid) return MakeUnauthorized("Invalid or expired verification code.");
+
+        user.EmailConfirmed = true;
+        var result = await _users.UpdateAsync(user);
+        if (!result.Succeeded)
+            return StatusCode(500, FitmateProblemDetails.Create(500, "Email verification failed",
+                ErrorCodes.GeneralBadRequest, "email-verification-failed",
+                "The email address could not be verified.", FitmateProblemDetails.ResolveTraceId(HttpContext)));
+
+        return NoContent();
+    }
+
+    [HttpPost("email/resend")]
+    [AllowAnonymous]
+    [EnableRateLimiting("AuthLimiter")]
+    public async Task<IActionResult> ResendEmailVerification(
+        [FromBody] ResendEmailVerificationRequest request,
+        [FromServices] IValidator<ResendEmailVerificationRequest> validator,
+        [FromServices] Fitmate.Application.Outbox.IOutboxDispatcher outbox,
+        [FromServices] Fitmate.Application.Email.IEmailTokenProtector protector,
+        [FromServices] FitmateDbContext db,
+        CancellationToken ct)
+    {
+        var validation = await validator.ValidateAsync(request, ct);
+        if (!validation.IsValid) return BadRequest(ValidationProblem(validation));
+
+        var user = await _users.FindByEmailAsync(request.Email);
+        if (user is not null && !user.IsDeleted && !user.EmailConfirmed && user.Status == Domain.Common.UserStatus.Active)
+        {
+            var code = await _users.GenerateUserTokenAsync(user, TokenOptions.DefaultEmailProvider, "email-verification");
+            outbox.Enqueue("auth.email_verification", new Fitmate.Application.Email.Handlers.EmailVerificationPayloadDto(
+                user.Id, user.Email!, protector.Protect(code), user.FullName, DateTime.UtcNow.AddMinutes(5)));
+            await db.SaveChangesAsync(ct);
+        }
+
+        return Accepted(new { message = "If the account is eligible, a verification code has been sent." });
     }
 
     [HttpPost("password/reset")]

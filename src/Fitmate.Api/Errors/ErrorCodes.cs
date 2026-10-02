@@ -20,6 +20,7 @@ public static class ErrorCodes
     // AUTH (placeholder, sẽ mở rộng ở BE-030)
     public const string AuthUnauthorized = "FITMATE.AUTH.UNAUTHORIZED";
     public const string AuthForbidden = "FITMATE.AUTH.FORBIDDEN";
+    public const string AuthEmailNotVerified = "FITMATE.AUTH.EMAIL_NOT_VERIFIED";
 
     // BOOKING (placeholder, sẽ mở rộng ở BE-060)
     public const string BookingInvalidTransition = "FITMATE.BOOKING.INVALID_TRANSITION";

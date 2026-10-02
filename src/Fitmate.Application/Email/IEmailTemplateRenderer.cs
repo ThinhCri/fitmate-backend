@@ -7,7 +7,7 @@ namespace Fitmate.Application.Email;
 public interface IEmailTemplateRenderer
 {
     EmailMessage RenderPasswordReset(string toEmail, string? fullName, string resetUrl, TimeSpan ttl);
-    EmailMessage RenderEmailVerification(string toEmail, string? fullName, string verifyUrl, TimeSpan ttl);
+    EmailMessage RenderEmailVerification(string toEmail, string? fullName, string verificationCode, TimeSpan ttl);
     EmailMessage RenderAccountDeletion(string toEmail, string confirmUrl, DateTime expiresAtUtc);
     EmailMessage RenderSupportTicketReply(string toEmail, string? fullName, string ticketCode, string ticketUrl);
     EmailMessage RenderUserSecurityWarning(string toEmail, string? fullName, string warningNote, DateTime issuedAtUtc);

@@ -2,7 +2,6 @@ using System.Text.Json;
 using Fitmate.Application.Email;
 using Fitmate.Application.Outbox;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace Fitmate.Application.Email.Handlers;
 
@@ -11,7 +10,6 @@ public class EmailVerificationOutboxHandler : IOutboxHandler
     private readonly IEmailSender _emailSender;
     private readonly IEmailTemplateRenderer _templateRenderer;
     private readonly IEmailTokenProtector _tokenProtector;
-    private readonly EmailOptions _options;
     private readonly ILogger<EmailVerificationOutboxHandler> _logger;
 
     public string Type => "auth.email_verification";
@@ -20,13 +18,11 @@ public class EmailVerificationOutboxHandler : IOutboxHandler
         IEmailSender emailSender,
         IEmailTemplateRenderer templateRenderer,
         IEmailTokenProtector tokenProtector,
-        IOptions<EmailOptions> options,
         ILogger<EmailVerificationOutboxHandler> logger)
     {
         _emailSender = emailSender;
         _templateRenderer = templateRenderer;
         _tokenProtector = tokenProtector;
-        _options = options.Value;
         _logger = logger;
     }
 
@@ -42,7 +38,7 @@ public class EmailVerificationOutboxHandler : IOutboxHandler
             throw new TerminalOutboxException("Email verification payload missing required email or token");
         }
 
-        var ttl = TimeSpan.FromHours(24);
+        var ttl = TimeSpan.FromMinutes(5);
         if (payload.ExpiresAtUtc.HasValue && payload.ExpiresAtUtc.Value <= DateTime.UtcNow)
         {
             _logger.LogWarning("Email verification token for user {UserId} expired at {ExpiresAt}. Dropping stale email.",
@@ -61,10 +57,7 @@ public class EmailVerificationOutboxHandler : IOutboxHandler
             throw new TerminalOutboxException("TOKEN_UNPROTECT_FAILED: Cryptographic verification token invalid", ex);
         }
 
-        var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');
-        var verifyUrl = $"{baseUrl}/verify-email?token={Uri.EscapeDataString(plainToken)}&userId={payload.UserId}";
-
-        var message = _templateRenderer.RenderEmailVerification(payload.Email, payload.FullName, verifyUrl, ttl);
+        var message = _templateRenderer.RenderEmailVerification(payload.Email, payload.FullName, plainToken, ttl);
         await _emailSender.SendAsync(message, ct);
 
         _logger.LogInformation("Email verification dispatched successfully to user {UserId}", payload.UserId);

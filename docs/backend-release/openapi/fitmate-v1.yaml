@@ -55,7 +55,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthResponse'
+                $ref: '#/components/schemas/RegistrationPendingResponse'
         '400':
           $ref: '#/components/responses/ValidationError'
         '409':
@@ -128,7 +128,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
         '403':
-          description: Tài khoản bị khóa hoặc đang chờ xóa (PendingDeletion)
+          description: Tài khoản bị khóa, đang chờ xóa, hoặc chưa xác minh email
           content:
             application/json:
               schema:
@@ -252,6 +252,52 @@ paths:
       responses:
         '202':
           description: Email đã được gửi nếu user tồn tại
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/email/verify:
+    post:
+      tags: [Auth]
+      summary: Xác minh email bằng mã OTP 6 chữ số
+      operationId: verifyEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '204':
+          description: Email đã được xác minh
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Mã không hợp lệ, hết hạn hoặc đã sử dụng
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/email/resend:
+    post:
+      tags: [Auth]
+      summary: Gửi lại mã xác minh email
+      operationId: resendEmailVerification
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendEmailVerificationRequest'
+      responses:
+        '202':
+          description: Phản hồi trung lập, không tiết lộ tài khoản tồn tại
         '400':
           $ref: '#/components/responses/ValidationError'
         '429':
@@ -4273,6 +4319,39 @@ components:
         timezone:
           type: string
           default: Asia/Ho_Chi_Minh
+
+    RegistrationPendingResponse:
+      type: object
+      required: [verification_required, email, expires_in_seconds]
+      properties:
+        verification_required:
+          type: boolean
+          enum: [true]
+        email:
+          type: string
+          format: email
+        expires_in_seconds:
+          type: integer
+          example: 300
+
+    VerifyEmailRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email:
+          type: string
+          format: email
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+
+    ResendEmailVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
 
     LoginRequest:
       type: object

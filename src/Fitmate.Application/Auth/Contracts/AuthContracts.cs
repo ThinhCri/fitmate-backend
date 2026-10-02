@@ -49,6 +49,18 @@ public record ChangePasswordRequest(
     [property: JsonPropertyName("current_password")] string CurrentPassword,
     [property: JsonPropertyName("new_password")] string NewPassword);
 
+public record VerifyEmailRequest(
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("code")] string Code);
+
+public record ResendEmailVerificationRequest(
+    [property: JsonPropertyName("email")] string Email);
+
+public record RegistrationPendingResponse(
+    [property: JsonPropertyName("verification_required")] bool VerificationRequired,
+    [property: JsonPropertyName("email")] string Email,
+    [property: JsonPropertyName("expires_in_seconds")] int ExpiresInSeconds);
+
 public record LogoutRequest(
     [property: JsonPropertyName("refresh_token")] string? RefreshToken = null);
 

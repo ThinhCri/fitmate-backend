@@ -129,3 +129,20 @@ public class ChangePasswordRequestValidator : AbstractValidator<ChangePasswordRe
             .NotEqual(x => x.CurrentPassword).WithMessage("New password must be different from current password");
     }
 }
+
+public class VerifyEmailRequestValidator : AbstractValidator<VerifyEmailRequest>
+{
+    public VerifyEmailRequestValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(254);
+        RuleFor(x => x.Code).Matches("^[0-9]{6}$").WithMessage("Verification code must contain exactly 6 digits");
+    }
+}
+
+public class ResendEmailVerificationRequestValidator : AbstractValidator<ResendEmailVerificationRequest>
+{
+    public ResendEmailVerificationRequestValidator()
+    {
+        RuleFor(x => x.Email).NotEmpty().EmailAddress().MaximumLength(254);
+    }
+}

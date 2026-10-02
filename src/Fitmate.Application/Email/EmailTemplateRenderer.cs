@@ -38,20 +38,19 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         return new EmailMessage(toEmail, subject, html, plain);
     }
 
-    public EmailMessage RenderEmailVerification(string toEmail, string? fullName, string verifyUrl, TimeSpan ttl)
+    public EmailMessage RenderEmailVerification(string toEmail, string? fullName, string verificationCode, TimeSpan ttl)
     {
         var safeName = WebUtility.HtmlEncode(fullName ?? "bạn");
-        var safeUrl = WebUtility.HtmlEncode(verifyUrl);
-        var ttlText = ttl.TotalHours >= 24
-            ? $"{(int)(ttl.TotalHours / 24)} ngày"
-            : $"{(int)ttl.TotalHours} giờ";
+        var safeCode = WebUtility.HtmlEncode(verificationCode);
+        var ttlText = $"{Math.Max(1, (int)Math.Ceiling(ttl.TotalMinutes))} phút";
 
         var subject = "[Fitmate] Xác minh địa chỉ email của bạn";
 
         var html = $"""
             <h2>Chào mừng {safeName} đến với Fitmate!</h2>
-            <p>Vui lòng xác minh địa chỉ email bằng cách nhấn vào liên kết bên dưới. Liên kết có hiệu lực trong <strong>{ttlText}</strong>.</p>
-            <p><a href="{safeUrl}">{safeUrl}</a></p>
+            <p>Nhập mã xác minh sau trong ứng dụng. Mã có hiệu lực trong khoảng <strong>{ttlText}</strong>.</p>
+            <p style="font-size:32px;font-weight:700;letter-spacing:8px;">{safeCode}</p>
+            <p>Không chia sẻ mã này với bất kỳ ai. Nếu bạn không tạo tài khoản Fitmate, hãy bỏ qua email này.</p>
             <hr/>
             <p style="font-size:12px;color:#888;">Đây là email tự động từ Fitmate. Vui lòng không trả lời email này.</p>
             """;
@@ -59,9 +58,8 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var plain = $"""
             Chào mừng {fullName ?? "bạn"} đến với Fitmate!
 
-            Vui lòng xác minh địa chỉ email bằng cách truy cập liên kết sau. Liên kết có hiệu lực trong {ttlText}.
-
-            {verifyUrl}
+            Mã xác minh của bạn là: {verificationCode}
+            Mã có hiệu lực trong khoảng {ttlText}. Không chia sẻ mã này với bất kỳ ai.
             """;
 
         return new EmailMessage(toEmail, subject, html, plain);

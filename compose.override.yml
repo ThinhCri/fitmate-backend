@@ -28,4 +28,5 @@ services:
       DOTNET_USE_POLLING_FILE_WATCHER: "true"
     command: ["dotnet", "watch", "run", "--project", "src/Fitmate.Api/Fitmate.Api.csproj", "--urls", "http://+:5116"]
     ports: !override
-      - "127.0.0.1:5116:5116"
+      # Local development: expose API to a physical phone on the same trusted LAN.
+      - "${API_DEV_PORT:-5116}:5116"
