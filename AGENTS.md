@@ -18,7 +18,7 @@ Repo này là **backend chính** cho cả Android app và Admin Web. Stack: **.N
 
 | Môi trường | PostgreSQL | Đặc điểm |
 |---|---|---|
-| **Local dev** | Self-hosted qua Docker Compose (`compose.yml`, user `fitmate`, password `dev`) | Mount volume, reset bằng cách xóa container. Không cần backup. |
+| **Local dev** | Self-hosted qua Docker Compose (`compose.yml`, user `fitmate`, password `dev`) | Dữ liệu nằm trong named volume và vẫn tồn tại khi recreate/xóa container. Chỉ reset database test cô lập theo runbook; không xóa volume chứa dữ liệu user. |
 | **Staging** | Môi trường tách biệt (chốt khi có budget) | Tách biệt credentials/dữ liệu khỏi production. |
 | **Production (baseline)** | **Managed** DigitalOcean PostgreSQL Singapore, primary 2 vCPU / 4 GiB + 1 standby HA (chưa có read replica) | `sslmode=require` bắt buộc. Credentials qua secret manager — KHÔNG commit. Xem `decisions.md` DEC-030 và `managed-postgres-comparison.md`. |
 
@@ -58,7 +58,7 @@ Tài liệu nguồn chuẩn: [`docs/backend-release/README.md`](docs/backend-rel
 ## Quy ước đặt tên
 
 - Task ID: `BE-NNN`.
-- Solution: `Fitmate.sln`.
+- Solution: `Fitmate.slnx`.
 - Projects:
   - `src/Fitmate.Api/` — ASP.NET Core entry, controllers, DI composition root.
   - `src/Fitmate.Application/` — use cases, abstractions.

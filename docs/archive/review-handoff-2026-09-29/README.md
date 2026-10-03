@@ -1,4 +1,9 @@
-# Handoff — review changes overview
+# Archived handoff — review changes overview (2026-09-29)
+
+> ARCHIVED / NON-AUTHORITATIVE. This directory preserves historical review evidence only.
+> Do not use its statuses, commit references, routes, or findings as the current contract.
+> Current sources of truth are `docs/backend-release/README.md`, `tasks.md`,
+> `handoff.md`, `decisions.md`, and `openapi/fitmate-v1.yaml`.
 
 ## Phạm vi ghi nhận
 
@@ -17,7 +22,7 @@ trong repo, không quy toàn bộ dirty diff là do Antigravity viết.
 2. Phần B: sửa tiếp (chỉ ghi file + behavior thay đổi, không liệt kê full diff).
 3. Phần C: code còn gap nhưng không sửa (chờ operator/quyết định hoặc ngoài scope).
 
-Cập nhật chi tiết từng đợt ở `docs/review-handoff/changes.md` và mục tổng quan ở `README.md`.
+Cập nhật lịch sử từng đợt nằm trong `changes.md`; nội dung này không còn là hướng dẫn thực thi hiện tại.
 
 ## Đợt hiện tại
 

@@ -20,7 +20,7 @@ namespace Fitmate.UnitTests;
 ///   <item>the recorded uploader is different from the certificate owner.</item>
 /// </list>
 /// Prefix-only ownership (the prior implementation) was insufficient;
-/// see docs/review-handoff/changes.md (F3 follow-up).
+/// see docs/archive/review-handoff-2026-09-29/changes.md (F3 follow-up).
 /// </summary>
 public class AdminCertificatesControllerOwnershipTests
 {
