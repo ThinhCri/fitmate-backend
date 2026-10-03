@@ -1,3 +1,23 @@
+> Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
+
+## 2026-10-03 — Hoàn thiện luồng booking thực tế và đồng bộ ba repository
+- Hold booking là 10 phút; thanh toán được PayOS xác minh sẽ tự chuyển booking sang `Confirmed` vì slot PT đã công bố được xem là chấp thuận trước.
+- Hội viên chỉ được tự hủy khi còn ít nhất 24 giờ trước giờ bắt đầu; dưới 24 giờ API trả conflict và yêu cầu liên hệ hỗ trợ.
+- PT kết thúc buổi tập sẽ chuyển sang `AwaitingMemberConfirmation`. Hội viên có 24 giờ để xác nhận hoặc chuyển sang `Disputed`; hết hạn không tranh chấp thì background sweep tự xác nhận `Completed`.
+- Sổ cái chỉ ghi nhận doanh thu khi booking đã `Completed`. Manual payout bị giữ thêm 24 giờ kể từ `CompletedAtUtc`, đồng thời vẫn chặn khi có refund hoặc dispute.
+- OpenAPI, Mobile mapping/repository/UI và Admin Web enum/label đã đồng bộ các trạng thái mới. Mobile baseline SHA256 hiện là `C3500F5D8436BABDAE9180847A7D1FEEF1694235572EA0C87FEB45AC450B9568`.
+- Migration `20261003010000_PracticalBookingLifecycle` chỉ thêm ba timestamp của vòng đời xác nhận và partial index phục vụ sweep; migration được EF phát hiện. Chưa apply lên local DB trong phiên này vì PostgreSQL `localhost:5432` không chạy.
+- Verification: backend build PASS 0 warning/0 error; unit tests PASS 885/885; Admin Web typecheck PASS và tests PASS 122/122; Mobile typecheck PASS và targeted booking/contract tests PASS 25/25.
+- Integration tests không chạy được trong phiên này vì PostgreSQL local không lắng nghe ở `localhost:5432`; 57 test phụ thuộc fixture DB fail lúc provision, 4 test không cần DB pass. Đây là giới hạn môi trường, không phải assertion nghiệp vụ thất bại.
+
+## 2026-10-02 — Dọn tài liệu và artifact local sau contract freeze
+- Contract vẫn là `FROZEN-V1`; không sửa OpenAPI hoặc runtime code.
+- Chuyển bộ review ngày 2026-09-29 từ `docs/review-handoff/` sang `docs/archive/review-handoff-2026-09-29/` và gắn nhãn non-authoritative.
+- Xóa patch rỗng và báo cáo review untracked đã lỗi thời; Git history vẫn giữ toàn bộ tài liệu tracked trước khi archive.
+- Sửa `AGENTS.md` dùng đúng `Fitmate.slnx` và làm rõ named volume không mất khi xóa/recreate container.
+- Thêm `/AI/` vào `.gitignore`; model local không bị xóa và không thể bị `git add .` nhầm.
+- Các tệp Trainer controller dirty do line ending được giữ nguyên, không stage.
+
 ## 2026-10-02 — Hoàn tất verification sau review và đóng băng lại Mobile API contract
 - **Trạng thái**: `FROZEN-V1`.
 - Sửa UAT Journey 08 gửi canonical request field `user_id` thay cho contract cũ `userId`; test riêng pass 1/1.
@@ -40,7 +60,7 @@
 - **Kết quả kiểm thử tự động**:
   - `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj`: **877/877 tests PASS** (100% green, 0 failed, 0 skipped).
   - Tất cả contract serialization tests và OpenAPI schema reflection tests đều pass.
-  - Các tệp dirty của user (`AvailabilityController.cs`, `CertificatesController.cs`, `ServicesController.cs`, `TrainersPublicController.cs`) và untracked files (`AI/`, `docs/review-handoff/`) được bảo toàn tuyệt đối.
+  - Tại thời điểm chạy, các tệp dirty của user và review artifacts cũ được bảo toàn; review artifacts sau đó đã chuyển vào `docs/archive/review-handoff-2026-09-29/`.
   - Mobile App được phép generate client từ baseline revision này.
 
 ## 2026-10-01 — Hoàn tất Ổn định Backend Contract cho Mobile App (BE-801..BE-820)
@@ -63,7 +83,7 @@
 - **Kết quả kiểm thử**:
   - `dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj`: **816/816 tests PASS** (100% green, 0 failed, 0 skipped).
   - Parity discrepancies: **0 missing routes, 0 phantom operations, 0 security mismatches**.
-  - Các tệp dirty của user (`AvailabilityController.cs`, `CertificatesController.cs`, `ServicesController.cs`, `TrainersPublicController.cs`) và untracked files (`AI/`, `docs/review-handoff/`) được giữ nguyên 100%.
+  - Tại thời điểm chạy, các tệp dirty của user và review artifacts cũ được giữ nguyên; review artifacts sau đó đã được archive.
 
 ## 2026-10-01 — Hoàn tất thực thi Kế hoạch Plan V9.1 (Baseline PROD-2026-09-22-v1, DEC-051, Reschedule Branch A)
 - **Hoàn thành toàn bộ 8 giai đoạn kỹ thuật (Phát hiện A -> H)**:
@@ -555,7 +575,7 @@
 **Trạng thái Git sau phiên**
 - Không stage file nào. Không `git add`/`git commit`. Tất cả thay đổi của phiên trước đã có sẵn trong working tree (content = HEAD) và KHÔNG đổi trong phiên này.
 - Helper script `verify-equal.ps1` (do agent tạo để verify blob hash) đã được xóa sau khi xác minh xong. Diff sạch ở mức nội dung.
-- Untracked từ trước còn nguyên: `AI/` (bundle inference chưa được user review), `docs/review-handoff/changes.patch` (patch cũ của user).
+- Trạng thái lịch sử: `AI/` là bundle inference local chưa được review; patch rỗng cũ đã được xóa trong đợt cleanup 2026-10-02.
 
 **Blocker còn lại**
 
@@ -598,7 +618,7 @@ dotnet test "D:/Ky8/exe201/FitmateAI_BE/tests/Fitmate.UnitTests/Fitmate.UnitTest
 dotnet format "D:/Ky8/exe201/FitmateAI_BE/Fitmate.slnx" --verify-no-changes --no-restore
 ```
 
-**Next:** Chờ user duyệt scope BE-829 (tách trạng thái booking theo DEC-026/051) trước khi đụng runtime code liên quan. Tiếp tục rà các dư chứng cũ ngoài working tree (`AI/`, `docs/review-handoff/changes.patch`) khi user cho phép.
+**Next (historical, đã được thay thế):** Nội dung này không còn là chỉ dẫn hiện tại; xem mục đầu file và `tasks.md`.
 
 ### Lịch sử các phiên trước
 
@@ -1469,7 +1489,7 @@ Test: `tests/Fitmate.UnitTests/PasswordPolicyTests.cs` (NEW, 10 case).
 
 ### Tests
 - Chưa chạy `dotnet test` (theo lệnh user). Đã viết test source cho CERT-01, CERT-02, idempotency scope, finance step-up.
-- Chi tiết file + số case: `docs/review-handoff/requirement-matrix.md` (FIN-07, CERT-01, CERT-02, FIN-09).
+  - Chi tiết file + số case: `docs/archive/review-handoff-2026-09-29/requirement-matrix.md` (FIN-07, CERT-01, CERT-02, FIN-09).
 
 ### PowerShell commands (chạy local)
 
@@ -1677,3 +1697,26 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Documentation and `compose.loadtest.yml` now show the explicit opt-in. Runtime k6 execution was left to the operator.
 
 
+# Email verification OTP completion — 2026-10-02
+
+- Reopened the previously incomplete BE-802 email-verification slice: registration now returns `verification_required` instead of issuing a session, unconfirmed accounts cannot log in, and `POST /api/v1/auth/email/verify` plus `/email/resend` implement a rate-limited six-digit email code flow.
+- Verification codes are generated by the ASP.NET Identity email token provider and encrypted with Data Protection before entering the durable outbox. Successful verification sets `EmailConfirmed`; replay is rejected because confirmed accounts no longer enter verification.
+- Registered `EmailOptions`, MailKit SMTP transport, the email template/token services, and all five email outbox handlers in the API composition root. Fixed forgot-password enqueue so its token is protected and the outbox row is actually saved.
+- Replaced obsolete `SMTP_*` example variables with canonical `Email__*` keys. Local MailHog uses `None`; production validation only accepts `StartTls` or `SslOnConnect` and requires complete credentials when either credential is present.
+- Contract SHA-256 after the coordinated OTP additions: `83CF757A4286258E1A026387B0A9FCD2A45513F17261DD3D190BC10D52EC79C8`.
+- Verification executed: API build PASS with 0 warnings/errors; all unit tests PASS 879/879; contract tests PASS 99/99; filtered email integration tests PASS 4/4.
+- External gate remains: operator must verify a sender/domain and provide a Brevo SMTP key, then run a real-inbox register/resend/verify/forgot-password smoke test. No secret was created or committed.
+- Recovery fix: login for an unconfirmed account now returns stable code `FITMATE.AUTH.EMAIL_NOT_VERIFIED`, allowing clients to resume verification instead of leaving the email stranded. API build rechecked PASS after this change.
+- Security follow-up: password verification now occurs before exposing the unconfirmed-email state. Unknown emails and wrong passwords receive the same generic 401; OTP recovery is available only after the correct password proves account ownership, preventing enumeration and resend spam.
+# Nutrition date filter runtime fix — 2026-10-02
+
+- `GET /api/v1/me/nutrition/meals` now binds OpenAPI `date` query parameters as `DateOnly` and converts the selected local calendar-day bounds to explicit UTC `DateTime` values before querying PostgreSQL.
+- The upper database bound is exclusive at the start of the following day, so `from=YYYY-MM-DD&to=YYYY-MM-DD` returns the entire selected day instead of passing an unspecified-kind `DateTime` to Npgsql.
+- The nutrition integration roundtrip now exercises the same-date filter used by the Android diary.
+# Booking lifecycle update — 2026-10-03
+
+- User approved practical booking flow: published PT slots are pre-accepted; verified payOS settlement automatically confirms the booking.
+- Hold TTL is 10 minutes. A member may self-cancel only when the slot starts at least 24 hours later; PT cancellation remains possible and creates the existing full-refund request.
+- PT completion now enters `AwaitingMemberConfirmation`. Member can confirm or dispute; no dispute for 24 hours is auto-confirmed by the booking sweep. Financial recognition is created only after final `Completed`.
+- Added migration `20261003010000_PracticalBookingLifecycle`, OpenAPI endpoints `confirm-completion` and `dispute`, plus matching Mobile/Admin states.
+- Verification in this session: backend build passed; unit tests 884/884 passed after contract updates. Mobile booking/type contract changes type-check; full Mobile suite still contains unrelated pre-existing failures recorded in the session output. Admin Web typecheck and 122/122 tests pass.

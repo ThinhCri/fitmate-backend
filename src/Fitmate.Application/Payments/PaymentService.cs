@@ -263,6 +263,7 @@ public class PaymentService : IPaymentService
                     platformFeeVnd: platformFeeVnd,
                     trainerShareVnd: trainerShareVnd,
                     policyVersion: "v1");
+                appt.ConfirmByPt();
 
                 hold!.Consume();
 
@@ -272,6 +273,13 @@ public class PaymentService : IPaymentService
                     appointmentId = appt.Id,
                     amountVnd = payment.AmountVnd,
                     providerTxnNo = transactionNo
+                });
+                _outbox?.Enqueue("booking.confirmed", new
+                {
+                    appointmentId = appt.Id,
+                    ptUserId = appt.PtUserId,
+                    memberId = appt.MemberId,
+                    confirmationSource = "verified_payment"
                 });
 
                 _logger.LogInformation("VNPay IPN payment successfully settled for PaymentId: {PaymentId}", paymentId);

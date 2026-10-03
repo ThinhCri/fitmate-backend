@@ -57,7 +57,7 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
         Guid ptUserId, int skip, int take, CancellationToken ct)
     {
         var query = _db.Appointments
-            .Where(a => a.PtUserId == ptUserId && (a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Cancelled));
+            .Where(a => a.PtUserId == ptUserId && (a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.AwaitingMemberConfirmation || a.Status == AppointmentStatus.Disputed || a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Cancelled));
 
         var total = await query.CountAsync(ct);
 

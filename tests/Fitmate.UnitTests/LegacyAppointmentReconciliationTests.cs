@@ -56,7 +56,7 @@ public class LegacyAppointmentReconciliationTests
         var memberId = Guid.NewGuid();
         var ptId = Guid.NewGuid();
         var serviceId = Guid.NewGuid();
-        var slotStart = DateTime.UtcNow.AddDays(-1);
+        var slotStart = DateTime.UtcNow.AddDays(-2);
 
         var appt = Appointment.CreateHold(memberId, ptId, serviceId, slotStart, slotStart, 60, 500_000);
         var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 500_000, null);

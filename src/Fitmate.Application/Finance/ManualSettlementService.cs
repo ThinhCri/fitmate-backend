@@ -30,6 +30,8 @@ public interface IFinanceStepUp
 
 public sealed class ManualSettlementService(IManualSettlementStore store, IAuthorizationGuard authz, IFinanceStepUp stepUp)
 {
+    public static readonly TimeSpan PayoutWaitingPeriod = TimeSpan.FromHours(24);
+
     public async Task<RefundView> CreateRefundAsync(Guid adminId, CreateRefundRequest request, CancellationToken ct)
     {
         await authz.EnsureRoleAsync(adminId, "Admin", ct);
@@ -99,6 +101,11 @@ public sealed class ManualSettlementService(IManualSettlementStore store, IAutho
     {
         if (context.Appointment.LegacyCompletionTimeUnknown)
             throw new ConflictException("SETTLEMENT_BLOCKED_LEGACY_UNKNOWN", "Settlement blocked: legacy appointment completion time is unverified.");
+
+        if (context.Appointment.Status == AppointmentStatus.Completed &&
+            (!context.Appointment.CompletedAtUtc.HasValue ||
+             context.Appointment.CompletedAtUtc.Value.Add(PayoutWaitingPeriod) > DateTime.UtcNow))
+            throw new ConflictException("SETTLEMENT_WAITING_PERIOD", "Trainer payout is available 24 hours after the session is confirmed complete.");
 
         if (context.Appointment.Status != AppointmentStatus.Completed ||
             context.Appointment.SlotStartUtc.AddMinutes(context.Appointment.DurationMinutes) > DateTime.UtcNow ||

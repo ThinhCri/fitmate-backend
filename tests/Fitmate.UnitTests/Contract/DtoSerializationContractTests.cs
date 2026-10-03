@@ -88,7 +88,8 @@ public class DtoSerializationContractTests
             "email",
             "avatar_url",
             "full_name",
-            "role"
+            "role",
+            "pt_verification_status"
         }, "UserSummary must have snake_case keys matching OpenAPI schema");
     }
 
@@ -123,7 +124,8 @@ public class DtoSerializationContractTests
         {
             "id", "email", "full_name", "avatar_url", "phone", "gender",
             "birthday", "height_cm", "weight_kg", "fitness_goal",
-            "training_days", "medical_conditions", "allergies", "timezone", "role"
+            "training_days", "medical_conditions", "allergies", "timezone", "role",
+            "bio", "preferred_time_slots", "health_notes"
         });
     }
 

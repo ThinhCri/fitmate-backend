@@ -1227,7 +1227,8 @@ paths:
   /bookings/{id}/confirm:
     post:
       tags: [Bookings]
-      summary: PT confirm/accept booking
+      summary: Legacy PT confirmation; verified payment now confirms automatically
+      deprecated: true
       operationId: confirmBookingById
       parameters:
         - $ref: '#/components/parameters/IdPath'
@@ -1265,7 +1266,8 @@ paths:
   /me/bookings/{id}/confirm:
     post:
       tags: [Bookings]
-      summary: PT confirm/accept booking (alias under /me)
+      summary: Legacy PT confirmation alias; verified payment now confirms automatically
+      deprecated: true
       operationId: confirmMyBooking
       parameters:
         - $ref: '#/components/parameters/IdPath'
@@ -1299,6 +1301,63 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /me/bookings/{id}/confirm-completion:
+    post:
+      tags: [Bookings]
+      summary: Member confirms the PT completion submission
+      operationId: confirmBookingCompletion
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Booking completed and eligible for financial recognition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Booking is not awaiting member confirmation
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /me/bookings/{id}/dispute:
+    post:
+      tags: [Bookings]
+      summary: Member reports a problem during the 24-hour confirmation window
+      operationId: disputeBookingCompletion
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  minLength: 5
+      responses:
+        '200':
+          description: Booking moved to Disputed for admin review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Booking is not awaiting member confirmation
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
 
   /me/dashboard:
     get:
@@ -1407,6 +1466,7 @@ paths:
     post:
       tags: [Bookings]
       summary: Member/PT hủy booking
+      description: Hội viên chỉ được tự hủy khi còn ít nhất 24 giờ trước giờ bắt đầu. Trường hợp muộn hơn phải liên hệ hỗ trợ để được xem xét. PT hủy theo chính sách vận hành và mọi khoản hoàn tiền được xử lý riêng.
       operationId: cancelMyBooking
       parameters:
         - $ref: '#/components/parameters/IdPath'
@@ -1429,7 +1489,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Appointment'
         '409':
-          description: Booking đã completed hoặc đang refund
+          description: Booking không thể hủy ở trạng thái hiện tại hoặc hội viên hủy khi còn dưới 24 giờ
           content:
             application/json:
               schema:
@@ -4930,7 +4990,7 @@ components:
       description: |
         Vòng đời của buổi hẹn. Theo DEC-026 — KHÔNG gộp với PaymentStatus hay RefundStatus.
         Enum string ổn định, PascalCase. Client không được PATCH trực tiếp; mỗi transition đi qua endpoint riêng.
-      enum: [Held, Pending, Confirmed, InProgress, Completed, Cancelled, Expired]
+      enum: [Held, Pending, Confirmed, InProgress, Completed, Cancelled, Expired, AwaitingMemberConfirmation, Disputed, NoShow]
 
     PaymentStatus:
       type: string
@@ -5005,6 +5065,18 @@ components:
           format: date-time
           nullable: true
         cancelled_at_utc:
+          type: string
+          format: date-time
+          nullable: true
+        completion_submitted_at_utc:
+          type: string
+          format: date-time
+          nullable: true
+        member_confirmation_deadline_utc:
+          type: string
+          format: date-time
+          nullable: true
+        disputed_at_utc:
           type: string
           format: date-time
           nullable: true

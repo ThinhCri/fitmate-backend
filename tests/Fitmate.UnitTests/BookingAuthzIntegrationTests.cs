@@ -92,6 +92,6 @@ public class BookingAuthzIntegrationTests
         var svc = new BookingService(store, new InMemoryHoldStore(), new NoServiceLookup(), new OutboxStub(), guard);
 
         var done = await svc.CompleteAsync(pt, appt.Id, CancellationToken.None);
-        done.Status.Should().Be(AppointmentStatus.Completed);
+        done.Status.Should().Be(AppointmentStatus.AwaitingMemberConfirmation);
     }
 }

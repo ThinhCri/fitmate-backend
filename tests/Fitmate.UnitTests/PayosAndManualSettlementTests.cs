@@ -96,12 +96,30 @@ public class PayosAndManualSettlementTests
         var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 101, null);
         payment.MarkPaid("test-txn");
         appt.AttachPayment(payment.Id, 101, 0, .10m, 10, 91, "v1");
-        appt.ForceStatusForTesting(AppointmentStatus.Completed);
+        appt.ForceStatusForTesting(AppointmentStatus.Completed, DateTime.UtcNow.AddHours(-25));
         payment.ApplyRefund(5); // Original fee ratio: round(10 * 5 / 101) = 0, not round(5 * .1) = 1.
         var context = new SettlementContext(appt, payment, ManualPtSettlement.Create(appt.Id, appt.PtUserId, payment.Id), false);
         ManualSettlementService.EligibleAmount(context).Should().Be(86);
         var blocked = () => ManualSettlementService.EligibleAmount(context with { HasPendingRefund = true });
         blocked.Should().Throw<ConflictException>();
+    }
+
+    [Fact]
+    public void Payout_is_blocked_until_24_hours_after_confirmed_completion()
+    {
+        var slot = DateTime.UtcNow.AddDays(-2);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 100_000, null);
+        payment.MarkPaid("test-waiting-period");
+        appt.AttachPayment(payment.Id, 100_000, 0, .10m, 10_000, 90_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.Completed, DateTime.UtcNow.AddHours(-23));
+        var context = new SettlementContext(appt, payment,
+            ManualPtSettlement.Create(appt.Id, appt.PtUserId, payment.Id), false);
+
+        var act = () => ManualSettlementService.EligibleAmount(context);
+
+        act.Should().Throw<ConflictException>()
+            .Which.Code.Should().Be("SETTLEMENT_WAITING_PERIOD");
     }
 
     [Fact]

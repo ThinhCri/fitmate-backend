@@ -54,8 +54,10 @@ public sealed class PayosWebhookHandler(FitmateDbContext db, IPaymentStore store
             {
                 var fee = (long)Math.Round(amountVnd * 0.10m, MidpointRounding.AwayFromZero);
                 appointment.AttachPayment(payment.Id, amountVnd, 0, 0.10m, fee, amountVnd - fee, "v1");
+                appointment.ConfirmByPt();
                 hold.Consume();
                 outbox.Enqueue("payment.paid", new { paymentId = payment.Id, appointmentId = appointment.Id, amountVnd });
+                outbox.Enqueue("booking.confirmed", new { appointmentId = appointment.Id, ptUserId = appointment.PtUserId, memberId = appointment.MemberId, confirmationSource = "verified_payment" });
             }
             else
             {

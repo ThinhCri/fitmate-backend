@@ -17,6 +17,8 @@ public interface IAppointmentStore
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListAdminPagedAsync(AppointmentStatus? status, Guid? ptUserId, Guid? memberId, int page, int pageSize, CancellationToken ct);
     Task<IReadOnlyList<Appointment>> GetExpiredHeldAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct);
     Task<IReadOnlyList<Appointment>> GetExpiredPendingAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct);
+    Task<IReadOnlyList<Appointment>> GetAwaitingConfirmationPastDeadlineAsync(DateTime nowUtc, int limit, CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<Appointment>>(Array.Empty<Appointment>());
     Task AddAsync(Appointment appointment, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }
