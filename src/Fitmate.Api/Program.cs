@@ -378,11 +378,51 @@ builder.Services.AddHostedService<Fitmate.Infrastructure.Booking.BookingExpirati
 // Outbox handler for `notification.push_requested`.
 builder.Services.AddScoped<IOutboxHandler, Fitmate.Application.Notifications.Handlers.NotificationPushHandler>();
 
-// BE-420: Storage adapter (local volume + HMAC presigned URL).
-builder.Services.Configure<Fitmate.Application.Storage.StorageOptions>(
-    builder.Configuration.GetSection(Fitmate.Application.Storage.StorageOptions.SectionName));
-builder.Services.AddSingleton<Fitmate.Application.Storage.IStorageService, Fitmate.Infrastructure.Storage.LocalStorageService>();
-builder.Services.AddSingleton<Fitmate.Application.Storage.ISignedUrlService, Fitmate.Infrastructure.Storage.HmacSignedUrlService>();
+// BE-816: local storage for development, Cloudflare R2 for durable environments.
+var storageBackend = (builder.Configuration["STORAGE_BACKEND"]
+    ?? builder.Configuration["Storage:Backend"]
+    ?? "local").Trim().ToLowerInvariant();
+builder.Services.Configure<Fitmate.Application.Storage.StorageOptions>(options =>
+{
+    builder.Configuration.GetSection(Fitmate.Application.Storage.StorageOptions.SectionName).Bind(options);
+    options.Backend = storageBackend;
+    options.BasePath = builder.Configuration["STORAGE_LOCAL_PATH"] ?? options.BasePath;
+    options.BaseUrl = builder.Configuration["STORAGE_PUBLIC_BASE_URL"] ?? options.BaseUrl;
+    options.R2AccountId = builder.Configuration["R2_ACCOUNT_ID"] ?? options.R2AccountId;
+    options.R2AccessKeyId = builder.Configuration["R2_ACCESS_KEY_ID"] ?? options.R2AccessKeyId;
+    options.R2SecretAccessKey = builder.Configuration["R2_SECRET_ACCESS_KEY"] ?? options.R2SecretAccessKey;
+    options.R2BucketName = builder.Configuration["R2_BUCKET_NAME"] ?? options.R2BucketName;
+});
+
+if (storageBackend == "r2")
+{
+    var accountId = builder.Configuration["R2_ACCOUNT_ID"] ?? builder.Configuration["Storage:R2AccountId"];
+    var accessKeyId = builder.Configuration["R2_ACCESS_KEY_ID"] ?? builder.Configuration["Storage:R2AccessKeyId"];
+    var secretAccessKey = builder.Configuration["R2_SECRET_ACCESS_KEY"] ?? builder.Configuration["Storage:R2SecretAccessKey"];
+    var bucketName = builder.Configuration["R2_BUCKET_NAME"] ?? builder.Configuration["Storage:R2BucketName"];
+    if (new[] { accountId, accessKeyId, secretAccessKey, bucketName }.Any(string.IsNullOrWhiteSpace))
+        throw new InvalidOperationException("R2 storage requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME.");
+
+    builder.Services.AddSingleton<Amazon.S3.IAmazonS3>(_ => new Amazon.S3.AmazonS3Client(
+        new Amazon.Runtime.BasicAWSCredentials(accessKeyId, secretAccessKey),
+        new Amazon.S3.AmazonS3Config
+        {
+            ServiceURL = $"https://{accountId}.r2.cloudflarestorage.com",
+            ForcePathStyle = true,
+            AuthenticationRegion = "auto"
+        }));
+    builder.Services.AddSingleton<Fitmate.Application.Storage.IStorageService, Fitmate.Infrastructure.Storage.R2StorageService>();
+    builder.Services.AddSingleton<Fitmate.Application.Storage.ISignedUrlService, Fitmate.Infrastructure.Storage.R2SignedUrlService>();
+}
+else if (storageBackend == "local")
+{
+    builder.Services.AddSingleton<Fitmate.Application.Storage.IStorageService, Fitmate.Infrastructure.Storage.LocalStorageService>();
+    builder.Services.AddSingleton<Fitmate.Application.Storage.ISignedUrlService, Fitmate.Infrastructure.Storage.HmacSignedUrlService>();
+}
+else
+{
+    throw new InvalidOperationException("STORAGE_BACKEND must be 'local' or 'r2'.");
+}
 
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
@@ -790,24 +830,27 @@ app.UseMiddleware<IdempotencyMiddleware>();
 
 // BE-420: HMAC-signed-URL middleware (gates /uploads/*). Must be BEFORE UseStaticFiles so
 // invalid/expired URLs short-circuit before the file system is touched.
-app.UseMiddleware<Fitmate.Api.Storage.SignedUrlMiddleware>();
-// Static files served from StorageOptions.BasePath. The request path segment is derived
-// from StorageOptions.BaseUrl (the part after the last '/').
-var storageBasePath = Path.GetFullPath(builder.Configuration["Storage:BasePath"] ?? "./uploads");
-Directory.CreateDirectory(storageBasePath);
-var storageBaseUrl = (builder.Configuration["Storage:BaseUrl"] ?? "http://localhost:5116/uploads").TrimEnd('/');
-var storageRequestPath = storageBaseUrl[(storageBaseUrl.LastIndexOf('/') + 1)..];
-var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
-contentTypeProvider.Mappings[".jpg"] = "image/jpeg";
-contentTypeProvider.Mappings[".png"] = "image/png";
-contentTypeProvider.Mappings[".webp"] = "image/webp";
-app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+if (storageBackend == "local")
 {
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(storageBasePath),
-    RequestPath = "/" + storageRequestPath,
-    ServeUnknownFileTypes = false,
-    ContentTypeProvider = contentTypeProvider
-});
+    app.UseMiddleware<Fitmate.Api.Storage.SignedUrlMiddleware>();
+    var storageBasePath = Path.GetFullPath(builder.Configuration["STORAGE_LOCAL_PATH"]
+        ?? builder.Configuration["Storage:BasePath"] ?? "./uploads");
+    Directory.CreateDirectory(storageBasePath);
+    var storageBaseUrl = (builder.Configuration["STORAGE_PUBLIC_BASE_URL"]
+        ?? builder.Configuration["Storage:BaseUrl"] ?? "http://localhost:5116/uploads").TrimEnd('/');
+    var storageRequestPath = storageBaseUrl[(storageBaseUrl.LastIndexOf('/') + 1)..];
+    var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    contentTypeProvider.Mappings[".jpg"] = "image/jpeg";
+    contentTypeProvider.Mappings[".png"] = "image/png";
+    contentTypeProvider.Mappings[".webp"] = "image/webp";
+    app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(storageBasePath),
+        RequestPath = "/" + storageRequestPath,
+        ServeUnknownFileTypes = false,
+        ContentTypeProvider = contentTypeProvider
+    });
+}
 
 static string TitleForStatus(int status) => status switch
 {

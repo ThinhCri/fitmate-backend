@@ -1,4 +1,5 @@
 using Fitmate.Application.Identity;
+using Fitmate.Application.Storage;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
 using FluentAssertions;
@@ -187,6 +188,44 @@ public class UserProfileServiceTests
         results[0].FullName.Should().Be("Trainer Alice");
         results[0].Role.Should().Be("pt");
     }
+
+    [Fact]
+    public async Task AttachAvatarAsync_PersistsOwnedStorageKey_AndReturnsFreshUrl()
+    {
+        var store = new InMemoryUserProfileStore();
+        var user = new ApplicationUser { Id = Guid.NewGuid(), FullName = "Member", Email = "member@test.com" };
+        store.Users[user.Id] = user;
+        var key = $"avatars/{user.Id:N}_avatar_abc.jpg";
+        var svc = new UserProfileService(store, new FakeSignedUrlService());
+
+        var result = await svc.AttachAvatarAsync(user.Id, new AttachAvatarRequest(key), CancellationToken.None);
+
+        user.AvatarStorageKey.Should().Be(key);
+        user.AvatarUrl.Should().BeNull();
+        result.AvatarUrl.Should().Be($"https://media.test/{key}?signed=1");
+    }
+
+    [Fact]
+    public async Task AttachAvatarAsync_RejectsStorageKeyOwnedByAnotherUser()
+    {
+        var store = new InMemoryUserProfileStore();
+        var user = new ApplicationUser { Id = Guid.NewGuid(), FullName = "Member" };
+        store.Users[user.Id] = user;
+        var svc = new UserProfileService(store, new FakeSignedUrlService());
+
+        var act = () => svc.AttachAvatarAsync(user.Id,
+            new AttachAvatarRequest($"avatars/{Guid.NewGuid():N}_avatar.jpg"), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>();
+    }
+}
+
+internal sealed class FakeSignedUrlService : ISignedUrlService
+{
+    public Uri CreatePresignedReadUrl(string relativePath, TimeSpan ttl) =>
+        new($"https://media.test/{relativePath}?signed=1");
+
+    public string? TryValidateAndExtractPath(string pathAndQuery) => null;
 }
 
 internal class InMemoryUserProfileStore : IUserProfileStore

@@ -21,6 +21,7 @@ public class ApplicationUser : IdentityUser<Guid>
 {
     public string FullName { get; set; } = null!;
     public string? AvatarUrl { get; set; }
+    public string? AvatarStorageKey { get; set; }
 
     /// <summary>
     /// Trạng thái tài khoản mở rộng (Active/Locked/PendingDeletion).

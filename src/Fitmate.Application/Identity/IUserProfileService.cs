@@ -6,6 +6,7 @@ public interface IUserProfileService
 {
     Task<UserProfileDto> GetMyProfileAsync(Guid userId, CancellationToken ct);
     Task<UserProfileDto> UpdateMyProfileAsync(Guid userId, UserProfileUpdateRequest request, CancellationToken ct);
+    Task<UserProfileDto> AttachAvatarAsync(Guid userId, AttachAvatarRequest request, CancellationToken ct);
     Task<PublicUserProfileDto> GetPublicProfileAsync(Guid targetUserId, CancellationToken ct);
     Task<IReadOnlyList<PublicUserProfileDto>> SearchUsersAsync(string query, int limit, CancellationToken ct);
 }

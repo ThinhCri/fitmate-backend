@@ -8,6 +8,9 @@ public sealed class StorageOptions
 {
     public const string SectionName = "Storage";
 
+    /// <summary>Storage provider: <c>local</c> for development or <c>r2</c> for Cloudflare R2.</summary>
+    public string Backend { get; set; } = "local";
+
     /// <summary>Absolute or relative path where files are stored on disk.</summary>
     public string BasePath { get; set; } = "./uploads";
 
@@ -38,4 +41,9 @@ public sealed class StorageOptions
 
     /// <summary>Default TTL for presigned URLs in minutes. Max 15.</summary>
     public int SignedUrlTtlMinutes { get; set; } = 15;
+
+    public string? R2AccountId { get; set; }
+    public string? R2AccessKeyId { get; set; }
+    public string? R2SecretAccessKey { get; set; }
+    public string? R2BucketName { get; set; }
 }
