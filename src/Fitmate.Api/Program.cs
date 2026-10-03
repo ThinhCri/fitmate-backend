@@ -304,7 +304,23 @@ builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightSer
 builder.Services.Configure<Fitmate.Application.Ai.AiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName));
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
-builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
+var aiOptions = builder.Configuration
+    .GetSection(Fitmate.Application.Ai.AiOptions.SectionName)
+    .Get<Fitmate.Application.Ai.AiOptions>() ?? new Fitmate.Application.Ai.AiOptions();
+if (string.Equals(aiOptions.Provider, "python_service", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Nutrition.PythonAiNutritionAdapter>((sp, client) =>
+    {
+        var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Fitmate.Application.Ai.AiOptions>>().Value;
+        client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds > 0 ? options.TimeoutSeconds : 30);
+    });
+    builder.Services.AddScoped<IAiNutritionAdapter>(sp =>
+        sp.GetRequiredService<Fitmate.Infrastructure.Nutrition.PythonAiNutritionAdapter>());
+}
+else
+{
+    builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
+}
 builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter, Fitmate.Application.Workout.AiWorkoutStubAdapter>();
 builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.AiCompanionStubAdapter>();
 builder.Services.AddScoped<INutritionService, NutritionService>();
