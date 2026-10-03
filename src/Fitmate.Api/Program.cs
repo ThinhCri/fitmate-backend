@@ -38,6 +38,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Threading.RateLimiting;
 
+Fitmate.Api.DotEnvLoader.Load();
+
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
 // args[0] co the la flag cua dotnet/ef tool (--applicationName, --project, --verbosity, ...)
