@@ -276,6 +276,8 @@ builder.Services.AddScoped<IBlockService, Fitmate.Application.Social.BlockServic
 // BE-191: friend chat (5 endpoints, friend scope only — AI chat is out of scope).
 builder.Services.AddScoped<IChatStore, Fitmate.Infrastructure.Persistence.Chat.EfChatStore>();
 builder.Services.AddScoped<IChatService, Fitmate.Application.Chat.ChatService>();
+builder.Services.AddScoped<IAiChatStore, Fitmate.Infrastructure.Persistence.Chat.EfAiChatStore>();
+builder.Services.AddScoped<IAiChatService, Fitmate.Application.Chat.AiChatService>();
 
 // BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();
@@ -303,6 +305,8 @@ builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightSer
 // BE-170 & BE-817: AI capability adapters & options. Disabled by default awaiting .pt handoff.
 builder.Services.Configure<Fitmate.Application.Ai.AiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName));
+builder.Services.Configure<Fitmate.Application.Ai.GeminiOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName));
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
 var aiOptions = builder.Configuration
     .GetSection(Fitmate.Application.Ai.AiOptions.SectionName)
@@ -322,7 +326,20 @@ else
     builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
 }
 builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter, Fitmate.Application.Workout.AiWorkoutStubAdapter>();
-builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.AiCompanionStubAdapter>();
+var geminiOptions = builder.Configuration
+    .GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName)
+    .Get<Fitmate.Application.Ai.GeminiOptions>() ?? new Fitmate.Application.Ai.GeminiOptions();
+if (geminiOptions.Enabled)
+{
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>(client =>
+        client.Timeout = TimeSpan.FromSeconds(geminiOptions.TimeoutSeconds > 0 ? geminiOptions.TimeoutSeconds : 60));
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter>(sp =>
+        sp.GetRequiredService<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>());
+}
+else
+{
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.AiCompanionStubAdapter>();
+}
 builder.Services.AddScoped<INutritionService, NutritionService>();
 // BE-813: dashboard daily progress summary.
 builder.Services.AddScoped<Fitmate.Application.Dashboard.IDashboardStore, Fitmate.Infrastructure.Dashboard.EfDashboardStore>();
