@@ -43,33 +43,20 @@ public sealed class GeminiCompanionAdapter : IAiCompanionAdapter
 
         var history = (request.History ?? Array.Empty<CompanionChatMessageView>())
             .TakeLast(Math.Clamp(_gemini.MaxHistoryMessages, 0, 50))
-            .Select(x => new GeminiContent(x.Role == "model" ? "model" : "user", new[] { new GeminiPart(x.Content) }))
+            .Select(x => new GeminiContent(x.Role == "model" ? "model" : "user", new[] { GeminiPart.FromText(x.Content) }))
             .ToList();
-        history.Add(new GeminiContent("user", new[] { new GeminiPart(request.UserMessage.Trim()) }));
+        var userParts = new List<GeminiPart> { GeminiPart.FromText(request.UserMessage.Trim()) };
+        if (request.ImageData is { Length: > 0 } && !string.IsNullOrWhiteSpace(request.ImageMimeType))
+            userParts.Add(GeminiPart.FromImage(request.ImageMimeType, Convert.ToBase64String(request.ImageData)));
+        history.Add(new GeminiContent("user", userParts));
 
         var payload = new GeminiRequest(
-            new GeminiContent("system", new[] { new GeminiPart(SystemInstruction) }),
+            new GeminiContent("system", new[] { GeminiPart.FromText(SystemInstruction) }),
             history,
             new GeminiGenerationConfig(Math.Clamp(_gemini.MaxOutputTokens, 128, 4096), 0.5m));
         var model = Uri.EscapeDataString(_gemini.Model.Trim());
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post,
-            $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent");
-        httpRequest.Headers.Add("x-goog-api-key", _gemini.ApiKey.Trim());
-        httpRequest.Content = JsonContent.Create(payload);
-
-        HttpResponseMessage response;
-        try
-        {
-            response = await _http.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, ct);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            throw new AiUnavailableException("Gemini did not respond before the timeout.");
-        }
-        catch (HttpRequestException)
-        {
-            throw new AiUnavailableException("Gemini could not be reached.");
-        }
+        var endpoint = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent";
+        var response = await SendWithOneTransientRetryAsync(endpoint, payload, ct);
 
         using (response)
         {
@@ -100,6 +87,44 @@ public sealed class GeminiCompanionAdapter : IAiCompanionAdapter
         }
     }
 
+    private async Task<HttpResponseMessage> SendWithOneTransientRetryAsync(
+        string endpoint, GeminiRequest payload, CancellationToken ct)
+    {
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                request.Headers.Add("x-goog-api-key", _gemini.ApiKey!.Trim());
+                request.Content = JsonContent.Create(payload);
+                var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                if (attempt == 0 && response.StatusCode is HttpStatusCode.InternalServerError or
+                    HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout)
+                {
+                    response.Dispose();
+                    await Task.Delay(400, ct);
+                    continue;
+                }
+                return response;
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                if (attempt == 0) continue;
+                throw new AiUnavailableException("Gemini did not respond before the timeout.");
+            }
+            catch (HttpRequestException)
+            {
+                if (attempt == 0)
+                {
+                    await Task.Delay(400, ct);
+                    continue;
+                }
+                throw new AiUnavailableException("Gemini could not be reached.");
+            }
+        }
+        throw new AiUnavailableException("Gemini is temporarily unavailable.");
+    }
+
     private static void Validate(CompanionChatRequest request)
     {
         if (request.UserId == Guid.Empty || request.ThreadId == Guid.Empty ||
@@ -118,7 +143,16 @@ public sealed class GeminiCompanionAdapter : IAiCompanionAdapter
     private sealed record GeminiContent(
         [property: JsonPropertyName("role")] string Role,
         [property: JsonPropertyName("parts")] IReadOnlyList<GeminiPart> Parts);
-    private sealed record GeminiPart([property: JsonPropertyName("text")] string Text);
+    private sealed record GeminiPart(
+        [property: JsonPropertyName("text")] string? Text,
+        [property: JsonPropertyName("inline_data")] GeminiInlineData? InlineData)
+    {
+        public static GeminiPart FromText(string text) => new(text, null);
+        public static GeminiPart FromImage(string mimeType, string data) => new(null, new(mimeType, data));
+    }
+    private sealed record GeminiInlineData(
+        [property: JsonPropertyName("mime_type")] string MimeType,
+        [property: JsonPropertyName("data")] string Data);
     private sealed record GeminiResponse([property: JsonPropertyName("candidates")] IReadOnlyList<GeminiCandidate>? Candidates);
     private sealed record GeminiCandidate([property: JsonPropertyName("content")] GeminiContent? Content);
 }

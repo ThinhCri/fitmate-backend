@@ -2660,6 +2660,49 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+  /chat/ai/messages/image:
+    post:
+      tags: [Chat]
+      summary: Gửi ảnh và câu hỏi tới AI
+      operationId: sendAiImageMessage
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [thread_id, text, file]
+              properties:
+                thread_id:
+                  type: string
+                  format: uuid
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMessage'
+        '400':
+          description: Invalid image
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          description: AI unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
   /chat/friends/messages:
     post:
       tags: [Chat]

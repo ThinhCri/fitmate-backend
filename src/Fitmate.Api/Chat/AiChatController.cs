@@ -32,7 +32,25 @@ public sealed class AiChatController : ControllerBase
 
     [HttpPost("messages")]
     public async Task<IActionResult> Send([FromBody] SendAiMessageBody body, CancellationToken ct) =>
-        Ok(await _service.SendAsync(UserId(), body.ThreadId, body.Text, ct));
+        Ok(await _service.SendAsync(UserId(), body.ThreadId, body.Text, null, null, ct));
+
+    [HttpPost("messages/image")]
+    [RequestSizeLimit(10 * 1024 * 1024)]
+    public async Task<IActionResult> SendWithImage(
+        [FromForm(Name = "thread_id")] Guid threadId,
+        [FromForm(Name = "text")] string text,
+        [FromForm(Name = "file")] IFormFile file,
+        CancellationToken ct)
+    {
+        var allowed = new[] { "image/jpeg", "image/jpg", "image/png", "image/webp" };
+        if (file.Length is <= 0 or > 10 * 1024 * 1024 || !allowed.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Ảnh đính kèm không hợp lệ.",
+                new Dictionary<string, string[]> { ["file"] = new[] { "must be JPEG, PNG, or WebP and at most 10 MB" } });
+        await using var input = file.OpenReadStream();
+        using var buffer = new MemoryStream();
+        await input.CopyToAsync(buffer, ct);
+        return Ok(await _service.SendAsync(UserId(), threadId, text, buffer.ToArray(), file.ContentType, ct));
+    }
 
     private Guid UserId()
     {

@@ -24,7 +24,7 @@ public interface IAiChatService
     Task<IReadOnlyList<AiThreadView>> ListThreadsAsync(Guid userId, CancellationToken ct);
     Task<AiThreadView> CreateThreadAsync(Guid userId, string? title, CancellationToken ct);
     Task<IReadOnlyList<AiMessageView>> ListMessagesAsync(Guid userId, Guid threadId, int limit, CancellationToken ct);
-    Task<AiMessageView> SendAsync(Guid userId, Guid threadId, string text, CancellationToken ct);
+    Task<AiMessageView> SendAsync(Guid userId, Guid threadId, string text, byte[]? imageData, string? imageMimeType, CancellationToken ct);
 }
 
 public sealed class AiChatService : IAiChatService
@@ -62,7 +62,7 @@ public sealed class AiChatService : IAiChatService
     }
 
     public async Task<AiMessageView> SendAsync(
-        Guid userId, Guid threadId, string text, CancellationToken ct)
+        Guid userId, Guid threadId, string text, byte[]? imageData, string? imageMimeType, CancellationToken ct)
     {
         var thread = await RequireOwnedThread(userId, threadId, ct);
         var normalized = text?.Trim() ?? string.Empty;
@@ -73,7 +73,7 @@ public sealed class AiChatService : IAiChatService
         var history = historyRows.Select(m => new CompanionChatMessageView(
             m.Sender == Fitmate.Domain.Chat.ChatMessageSender.Ai ? "model" : "user", m.Text, m.CreatedAt)).ToList();
         var response = await _adapter.GenerateReplyAsync(
-            new CompanionChatRequest(userId, threadId, normalized, history), ct);
+            new CompanionChatRequest(userId, threadId, normalized, history, imageData, imageMimeType), ct);
 
         var userMessage = ChatMessage.CreateUser(threadId, userId, normalized);
         var aiMessage = ChatMessage.CreateAi(threadId, response.ReplyText, null);

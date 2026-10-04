@@ -9,7 +9,9 @@ public sealed record CompanionChatRequest(
     Guid UserId,
     Guid ThreadId,
     string UserMessage,
-    IReadOnlyList<CompanionChatMessageView>? History = null);
+    IReadOnlyList<CompanionChatMessageView>? History = null,
+    byte[]? ImageData = null,
+    string? ImageMimeType = null);
 
 public sealed record CompanionChatResponseView(
     Guid MessageId,
