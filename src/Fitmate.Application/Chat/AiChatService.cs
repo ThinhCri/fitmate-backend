@@ -27,7 +27,7 @@ public interface IAiChatService
     Task<AiThreadView> RenameThreadAsync(Guid userId, Guid threadId, string title, CancellationToken ct);
     Task DeleteThreadAsync(Guid userId, Guid threadId, CancellationToken ct);
     Task<IReadOnlyList<AiMessageView>> ListMessagesAsync(Guid userId, Guid threadId, int limit, CancellationToken ct);
-    Task<AiMessageView> SendAsync(Guid userId, Guid threadId, string text, byte[]? imageData, string? imageMimeType, CancellationToken ct);
+    Task<AiMessageView> SendAsync(Guid userId, Guid threadId, string text, IReadOnlyList<CompanionImageInput>? images, CancellationToken ct);
 }
 
 public sealed class AiChatService : IAiChatService
@@ -89,12 +89,17 @@ public sealed class AiChatService : IAiChatService
     }
 
     public async Task<AiMessageView> SendAsync(
-        Guid userId, Guid threadId, string text, byte[]? imageData, string? imageMimeType, CancellationToken ct)
+        Guid userId, Guid threadId, string text, IReadOnlyList<CompanionImageInput>? images, CancellationToken ct)
     {
         var thread = await RequireOwnedThread(userId, threadId, ct);
         var normalized = text?.Trim() ?? string.Empty;
         if (normalized.Length is < 1 or > 2000)
             throw Invalid("text", "Tin nhắn phải có độ dài từ 1 đến 2000 ký tự.");
+        if (images is { Count: > 5 })
+            throw Invalid("files", "Mỗi tin nhắn được đính kèm tối đa 5 ảnh.");
+        if (images?.Any(image => image.Data.Length is <= 0 or > 5 * 1024 * 1024 ||
+                image.MimeType is not ("image/jpeg" or "image/jpg" or "image/png" or "image/webp")) == true)
+            throw Invalid("files", "Mỗi ảnh phải là JPEG, PNG hoặc WebP và không vượt quá 5 MB.");
 
         var historyRows = await _store.ListMessagesAsync(threadId, 40, ct);
         var history = historyRows.Select(m => new CompanionChatMessageView(
@@ -102,7 +107,7 @@ public sealed class AiChatService : IAiChatService
         var replyText = ContainsClearlyUnsupportedScript(normalized)
             ? UnsupportedLanguageReply
             : (await _adapter.GenerateReplyAsync(
-                new CompanionChatRequest(userId, threadId, normalized, history, imageData, imageMimeType), ct)).ReplyText;
+                new CompanionChatRequest(userId, threadId, normalized, history, images), ct)).ReplyText;
 
         var userMessage = ChatMessage.CreateUser(threadId, userId, normalized);
         var aiMessage = ChatMessage.CreateAi(threadId, replyText, null);

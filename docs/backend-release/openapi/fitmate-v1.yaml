@@ -2711,7 +2711,7 @@ paths:
           multipart/form-data:
             schema:
               type: object
-              required: [thread_id, text, file]
+              required: [thread_id, text, files]
               properties:
                 thread_id:
                   type: string
@@ -2720,9 +2720,13 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 2000
-                file:
-                  type: string
-                  format: binary
+                files:
+                  type: array
+                  minItems: 1
+                  maxItems: 5
+                  items:
+                    type: string
+                    format: binary
       responses:
         '200':
           description: OK
@@ -6209,6 +6213,11 @@ components:
         image_url:
           type: string
           nullable: true
+        image_urls:
+          type: array
+          maxItems: 5
+          items:
+            type: string
         link:
           type: string
           nullable: true
@@ -6237,8 +6246,14 @@ components:
           type: string
           minLength: 1
           maxLength: 5000
-        image_url:
+        image_storage_key:
           type: string
+          deprecated: true
+        image_storage_keys:
+          type: array
+          maxItems: 5
+          items:
+            type: string
         link:
           type: string
         tags:

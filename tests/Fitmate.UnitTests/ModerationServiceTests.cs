@@ -202,7 +202,7 @@ public class ModerationServiceTests
         var reporterId = Guid.NewGuid();
         var adminId = Guid.NewGuid();
         var postId = Guid.NewGuid();
-        social.Posts[postId] = new SocialPostRow(postId, postAuthor, "spam content", null, null, new List<string>(), PostVisibility.Public, false, 0, 0, DateTime.UtcNow);
+        social.Posts[postId] = new SocialPostRow(postId, postAuthor, "spam content", null, Array.Empty<string>(), null, new List<string>(), PostVisibility.Public, false, 0, 0, DateTime.UtcNow);
         var row = NewReport(ReportTargetType.Post, postId, reporterId);
         modStore.Reports[row.Id] = row;
         return (postId, postAuthor, reporterId, adminId, postAuthor);

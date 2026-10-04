@@ -156,14 +156,14 @@ public class SocialServiceTests
     }
 
     private static SocialPostRow NewPost(Guid author, PostVisibility vis, string content = "hi", DateTime? at = null, int reactions = 0, int comments = 0)
-        => new(Guid.NewGuid(), author, content, null, null, new List<string>(), vis, false, reactions, comments, at ?? DateTime.UtcNow);
+        => new(Guid.NewGuid(), author, content, null, Array.Empty<string>(), null, new List<string>(), vis, false, reactions, comments, at ?? DateTime.UtcNow);
 
     [Fact]
     public async Task CreatePost_Validates_Required_Content()
     {
         var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.CreatePostAsync(Guid.NewGuid(),
-            new PostInput("", null, null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
+            new PostInput("", null, Array.Empty<string>(), null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.RequiredField);
     }
 
@@ -172,7 +172,7 @@ public class SocialServiceTests
     {
         var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var act = () => s.CreatePostAsync(Guid.NewGuid(),
-            new PostInput(new string('x', 5001), null, null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
+            new PostInput(new string('x', 5001), null, Array.Empty<string>(), null, new List<string>(), PostVisibility.Public, false), CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooLong);
     }
 
@@ -182,7 +182,7 @@ public class SocialServiceTests
         var s = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
         var tags = Enumerable.Range(0, 11).Select(i => $"t{i}").ToList();
         var act = () => s.CreatePostAsync(Guid.NewGuid(),
-            new PostInput("ok", null, null, tags, PostVisibility.Public, false), CancellationToken.None);
+            new PostInput("ok", null, Array.Empty<string>(), null, tags, PostVisibility.Public, false), CancellationToken.None);
         await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.TooMany);
     }
 
@@ -195,7 +195,7 @@ public class SocialServiceTests
         var s = NewService(store, new InMemoryCertificateStore());
 
         var post = await s.CreatePostAsync(author,
-            new PostInput("hello", null, null, new List<string> { "fit" }, PostVisibility.Public, false), CancellationToken.None);
+            new PostInput("hello", null, Array.Empty<string>(), null, new List<string> { "fit" }, PostVisibility.Public, false), CancellationToken.None);
 
         post.Content.Should().Be("hello");
         post.Tags.Should().ContainSingle("fit");

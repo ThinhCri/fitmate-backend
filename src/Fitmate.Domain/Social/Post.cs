@@ -8,6 +8,7 @@ public class Post : AuditableEntity
     public Guid AuthorId { get; private set; }
     public string Content { get; private set; } = null!;
     public string? ImageStorageKey { get; private set; }
+    public List<string> ImageStorageKeys { get; private set; } = new();
     public string? Link { get; private set; }
     public List<string> Tags { get; private set; } = new();
     public PostVisibility Visibility { get; private set; }
@@ -17,18 +18,20 @@ public class Post : AuditableEntity
 
     private Post() { }
 
-    public static Post Create(Guid authorId, string content, string? imageStorageKey, string? link, List<string> tags, PostVisibility visibility, bool isKnowledge) => new()
+    public static Post Create(Guid authorId, string content, string? imageStorageKey, string? link, List<string> tags, PostVisibility visibility, bool isKnowledge,
+        IReadOnlyList<string>? imageStorageKeys = null, Guid? id = null, DateTime? createdAt = null) => new()
     {
-        Id = Guid.NewGuid(),
+        Id = id ?? Guid.NewGuid(),
         AuthorId = authorId,
         Content = content,
         ImageStorageKey = imageStorageKey,
+        ImageStorageKeys = imageStorageKeys?.ToList() ?? (imageStorageKey is null ? new() : new() { imageStorageKey }),
         Link = link,
         Tags = tags,
         Visibility = visibility,
         IsKnowledge = isKnowledge,
-        CreatedAt = DateTime.UtcNow,
-        UpdatedAt = DateTime.UtcNow
+        CreatedAt = createdAt ?? DateTime.UtcNow,
+        UpdatedAt = createdAt ?? DateTime.UtcNow
     };
 
     public void IncrementReactions(int delta) { ReactionsCount = Math.Max(0, ReactionsCount + delta); Touch(); }

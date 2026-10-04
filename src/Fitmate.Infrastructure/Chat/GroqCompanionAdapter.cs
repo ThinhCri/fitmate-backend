@@ -49,12 +49,11 @@ public sealed class GroqCompanionAdapter : IAiCompanionAdapter
             .TakeLast(Math.Clamp(_options.MaxHistoryMessages, 0, 50))
             .Select(x => new GroqMessage(x.Role == "model" ? "assistant" : "user", x.Content)));
 
-        object userContent = request.ImageData is { Length: > 0 } && !string.IsNullOrWhiteSpace(request.ImageMimeType)
-            ? new GroqContentPart[]
-            {
-                new("text", request.UserMessage.Trim(), null),
-                new("image_url", null, new($"data:{request.ImageMimeType};base64,{Convert.ToBase64String(request.ImageData)}"))
-            }
+        var images = request.Images?.Where(x => x.Data.Length > 0 && !string.IsNullOrWhiteSpace(x.MimeType)).Take(5).ToList() ?? new();
+        object userContent = images.Count > 0
+            ? new[] { new GroqContentPart("text", request.UserMessage.Trim(), null) }
+                .Concat(images.Select(x => new GroqContentPart("image_url", null,
+                    new($"data:{x.MimeType};base64,{Convert.ToBase64String(x.Data)}")))).ToArray()
             : request.UserMessage.Trim();
         messages.Add(new GroqMessage("user", userContent));
 

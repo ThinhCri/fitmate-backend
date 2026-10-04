@@ -43,24 +43,35 @@ public sealed class AiChatController : ControllerBase
 
     [HttpPost("messages")]
     public async Task<IActionResult> Send([FromBody] SendAiMessageBody body, CancellationToken ct) =>
-        Ok(await _service.SendAsync(UserId(), body.ThreadId, body.Text, null, null, ct));
+        Ok(await _service.SendAsync(UserId(), body.ThreadId, body.Text, null, ct));
 
     [HttpPost("messages/image")]
-    [RequestSizeLimit(10 * 1024 * 1024)]
+    [RequestSizeLimit(25 * 1024 * 1024)]
     public async Task<IActionResult> SendWithImage(
         [FromForm(Name = "thread_id")] Guid threadId,
         [FromForm(Name = "text")] string text,
-        [FromForm(Name = "file")] IFormFile file,
+        [FromForm(Name = "files")] List<IFormFile>? files,
+        [FromForm(Name = "file")] IFormFile? legacyFile,
         CancellationToken ct)
     {
         var allowed = new[] { "image/jpeg", "image/jpg", "image/png", "image/webp" };
-        if (file.Length is <= 0 or > 10 * 1024 * 1024 || !allowed.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
+        var uploads = files?.ToList() ?? new List<IFormFile>();
+        if (legacyFile is not null) uploads.Add(legacyFile);
+        if (uploads.Count is < 1 or > 5)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Vui lòng đính kèm từ 1 đến 5 ảnh.",
+                new Dictionary<string, string[]> { ["files"] = new[] { "must contain 1..5 images" } });
+        if (uploads.Any(file => file.Length is <= 0 or > 5 * 1024 * 1024 || !allowed.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase)))
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Ảnh đính kèm không hợp lệ.",
-                new Dictionary<string, string[]> { ["file"] = new[] { "must be JPEG, PNG, or WebP and at most 10 MB" } });
-        await using var input = file.OpenReadStream();
-        using var buffer = new MemoryStream();
-        await input.CopyToAsync(buffer, ct);
-        return Ok(await _service.SendAsync(UserId(), threadId, text, buffer.ToArray(), file.ContentType, ct));
+                new Dictionary<string, string[]> { ["files"] = new[] { "each image must be JPEG, PNG, or WebP and at most 5 MB" } });
+        var images = new List<CompanionImageInput>(uploads.Count);
+        foreach (var file in uploads)
+        {
+            await using var input = file.OpenReadStream();
+            using var buffer = new MemoryStream();
+            await input.CopyToAsync(buffer, ct);
+            images.Add(new(buffer.ToArray(), file.ContentType));
+        }
+        return Ok(await _service.SendAsync(UserId(), threadId, text, images, ct));
     }
 
     private Guid UserId()

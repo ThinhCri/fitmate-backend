@@ -91,7 +91,7 @@ public class AiChatServiceTests
         store.Threads[thread.Id] = thread;
 
         var result = await new AiChatService(store, new Adapter())
-            .SendAsync(owner, thread.Id, "请给我一个训练计划", null, null, default);
+            .SendAsync(owner, thread.Id, "请给我一个训练计划", null, default);
 
         result.Text.Should().Be("Hiện tại Fitmate AI chỉ hỗ trợ tiếng Việt và tiếng Anh. Please continue in Vietnamese or English.");
         store.Messages.Should().HaveCount(2);

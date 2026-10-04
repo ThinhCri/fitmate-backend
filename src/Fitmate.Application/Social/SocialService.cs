@@ -1,6 +1,7 @@
 using Fitmate.Application.Auth;
 using Fitmate.Application.Moderation;
 using Fitmate.Application.Trainers;
+using Fitmate.Application.Storage;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
 
@@ -20,6 +21,7 @@ public class SocialService : ISocialService
     private readonly IAuthorizationGuard _authz;
     private readonly IFriendService _friend;
     private readonly IBlockStore _blockStore;
+    private readonly ISignedUrlService? _signedUrl;
 
     private const int DefaultLimit = 20;
     private const int MaxLimit = 100;
@@ -35,13 +37,15 @@ public class SocialService : ISocialService
         ICertificateStore certStore,
         IAuthorizationGuard authz,
         IFriendService friend,
-        IBlockStore blockStore)
+        IBlockStore blockStore,
+        ISignedUrlService? signedUrl = null)
     {
         _store = store;
         _certStore = certStore;
         _authz = authz;
         _friend = friend;
         _blockStore = blockStore;
+        _signedUrl = signedUrl;
     }
 
     public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct)
@@ -112,12 +116,20 @@ public class SocialService : ISocialService
             throw new ValidationException(ErrorCodes.Validation.TooMany, $"tags > {MaxTags}.", new Dictionary<string, string[]> { ["tags"] = new[] { $"max {MaxTags}" } });
         if (input.Tags.Any(t => string.IsNullOrWhiteSpace(t) || t.Length > MaxTagLength))
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, $"tag invalid.", new Dictionary<string, string[]> { ["tags"] = new[] { "1..32 chars each" } });
+        if (input.ImageStorageKeys.Count > 5)
+            throw new ValidationException(ErrorCodes.Validation.TooMany, "Mỗi bài viết được đính kèm tối đa 5 ảnh.",
+                new Dictionary<string, string[]> { ["image_storage_keys"] = new[] { "max 5 images" } });
+        var expectedPrefix = $"posts/{authorId:N}_";
+        if (input.ImageStorageKeys.Any(key => string.IsNullOrWhiteSpace(key) || !key.StartsWith(expectedPrefix, StringComparison.Ordinal)))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Ảnh phải do chính tài khoản hiện tại tải lên.",
+                new Dictionary<string, string[]> { ["image_storage_keys"] = new[] { "invalid ownership" } });
 
         var row = new SocialPostRow(
             Id: Guid.NewGuid(),
             AuthorId: authorId,
             Content: input.Content.Trim(),
             ImageStorageKey: input.ImageStorageKey,
+            ImageStorageKeys: input.ImageStorageKeys.Distinct(StringComparer.Ordinal).ToList(),
             Link: input.Link,
             Tags: input.Tags.ToList(),
             Visibility: input.Visibility,
@@ -272,13 +284,22 @@ public class SocialService : ISocialService
         return newId;
     }
 
-    private static PostView ToView(SocialPostRow r, SocialAuthorRow? a)
-        => new(
+    private PostView ToView(SocialPostRow r, SocialAuthorRow? a)
+    {
+        var storageKeys = r.ImageStorageKeys.Count > 0
+            ? r.ImageStorageKeys
+            : string.IsNullOrWhiteSpace(r.ImageStorageKey) ? [] : [r.ImageStorageKey];
+        var imageUrls = storageKeys
+            .Select(key => _signedUrl?.CreatePresignedReadUrl(key, TimeSpan.FromMinutes(15)).ToString() ?? key)
+            .ToList();
+
+        return new(
             Id: r.Id,
             AuthorId: r.AuthorId,
             Author: new PostAuthor(a?.Id ?? r.AuthorId, a?.DisplayName ?? "Unknown", a?.AvatarUrl),
             Content: r.Content,
-            ImageUrl: r.ImageStorageKey,
+            ImageUrl: imageUrls.FirstOrDefault(),
+            ImageUrls: imageUrls,
             Link: r.Link,
             Tags: r.Tags,
             Visibility: r.Visibility.ToString().ToLowerInvariant(),
@@ -286,6 +307,7 @@ public class SocialService : ISocialService
             ReactionsCount: r.ReactionsCount,
             CommentsCount: r.CommentsCount,
             CreatedAt: r.CreatedAt);
+    }
 
     /// <summary>Cursor: base64("<unix-ms>|<guid>"). Ổn định theo (CreatedAt desc, Id desc).</summary>
     internal static string EncodeCursor(DateTime createdAtUtc, Guid id)

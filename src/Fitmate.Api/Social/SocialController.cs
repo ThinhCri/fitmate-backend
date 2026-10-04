@@ -53,6 +53,9 @@ public class SocialController : ControllerBase
         var input = new PostInput(
             Content: body.Content,
             ImageStorageKey: body.ImageStorageKey,
+            ImageStorageKeys: body.ImageStorageKeys is { } imageKeys
+                ? imageKeys
+                : body.ImageStorageKey is null ? Array.Empty<string>() : new[] { body.ImageStorageKey },
             Link: body.Link,
             Tags: body.Tags ?? new List<string>(),
             Visibility: ParseVisibility(body.Visibility),
@@ -161,6 +164,7 @@ public class SocialController : ControllerBase
 public sealed record PostInputDto(
     [property: JsonPropertyName("content")] string Content,
     [property: JsonPropertyName("image_storage_key")] string? ImageStorageKey,
+    [property: JsonPropertyName("image_storage_keys")] List<string>? ImageStorageKeys,
     [property: JsonPropertyName("link")] string? Link,
     [property: JsonPropertyName("tags")] List<string>? Tags,
     [property: JsonPropertyName("visibility")] string Visibility,

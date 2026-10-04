@@ -81,6 +81,7 @@ public class EfSocialStore : ISocialStore
             AuthorId: p.AuthorId,
             Content: p.Content,
             ImageStorageKey: p.ImageStorageKey,
+            ImageStorageKeys: p.ImageStorageKeys?.ToList() ?? (p.ImageStorageKey is null ? new() : new() { p.ImageStorageKey }),
             Link: p.Link,
             Tags: p.Tags?.ToList() ?? new List<string>(),
             Visibility: p.Visibility,
@@ -110,10 +111,10 @@ public class EfSocialStore : ISocialStore
             link: row.Link,
             tags: row.Tags.ToList(),
             visibility: row.Visibility,
-            isKnowledge: row.IsKnowledge);
-        // Override Id/CreatedAt (factory creates new Guid + UtcNow; we keep row values for cursor stability).
-        // Trick: re-create Id via reflection is overkill; for in-memory/EF tests we accept factory Id.
-        // To preserve row.Id (used by callers/tests), we attach via stub property bag.
+            isKnowledge: row.IsKnowledge,
+            imageStorageKeys: row.ImageStorageKeys,
+            id: row.Id,
+            createdAt: row.CreatedAt);
         _db.Posts.Add(entity);
         await _db.SaveChangesAsync(ct);
     }
@@ -261,7 +262,7 @@ public class EfSocialStore : ISocialStore
 
     private static SocialPostRow ToRow(Post p) => new(
         Id: p.Id, AuthorId: p.AuthorId, Content: p.Content,
-        ImageStorageKey: p.ImageStorageKey, Link: p.Link,
+        ImageStorageKey: p.ImageStorageKey, ImageStorageKeys: p.ImageStorageKeys?.ToList() ?? (p.ImageStorageKey is null ? new() : new() { p.ImageStorageKey }), Link: p.Link,
         Tags: p.Tags?.ToList() ?? new List<string>(),
         Visibility: p.Visibility, IsKnowledge: p.IsKnowledge,
         ReactionsCount: p.ReactionsCount, CommentsCount: p.CommentsCount,

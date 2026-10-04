@@ -76,7 +76,8 @@ public class GroqCompanionAdapterTests
     }
 
     private static CompanionChatRequest Request(byte[]? image = null, string? mimeType = null) =>
-        new(Guid.NewGuid(), Guid.NewGuid(), "Xin chào", Array.Empty<CompanionChatMessageView>(), image, mimeType);
+        new(Guid.NewGuid(), Guid.NewGuid(), "Xin chào", Array.Empty<CompanionChatMessageView>(),
+            image is null || mimeType is null ? null : new[] { new CompanionImageInput(image, mimeType) });
 
     private static HttpResponseMessage Json(HttpStatusCode status, string body) => new(status)
     {

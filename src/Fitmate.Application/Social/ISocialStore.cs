@@ -48,6 +48,7 @@ public sealed record SocialPostRow(
     Guid AuthorId,
     string Content,
     string? ImageStorageKey,
+    IReadOnlyList<string> ImageStorageKeys,
     string? Link,
     IReadOnlyList<string> Tags,
     PostVisibility Visibility,

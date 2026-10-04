@@ -14,6 +14,7 @@ public class PostConfiguration : IEntityTypeConfiguration<Post>
         e.Property(x => x.AuthorId).IsRequired();
         e.Property(x => x.Content).HasMaxLength(4000).IsRequired();
         e.Property(x => x.ImageStorageKey).HasMaxLength(500);
+        e.Property(x => x.ImageStorageKeys).HasColumnType("text[]");
         e.Property(x => x.Link).HasMaxLength(500);
         e.Property(x => x.Tags).HasColumnType("text[]");
         e.Property(x => x.Visibility).HasConversion<int>();

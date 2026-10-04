@@ -49,8 +49,9 @@ public sealed class GeminiCompanionAdapter : IAiCompanionAdapter
             .Select(x => new GeminiContent(x.Role == "model" ? "model" : "user", new[] { GeminiPart.FromText(x.Content) }))
             .ToList();
         var userParts = new List<GeminiPart> { GeminiPart.FromText(request.UserMessage.Trim()) };
-        if (request.ImageData is { Length: > 0 } && !string.IsNullOrWhiteSpace(request.ImageMimeType))
-            userParts.Add(GeminiPart.FromImage(request.ImageMimeType, Convert.ToBase64String(request.ImageData)));
+        foreach (var image in request.Images?.Where(x => x.Data.Length > 0 && !string.IsNullOrWhiteSpace(x.MimeType)).Take(5)
+                     ?? Array.Empty<CompanionImageInput>())
+            userParts.Add(GeminiPart.FromImage(image.MimeType, Convert.ToBase64String(image.Data)));
         history.Add(new GeminiContent("user", userParts));
 
         var payload = new GeminiRequest(

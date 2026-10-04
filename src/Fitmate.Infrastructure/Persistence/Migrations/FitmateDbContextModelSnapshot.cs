@@ -1051,6 +1051,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
 
+                    b.PrimitiveCollection<List<string>>("ImageStorageKeys")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
                     b.Property<DateTime>("LoggedAt")
                         .HasColumnType("timestamp with time zone");
 

@@ -17,6 +17,7 @@ public sealed record PostView(
     [property: JsonPropertyName("author")] PostAuthor Author,
     [property: JsonPropertyName("content")] string Content,
     [property: JsonPropertyName("image_url")] string? ImageUrl,
+    [property: JsonPropertyName("image_urls")] IReadOnlyList<string> ImageUrls,
     [property: JsonPropertyName("link")] string? Link,
     [property: JsonPropertyName("tags")] IReadOnlyList<string> Tags,
     [property: JsonPropertyName("visibility")] string Visibility,
@@ -32,6 +33,7 @@ public sealed record PostPage(
 public sealed record PostInput(
     string Content,
     string? ImageStorageKey,
+    IReadOnlyList<string> ImageStorageKeys,
     string? Link,
     IReadOnlyList<string> Tags,
     PostVisibility Visibility,
