@@ -73,6 +73,10 @@ public class SocialController : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("posts/{id:guid}")]
+    public async Task<IActionResult> UpdatePost(Guid id, [FromBody] UpdatePostBody body, CancellationToken ct)
+        => Ok(await _svc.UpdatePostContentAsync(GetUserId(), id, body.Content, ct));
+
     [HttpPatch("posts/{id:guid}/visibility")]
     public async Task<IActionResult> UpdateVisibility(Guid id, [FromBody] UpdatePostVisibilityBody body, CancellationToken ct)
         => Ok(await _svc.UpdatePostVisibilityAsync(GetUserId(), id, ParseVisibility(body.Visibility), ct));
@@ -109,9 +113,16 @@ public class SocialController : ControllerBase
             _ => throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "type invalid.",
                 new Dictionary<string, string[]> { ["type"] = new[] { "heart|flame|smile" } })
         };
-        await _svc.ToggleReactionAsync(userId, id, type, ct);
-        return NoContent();
+        return Ok(await _svc.ToggleReactionAsync(userId, id, type, ct));
     }
+
+    [HttpPost("posts/{id:guid}/bookmark")]
+    public async Task<IActionResult> ToggleBookmark(Guid id, CancellationToken ct)
+        => Ok(await _svc.ToggleBookmarkAsync(GetUserId(), id, ct));
+
+    [HttpPost("comments/{id:guid}/like")]
+    public async Task<IActionResult> ToggleCommentLike(Guid id, CancellationToken ct)
+        => Ok(await _svc.ToggleCommentLikeAsync(GetUserId(), id, ct));
 
     [HttpPost("reports")]
     public async Task<IActionResult> CreateReport([FromBody] ReportBody body, CancellationToken ct)
@@ -180,6 +191,9 @@ public sealed record CreateCommentBody(
 
 public sealed record UpdatePostVisibilityBody(
     [property: JsonPropertyName("visibility")] string Visibility);
+
+public sealed record UpdatePostBody(
+    [property: JsonPropertyName("content")] string Content);
 
 public sealed record ReactionBody(
     [property: JsonPropertyName("type")] string Type);

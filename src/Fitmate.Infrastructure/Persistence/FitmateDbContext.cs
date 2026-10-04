@@ -62,6 +62,8 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<Post> Posts => Set<Post>();
     public DbSet<Comment> Comments => Set<Comment>();
     public DbSet<Reaction> Reactions => Set<Reaction>();
+    public DbSet<PostBookmark> PostBookmarks => Set<PostBookmark>();
+    public DbSet<CommentLike> CommentLikes => Set<CommentLike>();
     public DbSet<FriendRequest> FriendRequests => Set<FriendRequest>();
     public DbSet<Friendship> Friendships => Set<Friendship>();
     public DbSet<BlockedUser> BlockedUsers => Set<BlockedUser>();

@@ -24,7 +24,9 @@ public sealed record PostView(
     [property: JsonPropertyName("is_knowledge")] bool IsKnowledge,
     [property: JsonPropertyName("reactions_count")] int ReactionsCount,
     [property: JsonPropertyName("comments_count")] int CommentsCount,
-    [property: JsonPropertyName("created_at")] DateTime CreatedAt);
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt,
+    [property: JsonPropertyName("saved_by_viewer")] bool SavedByViewer = false,
+    [property: JsonPropertyName("reacted_by_viewer")] bool ReactedByViewer = false);
 
 public sealed record PostPage(
     [property: JsonPropertyName("items")] IReadOnlyList<PostView> Items,
@@ -46,7 +48,13 @@ public sealed record CommentView(
     [property: JsonPropertyName("author")] PostAuthor Author,
     [property: JsonPropertyName("text")] string Text,
     [property: JsonPropertyName("created_at")] DateTime CreatedAt,
-    [property: JsonPropertyName("parent_comment_id")] Guid? ParentCommentId = null);
+    [property: JsonPropertyName("parent_comment_id")] Guid? ParentCommentId = null,
+    [property: JsonPropertyName("likes_count")] int LikesCount = 0,
+    [property: JsonPropertyName("liked_by_viewer")] bool LikedByViewer = false);
+
+public sealed record ToggleState(
+    [property: JsonPropertyName("active")] bool Active,
+    [property: JsonPropertyName("count")] int Count);
 
 public sealed record CommentPage(
     [property: JsonPropertyName("items")] IReadOnlyList<CommentView> Items,
@@ -66,11 +74,14 @@ public interface ISocialService
     Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct);
     Task<PostView> GetPostAsync(Guid viewerId, Guid postId, CancellationToken ct);
     Task<PostView> CreatePostAsync(Guid authorId, PostInput input, CancellationToken ct);
+    Task<PostView> UpdatePostContentAsync(Guid actorId, Guid postId, string content, CancellationToken ct);
     Task<PostView> UpdatePostVisibilityAsync(Guid actorId, Guid postId, PostVisibility visibility, CancellationToken ct);
     Task DeletePostAsync(Guid actorId, bool isAdmin, Guid postId, CancellationToken ct);
     Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, Guid? parentCommentId, CancellationToken ct);
     Task<CommentPage> ListCommentsAsync(Guid? viewerId, Guid postId, string? cursor, int limit, CancellationToken ct);
-    Task ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct);
+    Task<ToggleState> ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct);
+    Task<ToggleState> ToggleBookmarkAsync(Guid userId, Guid postId, CancellationToken ct);
+    Task<ToggleState> ToggleCommentLikeAsync(Guid userId, Guid commentId, CancellationToken ct);
 
     /// <summary>BE-211: tạo report với idempotency key (optional). Throw ConflictException nếu đã có Open report trùng (DEC-028).</summary>
     Task<Guid> CreateReportAsync(Guid reporterId, ReportInputDto input, string? idempotencyKey, CancellationToken ct);

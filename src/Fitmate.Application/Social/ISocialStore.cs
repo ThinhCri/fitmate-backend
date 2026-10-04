@@ -13,6 +13,7 @@ public interface ISocialStore
     Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct);
     Task AddPostAsync(SocialPostRow row, CancellationToken ct);
     Task<SocialPostRow?> UpdatePostVisibilityAsync(Guid postId, PostVisibility visibility, CancellationToken ct);
+    Task<SocialPostRow?> UpdatePostContentAsync(Guid postId, string content, CancellationToken ct);
 
     Task<bool> RemovePostAsync(Guid postId, CancellationToken ct);
 
@@ -23,6 +24,7 @@ public interface ISocialStore
 
     Task<bool> HasReactionAsync(Guid postId, Guid userId, CancellationToken ct);
     Task AddReactionAsync(SocialReactionRow row, CancellationToken ct);
+    Task RemoveReactionAsync(Guid postId, Guid userId, CancellationToken ct);
     Task<int> ChangePostReactionsAsync(Guid postId, int delta, CancellationToken ct);
     Task<int> ChangePostCommentsAsync(Guid postId, int delta, CancellationToken ct);
 
@@ -31,6 +33,10 @@ public interface ISocialStore
 
     /// <summary>BE-211: get comment by id.</summary>
     Task<SocialCommentRow?> GetCommentAsync(Guid commentId, CancellationToken ct);
+    Task<(bool Saved, bool Changed)> ToggleBookmarkAsync(Guid postId, Guid userId, CancellationToken ct);
+    Task<bool> IsBookmarkedAsync(Guid postId, Guid userId, CancellationToken ct);
+    Task<(bool Liked, int LikesCount)> ToggleCommentLikeAsync(Guid commentId, Guid userId, CancellationToken ct);
+    Task<(int LikesCount, bool LikedByViewer)> GetCommentLikeStateAsync(Guid commentId, Guid? viewerId, CancellationToken ct);
 
     /// <summary>BE-211: commit transaction cho 1 hoặc nhiều operation cùng DB context.</summary>
     Task SaveChangesAsync(CancellationToken ct);

@@ -50,7 +50,9 @@ public class SocialContractTests
             "is_knowledge",
             "reactions_count",
             "comments_count",
-            "created_at"
+            "created_at",
+            "saved_by_viewer",
+            "reacted_by_viewer"
         };
 
         root.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(expectedKeys);
@@ -85,7 +87,9 @@ public class SocialContractTests
             "parent_comment_id",
             "author",
             "text",
-            "created_at"
+            "created_at",
+            "likes_count",
+            "liked_by_viewer"
         };
 
         root.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(expectedKeys);
@@ -224,7 +228,9 @@ public class SocialContractTests
             "is_knowledge",
             "reactions_count",
             "comments_count",
-            "created_at"
+            "created_at",
+            "saved_by_viewer",
+            "reacted_by_viewer"
         };
         postSchema.Properties.Keys.Should().BeEquivalentTo(expectedPostProperties);
 
@@ -234,7 +240,7 @@ public class SocialContractTests
 
         doc.Components.Schemas.Should().ContainKey("Comment");
         var commentSchema = doc.Components.Schemas["Comment"];
-        commentSchema.Properties.Keys.Should().BeEquivalentTo(new[] { "id", "post_id", "author_id", "parent_comment_id", "author", "text", "created_at" });
+        commentSchema.Properties.Keys.Should().BeEquivalentTo(new[] { "id", "post_id", "author_id", "parent_comment_id", "author", "text", "created_at", "likes_count", "liked_by_viewer" });
 
         doc.Components.Schemas.Should().ContainKey("FriendRequest");
         var friendReqSchema = doc.Components.Schemas["FriendRequest"];

@@ -37,6 +37,7 @@ public class Post : AuditableEntity
     public void IncrementReactions(int delta) { ReactionsCount = Math.Max(0, ReactionsCount + delta); Touch(); }
     public void IncrementComments(int delta) { CommentsCount = Math.Max(0, CommentsCount + delta); Touch(); }
     public void ChangeVisibility(PostVisibility visibility) { Visibility = visibility; Touch(); }
+    public void UpdateContent(string content) { Content = content; Touch(); }
 
     public new void SoftDelete()
     {

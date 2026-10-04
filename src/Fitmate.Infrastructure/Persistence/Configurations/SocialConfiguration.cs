@@ -53,6 +53,26 @@ public class ReactionConfiguration : IEntityTypeConfiguration<Reaction>
     }
 }
 
+public class PostBookmarkConfiguration : IEntityTypeConfiguration<PostBookmark>
+{
+    public void Configure(EntityTypeBuilder<PostBookmark> e)
+    {
+        e.ToTable("post_bookmarks");
+        e.HasKey(x => new { x.PostId, x.UserId });
+        e.HasIndex(x => new { x.UserId, x.CreatedAt });
+    }
+}
+
+public class CommentLikeConfiguration : IEntityTypeConfiguration<CommentLike>
+{
+    public void Configure(EntityTypeBuilder<CommentLike> e)
+    {
+        e.ToTable("comment_likes");
+        e.HasKey(x => new { x.CommentId, x.UserId });
+        e.HasIndex(x => new { x.CommentId, x.CreatedAt });
+    }
+}
+
 public class FriendRequestConfiguration : IEntityTypeConfiguration<FriendRequest>
 {
     public void Configure(EntityTypeBuilder<FriendRequest> e)

@@ -70,7 +70,14 @@ public class SocialService : ISocialService
         foreach (var r in page)
         {
             var author = await _store.GetAuthorAsync(r.AuthorId, ct);
-            views.Add(ToView(r, author));
+            var view = ToView(r, author);
+            if (viewerId.HasValue)
+                view = view with
+                {
+                    SavedByViewer = await _store.IsBookmarkedAsync(r.Id, viewerId.Value, ct),
+                    ReactedByViewer = await _store.HasReactionAsync(r.Id, viewerId.Value, ct)
+                };
+            views.Add(view);
         }
         return new PostPage(views, next);
     }
@@ -101,7 +108,11 @@ public class SocialService : ISocialService
         }
 
         var author = await _store.GetAuthorAsync(row.AuthorId, ct);
-        return ToView(row, author);
+        return ToView(row, author) with
+        {
+            SavedByViewer = await _store.IsBookmarkedAsync(row.Id, viewerId, ct),
+            ReactedByViewer = await _store.HasReactionAsync(row.Id, viewerId, ct)
+        };
     }
 
     public async Task<PostView> CreatePostAsync(Guid authorId, PostInput input, CancellationToken ct)
@@ -153,6 +164,22 @@ public class SocialService : ISocialService
             throw new ForbiddenException(ErrorCodes.Social.PostDeleteForbidden, "Cannot delete post of another user.");
 
         await _store.RemovePostAsync(postId, ct);
+    }
+
+    public async Task<PostView> UpdatePostContentAsync(Guid actorId, Guid postId, string content, CancellationToken ct)
+    {
+        EnsureAuthenticated(actorId);
+        if (string.IsNullOrWhiteSpace(content))
+            throw new ValidationException(ErrorCodes.Validation.RequiredField, "content required.", new Dictionary<string, string[]> { ["content"] = new[] { "required" } });
+        if (content.Length > MaxContentLength)
+            throw new ValidationException(ErrorCodes.Validation.TooLong, $"content > {MaxContentLength} chars.", new Dictionary<string, string[]> { ["content"] = new[] { $"max {MaxContentLength}" } });
+        var existing = await _store.GetPostByIdAsync(postId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        if (existing.AuthorId != actorId)
+            throw new ForbiddenException(ErrorCodes.Social.PostDeleteForbidden, "Only the post owner can edit this post.");
+        var updated = await _store.UpdatePostContentAsync(postId, content.Trim(), ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        return ToView(updated, await _store.GetAuthorAsync(actorId, ct));
     }
 
     public async Task<PostView> UpdatePostVisibilityAsync(Guid actorId, Guid postId, PostVisibility visibility, CancellationToken ct)
@@ -207,7 +234,7 @@ public class SocialService : ISocialService
         await _store.ChangePostCommentsAsync(postId, +1, ct);
 
         var author = await _store.GetAuthorAsync(authorId, ct) ?? new SocialAuthorRow(authorId, "Unknown", null);
-        return new CommentView(row.Id, row.PostId, row.AuthorId, new PostAuthor(author.Id, author.DisplayName, author.AvatarUrl), row.Text, row.CreatedAt, row.ParentCommentId);
+        return new CommentView(row.Id, row.PostId, row.AuthorId, new PostAuthor(author.Id, author.DisplayName, author.AvatarUrl), row.Text, row.CreatedAt, row.ParentCommentId, 0, false);
     }
 
     public async Task<CommentPage> ListCommentsAsync(Guid? viewerId, Guid postId, string? cursor, int limit, CancellationToken ct)
@@ -234,13 +261,14 @@ public class SocialService : ISocialService
         foreach (var r in rows)
         {
             var author = await _store.GetAuthorAsync(r.AuthorId, ct);
-            views.Add(new CommentView(r.Id, r.PostId, r.AuthorId, new PostAuthor(author?.Id ?? r.AuthorId, author?.DisplayName ?? "Unknown", author?.AvatarUrl), r.Text, r.CreatedAt, r.ParentCommentId));
+            var likeState = await _store.GetCommentLikeStateAsync(r.Id, viewerId, ct);
+            views.Add(new CommentView(r.Id, r.PostId, r.AuthorId, new PostAuthor(author?.Id ?? r.AuthorId, author?.DisplayName ?? "Unknown", author?.AvatarUrl), r.Text, r.CreatedAt, r.ParentCommentId, likeState.LikesCount, likeState.LikedByViewer));
         }
 
         return new CommentPage(views, next);
     }
 
-    public async Task ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct)
+    public async Task<ToggleState> ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct)
     {
         EnsureAuthenticated(userId);
 
@@ -250,13 +278,40 @@ public class SocialService : ISocialService
         if (await _blockStore.IsBlockedEitherWayAsync(userId, post.AuthorId, ct))
             throw new ForbiddenException(ErrorCodes.Social.RecipientBlocked, "Cannot react to post of a blocked user.");
 
-        // 1 user chỉ 1 reaction per post → ConflictException 409 nếu đã có.
         if (await _store.HasReactionAsync(postId, userId, ct))
-            throw new ConflictException(ErrorCodes.Social.AlreadyReacted, "Already reacted to this post.");
+        {
+            await _store.RemoveReactionAsync(postId, userId, ct);
+            var count = await _store.ChangePostReactionsAsync(postId, -1, ct);
+            return new ToggleState(false, count);
+        }
 
         var row = new SocialReactionRow(Guid.NewGuid(), postId, userId, type, DateTime.UtcNow);
         await _store.AddReactionAsync(row, ct);
-        await _store.ChangePostReactionsAsync(postId, +1, ct);
+        return new ToggleState(true, await _store.ChangePostReactionsAsync(postId, +1, ct));
+    }
+
+    public async Task<ToggleState> ToggleBookmarkAsync(Guid userId, Guid postId, CancellationToken ct)
+    {
+        EnsureAuthenticated(userId);
+        var post = await _store.GetPostByIdAsync(postId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        if (await _blockStore.IsBlockedEitherWayAsync(userId, post.AuthorId, ct))
+            throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        var result = await _store.ToggleBookmarkAsync(postId, userId, ct);
+        return new ToggleState(result.Saved, result.Saved ? 1 : 0);
+    }
+
+    public async Task<ToggleState> ToggleCommentLikeAsync(Guid userId, Guid commentId, CancellationToken ct)
+    {
+        EnsureAuthenticated(userId);
+        var comment = await _store.GetCommentAsync(commentId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, "Không tìm thấy bình luận.");
+        var post = await _store.GetPostByIdAsync(comment.PostId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, "Không tìm thấy bài viết.");
+        if (await _blockStore.IsBlockedEitherWayAsync(userId, post.AuthorId, ct))
+            throw new NotFoundException(ErrorCodes.Social.PostNotFound, "Không tìm thấy bình luận.");
+        var result = await _store.ToggleCommentLikeAsync(commentId, userId, ct);
+        return new ToggleState(result.Liked, result.LikesCount);
     }
 
     public async Task<Guid> CreateReportAsync(Guid reporterId, ReportInputDto input, string? idempotencyKey, CancellationToken ct)

@@ -1392,6 +1392,18 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.ToTable("comments", (string)null);
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Social.CommentLike", b =>
+                {
+                    b.Property<Guid>("CommentId").HasColumnType("uuid");
+                    b.Property<Guid>("UserId").HasColumnType("uuid");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("timestamp with time zone");
+                    b.Property<DateTime?>("DeletedAt").HasColumnType("timestamp with time zone");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("timestamp with time zone");
+                    b.HasKey("CommentId", "UserId");
+                    b.HasIndex("CommentId", "CreatedAt");
+                    b.ToTable("comment_likes", (string)null);
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Social.FriendRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1514,6 +1526,18 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasIndex("AuthorId", "CreatedAt");
 
                     b.ToTable("posts", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Social.PostBookmark", b =>
+                {
+                    b.Property<Guid>("PostId").HasColumnType("uuid");
+                    b.Property<Guid>("UserId").HasColumnType("uuid");
+                    b.Property<DateTime>("CreatedAt").HasColumnType("timestamp with time zone");
+                    b.Property<DateTime?>("DeletedAt").HasColumnType("timestamp with time zone");
+                    b.Property<DateTime>("UpdatedAt").HasColumnType("timestamp with time zone");
+                    b.HasKey("PostId", "UserId");
+                    b.HasIndex("UserId", "CreatedAt");
+                    b.ToTable("post_bookmarks", (string)null);
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Social.Reaction", b =>

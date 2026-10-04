@@ -128,6 +128,15 @@ public class EfSocialStore : ISocialStore
         return ToRow(post);
     }
 
+    public async Task<SocialPostRow?> UpdatePostContentAsync(Guid postId, string content, CancellationToken ct)
+    {
+        var post = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId && x.DeletedAt == null, ct);
+        if (post is null) return null;
+        post.UpdateContent(content);
+        await _db.SaveChangesAsync(ct);
+        return ToRow(post);
+    }
+
     public async Task<bool> RemovePostAsync(Guid postId, CancellationToken ct)
     {
         var p = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId, ct);
@@ -185,6 +194,13 @@ public class EfSocialStore : ISocialStore
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task RemoveReactionAsync(Guid postId, Guid userId, CancellationToken ct)
+    {
+        var reactions = await _db.Reactions.Where(r => r.PostId == postId && r.UserId == userId).ToListAsync(ct);
+        _db.Reactions.RemoveRange(reactions);
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task<int> ChangePostReactionsAsync(Guid postId, int delta, CancellationToken ct)
     {
         var p = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId, ct);
@@ -224,6 +240,50 @@ public class EfSocialStore : ISocialStore
     {
         var c = await _db.Comments.FirstOrDefaultAsync(x => x.Id == commentId && x.DeletedAt == null, ct);
         return c is null ? null : new SocialCommentRow(c.Id, c.PostId, c.AuthorId, c.Text, c.CreatedAt, c.ParentCommentId);
+    }
+
+    public async Task<(bool Saved, bool Changed)> ToggleBookmarkAsync(Guid postId, Guid userId, CancellationToken ct)
+    {
+        var existing = await _db.PostBookmarks.FindAsync(new object[] { postId, userId }, ct);
+        if (existing is null)
+        {
+            _db.PostBookmarks.Add(PostBookmark.Create(postId, userId));
+            await _db.SaveChangesAsync(ct);
+            return (true, true);
+        }
+
+        _db.PostBookmarks.Remove(existing);
+        await _db.SaveChangesAsync(ct);
+        return (false, true);
+    }
+
+    public Task<bool> IsBookmarkedAsync(Guid postId, Guid userId, CancellationToken ct)
+        => _db.PostBookmarks.AnyAsync(x => x.PostId == postId && x.UserId == userId, ct);
+
+    public async Task<(bool Liked, int LikesCount)> ToggleCommentLikeAsync(Guid commentId, Guid userId, CancellationToken ct)
+    {
+        var existing = await _db.CommentLikes.FindAsync(new object[] { commentId, userId }, ct);
+        bool liked;
+        if (existing is null)
+        {
+            _db.CommentLikes.Add(CommentLike.Create(commentId, userId));
+            liked = true;
+        }
+        else
+        {
+            _db.CommentLikes.Remove(existing);
+            liked = false;
+        }
+        await _db.SaveChangesAsync(ct);
+        var count = await _db.CommentLikes.CountAsync(x => x.CommentId == commentId, ct);
+        return (liked, count);
+    }
+
+    public async Task<(int LikesCount, bool LikedByViewer)> GetCommentLikeStateAsync(Guid commentId, Guid? viewerId, CancellationToken ct)
+    {
+        var count = await _db.CommentLikes.CountAsync(x => x.CommentId == commentId, ct);
+        var liked = viewerId.HasValue && await _db.CommentLikes.AnyAsync(x => x.CommentId == commentId && x.UserId == viewerId.Value, ct);
+        return (count, liked);
     }
 
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);

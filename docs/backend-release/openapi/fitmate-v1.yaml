@@ -2231,6 +2231,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Post'
+    patch:
+      tags: [Social]
+      summary: Chỉnh sửa nội dung bài viết của chính mình
+      operationId: updatePost
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: {type: string, minLength: 1, maxLength: 5000}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
     delete:
       tags: [Social]
       summary: Xóa post của mình (admin có thể xóa bất kỳ)
@@ -2349,14 +2371,42 @@ paths:
                   type: string
                   enum: [heart, flame, smile]
       responses:
-        '204':
-          description: No Content
-        '409':
-          description: Đã react
+        '200':
+          description: Trạng thái tim sau khi bật hoặc tắt
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ProblemDetails'
+                $ref: '#/components/schemas/ToggleState'
+
+  /social/posts/{id}/bookmark:
+    post:
+      tags: [Social]
+      summary: Lưu hoặc bỏ lưu bài viết
+      operationId: togglePostBookmark
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Trạng thái lưu bài viết
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToggleState'
+
+  /social/comments/{id}/like:
+    post:
+      tags: [Social]
+      summary: Thích hoặc bỏ thích bình luận
+      operationId: toggleCommentLike
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Trạng thái thích bình luận
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToggleState'
 
   /social/reports:
     post:
@@ -4963,7 +5013,6 @@ components:
         created_at:
           type: string
           format: date-time
-
     TrainerReviewsSummary:
       type: object
       required: [average_rating, total_reviews, reviews]
@@ -6231,6 +6280,8 @@ components:
         - reactions_count
         - comments_count
         - created_at
+        - saved_by_viewer
+        - reacted_by_viewer
       properties:
         id:
           type: string
@@ -6269,6 +6320,10 @@ components:
         created_at:
           type: string
           format: date-time
+        saved_by_viewer:
+          type: boolean
+        reacted_by_viewer:
+          type: boolean
 
     PostInput:
       type: object
@@ -6307,6 +6362,8 @@ components:
         - author
         - text
         - created_at
+        - likes_count
+        - liked_by_viewer
       properties:
         id:
           type: string
@@ -6328,6 +6385,17 @@ components:
         created_at:
           type: string
           format: date-time
+        likes_count:
+          type: integer
+        liked_by_viewer:
+          type: boolean
+
+    ToggleState:
+      type: object
+      required: [active, count]
+      properties:
+        active: {type: boolean}
+        count: {type: integer}
 
     Report:
       type: object

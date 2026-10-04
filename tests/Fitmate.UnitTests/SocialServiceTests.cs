@@ -71,6 +71,13 @@ public class SocialServiceTests
             Posts[index] = Posts[index] with { Visibility = visibility };
             return Task.FromResult<SocialPostRow?>(Posts[index]);
         }
+        public Task<SocialPostRow?> UpdatePostContentAsync(Guid postId, string content, CancellationToken ct)
+        {
+            var index = Posts.FindIndex(x => x.Id == postId);
+            if (index < 0) return Task.FromResult<SocialPostRow?>(null);
+            Posts[index] = Posts[index] with { Content = content };
+            return Task.FromResult<SocialPostRow?>(Posts[index]);
+        }
         public Task<bool> RemovePostAsync(Guid postId, CancellationToken ct)
         {
             var p = Posts.FirstOrDefault(x => x.Id == postId);
@@ -88,6 +95,7 @@ public class SocialServiceTests
             Reactions.Add(row);
             return Task.CompletedTask;
         }
+        public Task RemoveReactionAsync(Guid postId, Guid userId, CancellationToken ct) { Reactions.RemoveAll(x => x.PostId == postId && x.UserId == userId); return Task.CompletedTask; }
         public Task<int> ChangePostReactionsAsync(Guid postId, int delta, CancellationToken ct)
         {
             var idx = Posts.FindIndex(x => x.Id == postId);
@@ -127,6 +135,10 @@ public class SocialServiceTests
 
         public Task<SocialCommentRow?> GetCommentAsync(Guid commentId, CancellationToken ct)
             => Task.FromResult<SocialCommentRow?>(Comments.FirstOrDefault(c => c.Id == commentId));
+        public Task<(bool Saved, bool Changed)> ToggleBookmarkAsync(Guid postId, Guid userId, CancellationToken ct) => Task.FromResult((true, true));
+        public Task<bool> IsBookmarkedAsync(Guid postId, Guid userId, CancellationToken ct) => Task.FromResult(false);
+        public Task<(bool Liked, int LikesCount)> ToggleCommentLikeAsync(Guid commentId, Guid userId, CancellationToken ct) => Task.FromResult((true, 1));
+        public Task<(int LikesCount, bool LikedByViewer)> GetCommentLikeStateAsync(Guid commentId, Guid? viewerId, CancellationToken ct) => Task.FromResult((0, false));
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
         public Task<ReportRow?> FindOpenReportAsync(Guid reporterId, ReportTargetType targetType, Guid targetId, CancellationToken ct) => Task.FromResult<ReportRow?>(null);
         public Task<ReportRow?> FindOpenReportByKeyAsync(Guid reporterId, string idempotencyKey, CancellationToken ct) => Task.FromResult<ReportRow?>(null);
@@ -362,14 +374,16 @@ public class SocialServiceTests
     }
 
     [Fact]
-    public async Task ToggleReaction_SecondTime_Conflict()
+    public async Task ToggleReaction_SecondTime_RemovesReaction()
     {
         var store = new InMemorySocialStore();
         var author = Guid.NewGuid(); var reactor = Guid.NewGuid();
         store.Posts.Add(NewPost(author, PostVisibility.Public));
         await NewService(store, new InMemoryCertificateStore()).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
-        var act = () => NewService(store, new InMemoryCertificateStore()).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Flame, CancellationToken.None);
-        await act.Should().ThrowAsync<ConflictException>().Where(e => e.Code == ErrorCodes.Social.AlreadyReacted);
+        var result = await NewService(store, new InMemoryCertificateStore()).ToggleReactionAsync(reactor, store.Posts[0].Id, ReactionType.Heart, CancellationToken.None);
+        result.Active.Should().BeFalse();
+        result.Count.Should().Be(0);
+        store.Reactions.Should().BeEmpty();
     }
 
     [Fact]
