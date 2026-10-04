@@ -34,6 +34,9 @@ public sealed class R2StorageService : IStorageService
         return new Uri($"r2://{_bucket}/{Uri.EscapeDataString(key).Replace("%2F", "/", StringComparison.OrdinalIgnoreCase)}");
     }
 
+    public Task DeleteAsync(string relativePath, CancellationToken ct = default)
+        => _client.DeleteObjectAsync(new DeleteObjectRequest { BucketName = _bucket, Key = NormalizeKey(relativePath) }, ct);
+
     private static string NormalizeKey(string value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(value);

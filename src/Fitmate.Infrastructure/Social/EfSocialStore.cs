@@ -128,11 +128,11 @@ public class EfSocialStore : ISocialStore
         return ToRow(post);
     }
 
-    public async Task<SocialPostRow?> UpdatePostContentAsync(Guid postId, string content, CancellationToken ct)
+    public async Task<SocialPostRow?> UpdatePostAsync(Guid postId, string content, IReadOnlyList<string> imageStorageKeys, IReadOnlyList<string> tags, bool isKnowledge, CancellationToken ct)
     {
         var post = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId && x.DeletedAt == null, ct);
         if (post is null) return null;
-        post.UpdateContent(content);
+        post.Update(content, imageStorageKeys, tags, isKnowledge);
         await _db.SaveChangesAsync(ct);
         return ToRow(post);
     }

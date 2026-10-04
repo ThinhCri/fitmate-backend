@@ -30,4 +30,7 @@ public interface IStorageService
         Stream data,
         string contentType,
         CancellationToken ct = default);
+
+    /// <summary>Delete an object by its stable storage key. Missing objects are treated as already deleted.</summary>
+    Task DeleteAsync(string relativePath, CancellationToken ct = default);
 }

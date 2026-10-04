@@ -1,6 +1,7 @@
 using Fitmate.Application.Auth;
 using Fitmate.Application.Moderation;
 using Fitmate.Application.Social;
+using Fitmate.Application.Storage;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Moderation;
@@ -71,11 +72,11 @@ public class SocialServiceTests
             Posts[index] = Posts[index] with { Visibility = visibility };
             return Task.FromResult<SocialPostRow?>(Posts[index]);
         }
-        public Task<SocialPostRow?> UpdatePostContentAsync(Guid postId, string content, CancellationToken ct)
+        public Task<SocialPostRow?> UpdatePostAsync(Guid postId, string content, IReadOnlyList<string> imageStorageKeys, IReadOnlyList<string> tags, bool isKnowledge, CancellationToken ct)
         {
             var index = Posts.FindIndex(x => x.Id == postId);
             if (index < 0) return Task.FromResult<SocialPostRow?>(null);
-            Posts[index] = Posts[index] with { Content = content };
+            Posts[index] = Posts[index] with { Content = content, ImageStorageKey = imageStorageKeys.FirstOrDefault(), ImageStorageKeys = imageStorageKeys, Tags = tags, IsKnowledge = isKnowledge };
             return Task.FromResult<SocialPostRow?>(Posts[index]);
         }
         public Task<bool> RemovePostAsync(Guid postId, CancellationToken ct)
@@ -157,8 +158,20 @@ public class SocialServiceTests
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
-    private static SocialService NewService(InMemorySocialStore store, InMemoryCertificateStore certStore, StubBlockStore? blockStore = null)
-        => new(store, certStore, new AllowAllAuthz(), new StubFriendService(), blockStore ?? new StubBlockStore());
+    private sealed class RecordingStorage : IStorageService
+    {
+        public List<string> DeletedKeys { get; } = new();
+        public Task<Uri> UploadAsync(string relativePath, Stream data, string contentType, CancellationToken ct = default)
+            => Task.FromResult(new Uri($"https://storage.test/{relativePath}"));
+        public Task DeleteAsync(string relativePath, CancellationToken ct = default)
+        {
+            DeletedKeys.Add(relativePath);
+            return Task.CompletedTask;
+        }
+    }
+
+    private static SocialService NewService(InMemorySocialStore store, InMemoryCertificateStore certStore, StubBlockStore? blockStore = null, IStorageService? storage = null)
+        => new(store, certStore, new AllowAllAuthz(), new StubFriendService(), blockStore ?? new StubBlockStore(), storage: storage);
 
     /// <summary>BE-181: minimal stub cho FriendService — IsFriendAsync trả false (giống stub cũ) để SocialService test không phụ thuộc friend state.</summary>
     private sealed class StubFriendService : IFriendService
@@ -360,6 +373,57 @@ public class SocialServiceTests
         updated.Visibility.Should().Be("private");
         var forbidden = () => service.UpdatePostVisibilityAsync(Guid.NewGuid(), store.Posts[0].Id, PostVisibility.Public, CancellationToken.None);
         await forbidden.Should().ThrowAsync<ForbiddenException>();
+    }
+
+    [Fact]
+    public async Task UpdatePost_OwnerCanReplaceContentImagesTagsAndKnowledgeFlag()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Authors[author] = new SocialAuthorRow(author, "A", null);
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        var imageKey = $"posts/{author:N}_updated.jpg";
+        var service = NewService(store, new InMemoryCertificateStore());
+
+        var updated = await service.UpdatePostAsync(author, store.Posts[0].Id,
+            new UpdatePostInput("updated", new[] { imageKey }, new[] { "workout_exp", "Leg Day" }, true), CancellationToken.None);
+
+        updated.Content.Should().Be("updated");
+        updated.ImageStorageKeys.Should().Equal(imageKey);
+        updated.Tags.Should().Equal("workout_exp", "Leg Day");
+        updated.IsKnowledge.Should().BeTrue();
+        store.Posts[0].ImageStorageKeys.Should().Equal(imageKey);
+    }
+
+    [Fact]
+    public async Task UpdatePost_RejectsImagesNotOwnedByAuthor()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        var service = NewService(store, new InMemoryCertificateStore());
+
+        var act = () => service.UpdatePostAsync(author, store.Posts[0].Id,
+            new UpdatePostInput("updated", new[] { $"posts/{Guid.NewGuid():N}_foreign.jpg" }, Array.Empty<string>(), false), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>().Where(e => e.Code == ErrorCodes.Validation.FieldInvalid);
+    }
+
+    [Fact]
+    public async Task UpdatePost_DeletesImagesRemovedByOwner()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        var removedKey = $"posts/{author:N}_old.jpg";
+        var retainedKey = $"posts/{author:N}_kept.jpg";
+        store.Authors[author] = new SocialAuthorRow(author, "A", null);
+        store.Posts.Add(NewPost(author, PostVisibility.Public) with { ImageStorageKey = removedKey, ImageStorageKeys = new[] { removedKey, retainedKey } });
+        var storage = new RecordingStorage();
+
+        await NewService(store, new InMemoryCertificateStore(), storage: storage).UpdatePostAsync(author, store.Posts[0].Id,
+            new UpdatePostInput("updated", new[] { retainedKey }, Array.Empty<string>(), false), CancellationToken.None);
+
+        storage.DeletedKeys.Should().Equal(removedKey);
     }
 
     [Fact]

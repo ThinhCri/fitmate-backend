@@ -2233,7 +2233,7 @@ paths:
                 $ref: '#/components/schemas/Post'
     patch:
       tags: [Social]
-      summary: Chỉnh sửa nội dung bài viết của chính mình
+      summary: Chỉnh sửa nội dung, ảnh và thẻ của bài viết chính mình
       operationId: updatePost
       parameters:
         - $ref: '#/components/parameters/IdPath'
@@ -2242,10 +2242,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [content]
-              properties:
-                content: {type: string, minLength: 1, maxLength: 5000}
+              $ref: '#/components/schemas/UpdatePostInput'
       responses:
         '200':
           description: Updated
@@ -6324,6 +6321,13 @@ components:
           type: boolean
         reacted_by_viewer:
           type: boolean
+        image_storage_keys:
+          type: array
+          nullable: true
+          maxItems: 5
+          description: Chỉ trả storage key cho chính chủ bài viết; người xem khác nhận mảng rỗng.
+          items:
+            type: string
 
     PostInput:
       type: object
@@ -6350,6 +6354,29 @@ components:
         visibility:
           type: string
           enum: [public, friends, private]
+        is_knowledge:
+          type: boolean
+
+    UpdatePostInput:
+      type: object
+      required: [content, image_storage_keys, tags, is_knowledge]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          maxLength: 5000
+        image_storage_keys:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+        tags:
+          type: array
+          maxItems: 10
+          items:
+            type: string
+            minLength: 1
+            maxLength: 32
         is_knowledge:
           type: boolean
 

@@ -26,7 +26,8 @@ public sealed record PostView(
     [property: JsonPropertyName("comments_count")] int CommentsCount,
     [property: JsonPropertyName("created_at")] DateTime CreatedAt,
     [property: JsonPropertyName("saved_by_viewer")] bool SavedByViewer = false,
-    [property: JsonPropertyName("reacted_by_viewer")] bool ReactedByViewer = false);
+    [property: JsonPropertyName("reacted_by_viewer")] bool ReactedByViewer = false,
+    [property: JsonPropertyName("image_storage_keys")] IReadOnlyList<string>? ImageStorageKeys = null);
 
 public sealed record PostPage(
     [property: JsonPropertyName("items")] IReadOnlyList<PostView> Items,
@@ -39,6 +40,12 @@ public sealed record PostInput(
     string? Link,
     IReadOnlyList<string> Tags,
     PostVisibility Visibility,
+    bool IsKnowledge);
+
+public sealed record UpdatePostInput(
+    string Content,
+    IReadOnlyList<string> ImageStorageKeys,
+    IReadOnlyList<string> Tags,
     bool IsKnowledge);
 
 public sealed record CommentView(
@@ -74,7 +81,7 @@ public interface ISocialService
     Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct);
     Task<PostView> GetPostAsync(Guid viewerId, Guid postId, CancellationToken ct);
     Task<PostView> CreatePostAsync(Guid authorId, PostInput input, CancellationToken ct);
-    Task<PostView> UpdatePostContentAsync(Guid actorId, Guid postId, string content, CancellationToken ct);
+    Task<PostView> UpdatePostAsync(Guid actorId, Guid postId, UpdatePostInput input, CancellationToken ct);
     Task<PostView> UpdatePostVisibilityAsync(Guid actorId, Guid postId, PostVisibility visibility, CancellationToken ct);
     Task DeletePostAsync(Guid actorId, bool isAdmin, Guid postId, CancellationToken ct);
     Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, Guid? parentCommentId, CancellationToken ct);

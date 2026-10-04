@@ -4,6 +4,7 @@ using Fitmate.Application.Trainers;
 using Fitmate.Application.Storage;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
+using Microsoft.Extensions.Logging;
 
 namespace Fitmate.Application.Social;
 
@@ -22,6 +23,8 @@ public class SocialService : ISocialService
     private readonly IFriendService _friend;
     private readonly IBlockStore _blockStore;
     private readonly ISignedUrlService? _signedUrl;
+    private readonly IStorageService? _storage;
+    private readonly ILogger<SocialService>? _logger;
 
     private const int DefaultLimit = 20;
     private const int MaxLimit = 100;
@@ -38,7 +41,9 @@ public class SocialService : ISocialService
         IAuthorizationGuard authz,
         IFriendService friend,
         IBlockStore blockStore,
-        ISignedUrlService? signedUrl = null)
+        ISignedUrlService? signedUrl = null,
+        IStorageService? storage = null,
+        ILogger<SocialService>? logger = null)
     {
         _store = store;
         _certStore = certStore;
@@ -46,6 +51,8 @@ public class SocialService : ISocialService
         _friend = friend;
         _blockStore = blockStore;
         _signedUrl = signedUrl;
+        _storage = storage;
+        _logger = logger;
     }
 
     public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct)
@@ -70,7 +77,7 @@ public class SocialService : ISocialService
         foreach (var r in page)
         {
             var author = await _store.GetAuthorAsync(r.AuthorId, ct);
-            var view = ToView(r, author);
+            var view = ToView(r, author, viewerId);
             if (viewerId.HasValue)
                 view = view with
                 {
@@ -108,7 +115,7 @@ public class SocialService : ISocialService
         }
 
         var author = await _store.GetAuthorAsync(row.AuthorId, ct);
-        return ToView(row, author) with
+        return ToView(row, author, viewerId) with
         {
             SavedByViewer = await _store.IsBookmarkedAsync(row.Id, viewerId, ct),
             ReactedByViewer = await _store.HasReactionAsync(row.Id, viewerId, ct)
@@ -151,7 +158,7 @@ public class SocialService : ISocialService
         await _store.AddPostAsync(row, ct);
 
         var author = await _store.GetAuthorAsync(authorId, ct);
-        return ToView(row, author);
+        return ToView(row, author, authorId);
     }
 
     public async Task DeletePostAsync(Guid actorId, bool isAdmin, Guid postId, CancellationToken ct)
@@ -166,20 +173,52 @@ public class SocialService : ISocialService
         await _store.RemovePostAsync(postId, ct);
     }
 
-    public async Task<PostView> UpdatePostContentAsync(Guid actorId, Guid postId, string content, CancellationToken ct)
+    public async Task<PostView> UpdatePostAsync(Guid actorId, Guid postId, UpdatePostInput input, CancellationToken ct)
     {
         EnsureAuthenticated(actorId);
-        if (string.IsNullOrWhiteSpace(content))
+        if (string.IsNullOrWhiteSpace(input.Content))
             throw new ValidationException(ErrorCodes.Validation.RequiredField, "content required.", new Dictionary<string, string[]> { ["content"] = new[] { "required" } });
-        if (content.Length > MaxContentLength)
+        if (input.Content.Length > MaxContentLength)
             throw new ValidationException(ErrorCodes.Validation.TooLong, $"content > {MaxContentLength} chars.", new Dictionary<string, string[]> { ["content"] = new[] { $"max {MaxContentLength}" } });
+        if (input.Tags.Count > MaxTags)
+            throw new ValidationException(ErrorCodes.Validation.TooMany, $"tags > {MaxTags}.", new Dictionary<string, string[]> { ["tags"] = new[] { $"max {MaxTags}" } });
+        if (input.Tags.Any(t => string.IsNullOrWhiteSpace(t) || t.Length > MaxTagLength))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "tag invalid.", new Dictionary<string, string[]> { ["tags"] = new[] { "1..32 chars each" } });
+        if (input.ImageStorageKeys.Count > 5)
+            throw new ValidationException(ErrorCodes.Validation.TooMany, "Mỗi bài viết được đính kèm tối đa 5 ảnh.",
+                new Dictionary<string, string[]> { ["image_storage_keys"] = new[] { "max 5 images" } });
+        var normalizedKeys = input.ImageStorageKeys
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Select(key => key.Trim().Replace('\\', '/'))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        var expectedPrefix = $"posts/{actorId:N}_";
+        if (normalizedKeys.Count != input.ImageStorageKeys.Count || normalizedKeys.Any(key => !key.StartsWith(expectedPrefix, StringComparison.Ordinal)))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Ảnh phải do chính tài khoản hiện tại tải lên.",
+                new Dictionary<string, string[]> { ["image_storage_keys"] = new[] { "invalid ownership" } });
         var existing = await _store.GetPostByIdAsync(postId, ct)
             ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
         if (existing.AuthorId != actorId)
             throw new ForbiddenException(ErrorCodes.Social.PostDeleteForbidden, "Only the post owner can edit this post.");
-        var updated = await _store.UpdatePostContentAsync(postId, content.Trim(), ct)
+        var updated = await _store.UpdatePostAsync(postId, input.Content.Trim(), normalizedKeys, input.Tags.Distinct(StringComparer.Ordinal).ToList(), input.IsKnowledge, ct)
             ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
-        return ToView(updated, await _store.GetAuthorAsync(actorId, ct));
+        if (_storage is not null)
+        {
+            foreach (var removedKey in existing.ImageStorageKeys.Except(normalizedKeys, StringComparer.Ordinal))
+            {
+                try
+                {
+                    await _storage.DeleteAsync(removedKey, ct);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // The post update is already durable; a transient object-store error must not
+                    // turn the response into an ambiguous failure. Operations can retry cleanup.
+                    _logger?.LogWarning(ex, "Unable to delete detached post image {StorageKey}", removedKey);
+                }
+            }
+        }
+        return ToView(updated, await _store.GetAuthorAsync(actorId, ct), actorId);
     }
 
     public async Task<PostView> UpdatePostVisibilityAsync(Guid actorId, Guid postId, PostVisibility visibility, CancellationToken ct)
@@ -191,7 +230,7 @@ public class SocialService : ISocialService
             throw new ForbiddenException(ErrorCodes.Social.PostDeleteForbidden, "Only the post owner can change visibility.");
         var updated = await _store.UpdatePostVisibilityAsync(postId, visibility, ct)
             ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
-        return ToView(updated, await _store.GetAuthorAsync(updated.AuthorId, ct));
+        return ToView(updated, await _store.GetAuthorAsync(updated.AuthorId, ct), actorId);
     }
 
     public Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, CancellationToken ct)
@@ -366,7 +405,7 @@ public class SocialService : ISocialService
         return newId;
     }
 
-    private PostView ToView(SocialPostRow r, SocialAuthorRow? a)
+    private PostView ToView(SocialPostRow r, SocialAuthorRow? a, Guid? viewerId = null)
     {
         var storageKeys = r.ImageStorageKeys.Count > 0
             ? r.ImageStorageKeys
@@ -388,7 +427,8 @@ public class SocialService : ISocialService
             IsKnowledge: r.IsKnowledge,
             ReactionsCount: r.ReactionsCount,
             CommentsCount: r.CommentsCount,
-            CreatedAt: r.CreatedAt);
+            CreatedAt: r.CreatedAt,
+            ImageStorageKeys: viewerId == r.AuthorId ? storageKeys : []);
     }
 
     /// <summary>Cursor: base64("<unix-ms>|<guid>"). Ổn định theo (CreatedAt desc, Id desc).</summary>

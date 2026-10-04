@@ -52,7 +52,8 @@ public class SocialContractTests
             "comments_count",
             "created_at",
             "saved_by_viewer",
-            "reacted_by_viewer"
+            "reacted_by_viewer",
+            "image_storage_keys"
         };
 
         root.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(expectedKeys);
@@ -179,6 +180,20 @@ public class SocialContractTests
         postInput!.ImageStorageKey.Should().Be("posts/run.jpg");
         postInput.IsKnowledge.Should().BeFalse();
 
+        var updatePostJson = """
+        {
+            "content": "Updated run",
+            "image_storage_keys": ["posts/owner_updated.jpg"],
+            "tags": ["running", "workout_exp"],
+            "is_knowledge": true
+        }
+        """;
+        var updatePost = JsonSerializer.Deserialize<UpdatePostBody>(updatePostJson);
+        updatePost.Should().NotBeNull();
+        updatePost!.ImageStorageKeys.Should().Equal("posts/owner_updated.jpg");
+        updatePost.Tags.Should().Equal("running", "workout_exp");
+        updatePost.IsKnowledge.Should().BeTrue();
+
         var sendFriendJson = """{ "to_user_id": "11111111-1111-1111-1111-111111111111" }""";
         var sendFriend = JsonSerializer.Deserialize<SendFriendRequestBody>(sendFriendJson);
         sendFriend.Should().NotBeNull();
@@ -230,7 +245,8 @@ public class SocialContractTests
             "comments_count",
             "created_at",
             "saved_by_viewer",
-            "reacted_by_viewer"
+            "reacted_by_viewer",
+            "image_storage_keys"
         };
         postSchema.Properties.Keys.Should().BeEquivalentTo(expectedPostProperties);
 

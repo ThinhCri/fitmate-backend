@@ -75,7 +75,8 @@ public class SocialController : ControllerBase
 
     [HttpPatch("posts/{id:guid}")]
     public async Task<IActionResult> UpdatePost(Guid id, [FromBody] UpdatePostBody body, CancellationToken ct)
-        => Ok(await _svc.UpdatePostContentAsync(GetUserId(), id, body.Content, ct));
+        => Ok(await _svc.UpdatePostAsync(GetUserId(), id,
+            new UpdatePostInput(body.Content, body.ImageStorageKeys ?? [], body.Tags ?? [], body.IsKnowledge ?? false), ct));
 
     [HttpPatch("posts/{id:guid}/visibility")]
     public async Task<IActionResult> UpdateVisibility(Guid id, [FromBody] UpdatePostVisibilityBody body, CancellationToken ct)
@@ -193,7 +194,10 @@ public sealed record UpdatePostVisibilityBody(
     [property: JsonPropertyName("visibility")] string Visibility);
 
 public sealed record UpdatePostBody(
-    [property: JsonPropertyName("content")] string Content);
+    [property: JsonPropertyName("content")] string Content,
+    [property: JsonPropertyName("image_storage_keys")] List<string>? ImageStorageKeys,
+    [property: JsonPropertyName("tags")] List<string>? Tags,
+    [property: JsonPropertyName("is_knowledge")] bool? IsKnowledge);
 
 public sealed record ReactionBody(
     [property: JsonPropertyName("type")] string Type);

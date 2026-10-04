@@ -70,6 +70,14 @@ public sealed class LocalStorageService : IStorageService
         return new Uri(fullPath);
     }
 
+    public Task DeleteAsync(string relativePath, CancellationToken ct = default)
+    {
+        ct.ThrowIfCancellationRequested();
+        var fullPath = GetFullPath(relativePath);
+        if (File.Exists(fullPath)) File.Delete(fullPath);
+        return Task.CompletedTask;
+    }
+
     private string GetFullPath(string relativePath)
     {
         // Normalise to forward-slash so the split is reliable on Windows.

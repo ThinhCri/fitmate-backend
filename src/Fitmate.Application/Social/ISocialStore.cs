@@ -13,7 +13,7 @@ public interface ISocialStore
     Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct);
     Task AddPostAsync(SocialPostRow row, CancellationToken ct);
     Task<SocialPostRow?> UpdatePostVisibilityAsync(Guid postId, PostVisibility visibility, CancellationToken ct);
-    Task<SocialPostRow?> UpdatePostContentAsync(Guid postId, string content, CancellationToken ct);
+    Task<SocialPostRow?> UpdatePostAsync(Guid postId, string content, IReadOnlyList<string> imageStorageKeys, IReadOnlyList<string> tags, bool isKnowledge, CancellationToken ct);
 
     Task<bool> RemovePostAsync(Guid postId, CancellationToken ct);
 

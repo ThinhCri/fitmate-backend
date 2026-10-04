@@ -38,6 +38,15 @@ public class Post : AuditableEntity
     public void IncrementComments(int delta) { CommentsCount = Math.Max(0, CommentsCount + delta); Touch(); }
     public void ChangeVisibility(PostVisibility visibility) { Visibility = visibility; Touch(); }
     public void UpdateContent(string content) { Content = content; Touch(); }
+    public void Update(string content, IReadOnlyList<string> imageStorageKeys, IReadOnlyList<string> tags, bool isKnowledge)
+    {
+        Content = content;
+        ImageStorageKeys = imageStorageKeys.ToList();
+        ImageStorageKey = ImageStorageKeys.FirstOrDefault();
+        Tags = tags.ToList();
+        IsKnowledge = isKnowledge;
+        Touch();
+    }
 
     public new void SoftDelete()
     {
