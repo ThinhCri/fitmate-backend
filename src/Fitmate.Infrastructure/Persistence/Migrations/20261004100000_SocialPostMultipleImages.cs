@@ -1,10 +1,13 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Fitmate.Infrastructure.Persistence.Migrations;
 
-public partial class SocialPostMultipleImages : Migration
+[DbContext(typeof(FitmateDbContext))]
+[Migration("20261004100000_SocialPostMultipleImages")]
+public sealed class SocialPostMultipleImages : Migration
 {
     protected override void Up(MigrationBuilder migrationBuilder)
     {
