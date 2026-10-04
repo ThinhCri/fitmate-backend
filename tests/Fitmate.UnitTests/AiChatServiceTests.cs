@@ -81,4 +81,19 @@ public class AiChatServiceTests
         await action.Should().ThrowAsync<NotFoundException>();
         thread.IsDeleted.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task Send_ChineseMessage_ReturnsLanguageNoticeWithoutCallingProvider()
+    {
+        var owner = Guid.NewGuid();
+        var thread = ChatThread.CreateAi(owner, "Language policy");
+        var store = new Store();
+        store.Threads[thread.Id] = thread;
+
+        var result = await new AiChatService(store, new Adapter())
+            .SendAsync(owner, thread.Id, "请给我一个训练计划", null, null, default);
+
+        result.Text.Should().Be("Hiện tại Fitmate AI chỉ hỗ trợ tiếng Việt và tiếng Anh. Please continue in Vietnamese or English.");
+        store.Messages.Should().HaveCount(2);
+    }
 }

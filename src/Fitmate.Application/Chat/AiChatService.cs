@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text;
 using Fitmate.Domain.Chat;
 using Fitmate.Domain.Common;
 
@@ -31,6 +32,8 @@ public interface IAiChatService
 
 public sealed class AiChatService : IAiChatService
 {
+    private const string UnsupportedLanguageReply =
+        "Hiện tại Fitmate AI chỉ hỗ trợ tiếng Việt và tiếng Anh. Please continue in Vietnamese or English.";
     private readonly IAiChatStore _store;
     private readonly IAiCompanionAdapter _adapter;
 
@@ -96,11 +99,13 @@ public sealed class AiChatService : IAiChatService
         var historyRows = await _store.ListMessagesAsync(threadId, 40, ct);
         var history = historyRows.Select(m => new CompanionChatMessageView(
             m.Sender == Fitmate.Domain.Chat.ChatMessageSender.Ai ? "model" : "user", m.Text, m.CreatedAt)).ToList();
-        var response = await _adapter.GenerateReplyAsync(
-            new CompanionChatRequest(userId, threadId, normalized, history, imageData, imageMimeType), ct);
+        var replyText = ContainsClearlyUnsupportedScript(normalized)
+            ? UnsupportedLanguageReply
+            : (await _adapter.GenerateReplyAsync(
+                new CompanionChatRequest(userId, threadId, normalized, history, imageData, imageMimeType), ct)).ReplyText;
 
         var userMessage = ChatMessage.CreateUser(threadId, userId, normalized);
-        var aiMessage = ChatMessage.CreateAi(threadId, response.ReplyText, null);
+        var aiMessage = ChatMessage.CreateAi(threadId, replyText, null);
         await _store.AddMessageAsync(userMessage, ct);
         await _store.AddMessageAsync(aiMessage, ct);
         thread.TouchLastMessage();
@@ -126,4 +131,21 @@ public sealed class AiChatService : IAiChatService
     private static ValidationException Invalid(string field, string message) => new(
         ErrorCodes.Validation.FieldInvalid, message,
         new Dictionary<string, string[]> { [field] = new[] { message } });
+
+    private static bool ContainsClearlyUnsupportedScript(string text)
+    {
+        foreach (var rune in text.EnumerateRunes())
+        {
+            var value = rune.Value;
+            if (value is >= 0x0400 and <= 0x052F || // Cyrillic
+                value is >= 0x0600 and <= 0x06FF || // Arabic
+                value is >= 0x0900 and <= 0x097F || // Devanagari
+                value is >= 0x0E00 and <= 0x0E7F || // Thai
+                value is >= 0x3040 and <= 0x30FF || // Hiragana/Katakana
+                value is >= 0x3400 and <= 0x9FFF || // CJK
+                value is >= 0xAC00 and <= 0xD7AF)   // Hangul
+                return true;
+        }
+        return false;
+    }
 }

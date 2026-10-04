@@ -27,7 +27,9 @@ public class GroqCompanionAdapterTests
 
         result.ReplyText.Should().Be("Xin chào từ Groq");
         result.Source.Should().Be("groq");
-        payload.Should().Contain("qwen/qwen3.8-27b").And.Contain("\"role\":\"user\"");
+        payload.Should().Contain("qwen/qwen3.8-27b")
+            .And.Contain("\"role\":\"user\"")
+            .And.Contain("Vietnamese and English are the only supported languages");
     }
 
     [Fact]
