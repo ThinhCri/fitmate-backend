@@ -44,6 +44,12 @@ public sealed class AiOptions
     public string Provider { get; set; } = "stub";
 
     /// <summary>
+    /// Provider for AI Companion chat: "stub", "gemini", or "openrouter".
+    /// Kept separate from Provider because nutrition inference uses its own runtime.
+    /// </summary>
+    public string CompanionProvider { get; set; } = "stub";
+
+    /// <summary>
     /// Optional external path or URI to the artifact/model file, configured outside the source tree.
     /// </summary>
     public string? ModelPath { get; set; }

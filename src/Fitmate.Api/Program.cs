@@ -307,6 +307,8 @@ builder.Services.Configure<Fitmate.Application.Ai.AiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName));
 builder.Services.Configure<Fitmate.Application.Ai.GeminiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName));
+builder.Services.Configure<Fitmate.Application.Ai.OpenRouterOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Ai.OpenRouterOptions.SectionName));
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
 var aiOptions = builder.Configuration
     .GetSection(Fitmate.Application.Ai.AiOptions.SectionName)
@@ -329,7 +331,18 @@ builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter, Fitmat
 var geminiOptions = builder.Configuration
     .GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName)
     .Get<Fitmate.Application.Ai.GeminiOptions>() ?? new Fitmate.Application.Ai.GeminiOptions();
-if (geminiOptions.Enabled)
+var openRouterOptions = builder.Configuration
+    .GetSection(Fitmate.Application.Ai.OpenRouterOptions.SectionName)
+    .Get<Fitmate.Application.Ai.OpenRouterOptions>() ?? new Fitmate.Application.Ai.OpenRouterOptions();
+if (string.Equals(aiOptions.CompanionProvider, "openrouter", StringComparison.OrdinalIgnoreCase) && openRouterOptions.Enabled)
+{
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.OpenRouterCompanionAdapter>(client =>
+        client.Timeout = TimeSpan.FromSeconds(openRouterOptions.TimeoutSeconds > 0 ? openRouterOptions.TimeoutSeconds : 60));
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter>(sp =>
+        sp.GetRequiredService<Fitmate.Infrastructure.Chat.OpenRouterCompanionAdapter>());
+}
+else if ((string.Equals(aiOptions.CompanionProvider, "gemini", StringComparison.OrdinalIgnoreCase) ||
+          string.Equals(aiOptions.CompanionProvider, "stub", StringComparison.OrdinalIgnoreCase)) && geminiOptions.Enabled)
 {
     builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>(client =>
         client.Timeout = TimeSpan.FromSeconds(geminiOptions.TimeoutSeconds > 0 ? geminiOptions.TimeoutSeconds : 60));
