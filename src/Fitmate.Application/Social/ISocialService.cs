@@ -45,7 +45,8 @@ public sealed record CommentView(
     [property: JsonPropertyName("author_id")] Guid AuthorId,
     [property: JsonPropertyName("author")] PostAuthor Author,
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("created_at")] DateTime CreatedAt);
+    [property: JsonPropertyName("created_at")] DateTime CreatedAt,
+    [property: JsonPropertyName("parent_comment_id")] Guid? ParentCommentId = null);
 
 public sealed record CommentPage(
     [property: JsonPropertyName("items")] IReadOnlyList<CommentView> Items,
@@ -65,8 +66,9 @@ public interface ISocialService
     Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct);
     Task<PostView> GetPostAsync(Guid viewerId, Guid postId, CancellationToken ct);
     Task<PostView> CreatePostAsync(Guid authorId, PostInput input, CancellationToken ct);
+    Task<PostView> UpdatePostVisibilityAsync(Guid actorId, Guid postId, PostVisibility visibility, CancellationToken ct);
     Task DeletePostAsync(Guid actorId, bool isAdmin, Guid postId, CancellationToken ct);
-    Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, CancellationToken ct);
+    Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, Guid? parentCommentId, CancellationToken ct);
     Task<CommentPage> ListCommentsAsync(Guid? viewerId, Guid postId, string? cursor, int limit, CancellationToken ct);
     Task ToggleReactionAsync(Guid userId, Guid postId, ReactionType type, CancellationToken ct);
 

@@ -64,6 +64,13 @@ public class SocialServiceTests
         public Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct) => GetPostByIdAsync(postId, ct);
 
         public Task AddPostAsync(SocialPostRow row, CancellationToken ct) { Posts.Add(row); return Task.CompletedTask; }
+        public Task<SocialPostRow?> UpdatePostVisibilityAsync(Guid postId, PostVisibility visibility, CancellationToken ct)
+        {
+            var index = Posts.FindIndex(x => x.Id == postId);
+            if (index < 0) return Task.FromResult<SocialPostRow?>(null);
+            Posts[index] = Posts[index] with { Visibility = visibility };
+            return Task.FromResult<SocialPostRow?>(Posts[index]);
+        }
         public Task<bool> RemovePostAsync(Guid postId, CancellationToken ct)
         {
             var p = Posts.FirstOrDefault(x => x.Id == postId);
@@ -314,6 +321,33 @@ public class SocialServiceTests
         store.Posts.Add(NewPost(author, PostVisibility.Public));
         await NewService(store, new InMemoryCertificateStore()).AddCommentAsync(author, store.Posts[0].Id, "nice", CancellationToken.None);
         store.Posts[0].CommentsCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AddComment_WithParent_PersistsThreadRelationship()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        var root = await NewService(store, new InMemoryCertificateStore())
+            .AddCommentAsync(author, store.Posts[0].Id, "root", null, CancellationToken.None);
+        var reply = await NewService(store, new InMemoryCertificateStore())
+            .AddCommentAsync(author, store.Posts[0].Id, "reply", root.Id, CancellationToken.None);
+        reply.ParentCommentId.Should().Be(root.Id);
+    }
+
+    [Fact]
+    public async Task UpdatePostVisibility_OwnerOnly()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Posts.Add(NewPost(author, PostVisibility.Public));
+        var service = NewService(store, new InMemoryCertificateStore());
+
+        var updated = await service.UpdatePostVisibilityAsync(author, store.Posts[0].Id, PostVisibility.Private, CancellationToken.None);
+        updated.Visibility.Should().Be("private");
+        var forbidden = () => service.UpdatePostVisibilityAsync(Guid.NewGuid(), store.Posts[0].Id, PostVisibility.Public, CancellationToken.None);
+        await forbidden.Should().ThrowAsync<ForbiddenException>();
     }
 
     [Fact]

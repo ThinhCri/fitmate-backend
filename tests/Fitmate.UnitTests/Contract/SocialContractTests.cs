@@ -82,6 +82,7 @@ public class SocialContractTests
             "id",
             "post_id",
             "author_id",
+            "parent_comment_id",
             "author",
             "text",
             "created_at"
@@ -233,7 +234,7 @@ public class SocialContractTests
 
         doc.Components.Schemas.Should().ContainKey("Comment");
         var commentSchema = doc.Components.Schemas["Comment"];
-        commentSchema.Properties.Keys.Should().BeEquivalentTo(new[] { "id", "post_id", "author_id", "author", "text", "created_at" });
+        commentSchema.Properties.Keys.Should().BeEquivalentTo(new[] { "id", "post_id", "author_id", "parent_comment_id", "author", "text", "created_at" });
 
         doc.Components.Schemas.Should().ContainKey("FriendRequest");
         var friendReqSchema = doc.Components.Schemas["FriendRequest"];

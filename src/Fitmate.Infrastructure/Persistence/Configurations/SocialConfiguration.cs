@@ -32,8 +32,10 @@ public class CommentConfiguration : IEntityTypeConfiguration<Comment>
         e.Property(x => x.Id).HasColumnName("id");
         e.Property(x => x.PostId).IsRequired();
         e.Property(x => x.AuthorId).IsRequired();
+        e.Property(x => x.ParentCommentId);
         e.Property(x => x.Text).HasMaxLength(2000).IsRequired();
         e.HasIndex(x => new { x.PostId, x.CreatedAt });
+        e.HasIndex(x => x.ParentCommentId);
     }
 }
 

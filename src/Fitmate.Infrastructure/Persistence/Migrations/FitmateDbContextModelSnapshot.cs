@@ -1372,6 +1372,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PostId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("ParentCommentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Text")
                         .IsRequired()
                         .HasMaxLength(2000)
@@ -1383,6 +1386,8 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("PostId", "CreatedAt");
+
+                    b.HasIndex("ParentCommentId");
 
                     b.ToTable("comments", (string)null);
                 });

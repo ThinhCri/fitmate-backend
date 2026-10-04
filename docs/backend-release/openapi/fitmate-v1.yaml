@@ -2290,6 +2290,10 @@ paths:
                   type: string
                   minLength: 1
                   maxLength: 1000
+                parent_comment_id:
+                  type: string
+                  format: uuid
+                  nullable: true
       responses:
         '201':
           description: Created
@@ -2297,6 +2301,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Comment'
+
+  /social/posts/{id}/visibility:
+    patch:
+      tags: [Social]
+      summary: Đổi quyền xem bài viết của chính mình
+      operationId: updatePostVisibility
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [visibility]
+              properties:
+                visibility:
+                  type: string
+                  enum: [public, friends, private]
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '403':
+          description: Chỉ chủ bài viết được thay đổi quyền xem
 
   /social/posts/{id}/reactions:
     post:
@@ -6285,6 +6317,10 @@ components:
         author_id:
           type: string
           format: uuid
+        parent_comment_id:
+          type: string
+          format: uuid
+          nullable: true
         author:
           $ref: '#/components/schemas/PostAuthor'
         text:

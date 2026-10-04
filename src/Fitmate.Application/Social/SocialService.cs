@@ -155,7 +155,22 @@ public class SocialService : ISocialService
         await _store.RemovePostAsync(postId, ct);
     }
 
-    public async Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, CancellationToken ct)
+    public async Task<PostView> UpdatePostVisibilityAsync(Guid actorId, Guid postId, PostVisibility visibility, CancellationToken ct)
+    {
+        EnsureAuthenticated(actorId);
+        var existing = await _store.GetPostByIdAsync(postId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        if (existing.AuthorId != actorId)
+            throw new ForbiddenException(ErrorCodes.Social.PostDeleteForbidden, "Only the post owner can change visibility.");
+        var updated = await _store.UpdatePostVisibilityAsync(postId, visibility, ct)
+            ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, $"Post '{postId}' not found.");
+        return ToView(updated, await _store.GetAuthorAsync(updated.AuthorId, ct));
+    }
+
+    public Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, CancellationToken ct)
+        => AddCommentAsync(authorId, postId, text, null, ct);
+
+    public async Task<CommentView> AddCommentAsync(Guid authorId, Guid postId, string text, Guid? parentCommentId, CancellationToken ct)
     {
         EnsureAuthenticated(authorId);
 
@@ -170,17 +185,29 @@ public class SocialService : ISocialService
         if (await _blockStore.IsBlockedEitherWayAsync(authorId, post.AuthorId, ct))
             throw new ForbiddenException(ErrorCodes.Social.RecipientBlocked, "Cannot comment on post of a blocked user.");
 
+        if (parentCommentId.HasValue)
+        {
+            var parent = await _store.GetCommentAsync(parentCommentId.Value, ct)
+                ?? throw new NotFoundException(ErrorCodes.Social.PostNotFound, "Không tìm thấy bình luận được trả lời.");
+            if (parent.PostId != postId)
+                throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Bình luận trả lời không thuộc bài viết này.",
+                    new Dictionary<string, string[]> { ["parent_comment_id"] = new[] { "must belong to the same post" } });
+            // Instagram-style thread is one visual level: replies to a reply stay under the root comment.
+            parentCommentId = parent.ParentCommentId ?? parent.Id;
+        }
+
         var row = new SocialCommentRow(
             Id: Guid.NewGuid(),
             PostId: postId,
             AuthorId: authorId,
             Text: text.Trim(),
-            CreatedAt: DateTime.UtcNow);
+            CreatedAt: DateTime.UtcNow,
+            ParentCommentId: parentCommentId);
         await _store.AddCommentAsync(row, ct);
         await _store.ChangePostCommentsAsync(postId, +1, ct);
 
         var author = await _store.GetAuthorAsync(authorId, ct) ?? new SocialAuthorRow(authorId, "Unknown", null);
-        return new CommentView(row.Id, row.PostId, row.AuthorId, new PostAuthor(author.Id, author.DisplayName, author.AvatarUrl), row.Text, row.CreatedAt);
+        return new CommentView(row.Id, row.PostId, row.AuthorId, new PostAuthor(author.Id, author.DisplayName, author.AvatarUrl), row.Text, row.CreatedAt, row.ParentCommentId);
     }
 
     public async Task<CommentPage> ListCommentsAsync(Guid? viewerId, Guid postId, string? cursor, int limit, CancellationToken ct)
@@ -207,7 +234,7 @@ public class SocialService : ISocialService
         foreach (var r in rows)
         {
             var author = await _store.GetAuthorAsync(r.AuthorId, ct);
-            views.Add(new CommentView(r.Id, r.PostId, r.AuthorId, new PostAuthor(author?.Id ?? r.AuthorId, author?.DisplayName ?? "Unknown", author?.AvatarUrl), r.Text, r.CreatedAt));
+            views.Add(new CommentView(r.Id, r.PostId, r.AuthorId, new PostAuthor(author?.Id ?? r.AuthorId, author?.DisplayName ?? "Unknown", author?.AvatarUrl), r.Text, r.CreatedAt, r.ParentCommentId));
         }
 
         return new CommentPage(views, next);

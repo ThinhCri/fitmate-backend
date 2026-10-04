@@ -12,6 +12,7 @@ public interface ISocialStore
     Task<SocialPostRow?> GetPostByIdAsync(Guid postId, CancellationToken ct);
     Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct);
     Task AddPostAsync(SocialPostRow row, CancellationToken ct);
+    Task<SocialPostRow?> UpdatePostVisibilityAsync(Guid postId, PostVisibility visibility, CancellationToken ct);
 
     Task<bool> RemovePostAsync(Guid postId, CancellationToken ct);
 
@@ -62,7 +63,8 @@ public sealed record SocialCommentRow(
     Guid PostId,
     Guid AuthorId,
     string Text,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    Guid? ParentCommentId = null);
 
 public sealed record SocialReactionRow(
     Guid Id,

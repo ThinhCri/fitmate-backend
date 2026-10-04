@@ -73,6 +73,10 @@ public class SocialController : ControllerBase
         return NoContent();
     }
 
+    [HttpPatch("posts/{id:guid}/visibility")]
+    public async Task<IActionResult> UpdateVisibility(Guid id, [FromBody] UpdatePostVisibilityBody body, CancellationToken ct)
+        => Ok(await _svc.UpdatePostVisibilityAsync(GetUserId(), id, ParseVisibility(body.Visibility), ct));
+
     [HttpGet("posts/{id:guid}/comments")]
     public async Task<IActionResult> ListComments(
         Guid id,
@@ -89,7 +93,7 @@ public class SocialController : ControllerBase
     public async Task<IActionResult> AddComment(Guid id, [FromBody] CreateCommentBody body, CancellationToken ct)
     {
         var authorId = GetUserId();
-        var c = await _svc.AddCommentAsync(authorId, id, body.Text, ct);
+        var c = await _svc.AddCommentAsync(authorId, id, body.Text, body.ParentCommentId, ct);
         return Created($"/api/v1/social/posts/{id}/comments/{c.Id}", c);
     }
 
@@ -171,7 +175,11 @@ public sealed record PostInputDto(
     [property: JsonPropertyName("is_knowledge")] bool? IsKnowledge);
 
 public sealed record CreateCommentBody(
-    [property: JsonPropertyName("text")] string Text);
+    [property: JsonPropertyName("text")] string Text,
+    [property: JsonPropertyName("parent_comment_id")] Guid? ParentCommentId);
+
+public sealed record UpdatePostVisibilityBody(
+    [property: JsonPropertyName("visibility")] string Visibility);
 
 public sealed record ReactionBody(
     [property: JsonPropertyName("type")] string Type);

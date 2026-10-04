@@ -126,6 +126,7 @@ public class ModerationServiceTests
         public Task<SocialPostRow?> GetPostByIdAsync(Guid postId, CancellationToken ct) => Task.FromResult<SocialPostRow?>(Posts.GetValueOrDefault(postId));
         public Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct) => GetPostByIdAsync(postId, ct);
         public Task AddPostAsync(SocialPostRow row, CancellationToken ct) { Posts[row.Id] = row; return Task.CompletedTask; }
+        public Task<SocialPostRow?> UpdatePostVisibilityAsync(Guid postId, PostVisibility visibility, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> RemovePostAsync(Guid postId, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> PostExistsAsync(Guid postId, CancellationToken ct) => Task.FromResult(Posts.ContainsKey(postId));
         public Task AddCommentAsync(SocialCommentRow row, CancellationToken ct) => throw new NotImplementedException();

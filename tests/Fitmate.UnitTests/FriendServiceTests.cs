@@ -115,6 +115,7 @@ public class FriendServiceTests
         public Task<SocialPostRow?> GetPostByIdAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
         public Task<SocialPostRow?> GetPostWithAuthorAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
         public Task AddPostAsync(SocialPostRow r, CancellationToken ct) => throw new NotImplementedException();
+        public Task<SocialPostRow?> UpdatePostVisibilityAsync(Guid postId, PostVisibility visibility, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> RemovePostAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
         public Task<bool> PostExistsAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
         public Task AddCommentAsync(SocialCommentRow r, CancellationToken ct) => throw new NotImplementedException();

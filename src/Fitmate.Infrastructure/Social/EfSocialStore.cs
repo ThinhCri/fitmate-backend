@@ -119,6 +119,15 @@ public class EfSocialStore : ISocialStore
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<SocialPostRow?> UpdatePostVisibilityAsync(Guid postId, PostVisibility visibility, CancellationToken ct)
+    {
+        var post = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId && x.DeletedAt == null, ct);
+        if (post is null) return null;
+        post.ChangeVisibility(visibility);
+        await _db.SaveChangesAsync(ct);
+        return ToRow(post);
+    }
+
     public async Task<bool> RemovePostAsync(Guid postId, CancellationToken ct)
     {
         var p = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId, ct);
@@ -133,7 +142,8 @@ public class EfSocialStore : ISocialStore
 
     public async Task AddCommentAsync(SocialCommentRow row, CancellationToken ct)
     {
-        _db.Comments.Add(Comment.Create(row.PostId, row.AuthorId, row.Text));
+        _db.Comments.Add(Comment.Create(row.PostId, row.AuthorId, row.Text,
+            row.ParentCommentId, row.Id, row.CreatedAt));
         await _db.SaveChangesAsync(ct);
     }
 
@@ -154,7 +164,7 @@ public class EfSocialStore : ISocialStore
                               .Take(limit)
                               .ToListAsync(ct);
 
-        var rows = entities.Select(c => new SocialCommentRow(c.Id, c.PostId, c.AuthorId, c.Text, c.CreatedAt)).ToList();
+        var rows = entities.Select(c => new SocialCommentRow(c.Id, c.PostId, c.AuthorId, c.Text, c.CreatedAt, c.ParentCommentId)).ToList();
 
         string? next = null;
         if (rows.Count == limit)
@@ -213,7 +223,7 @@ public class EfSocialStore : ISocialStore
     public async Task<SocialCommentRow?> GetCommentAsync(Guid commentId, CancellationToken ct)
     {
         var c = await _db.Comments.FirstOrDefaultAsync(x => x.Id == commentId && x.DeletedAt == null, ct);
-        return c is null ? null : new SocialCommentRow(c.Id, c.PostId, c.AuthorId, c.Text, c.CreatedAt);
+        return c is null ? null : new SocialCommentRow(c.Id, c.PostId, c.AuthorId, c.Text, c.CreatedAt, c.ParentCommentId);
     }
 
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
