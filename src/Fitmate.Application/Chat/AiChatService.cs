@@ -23,6 +23,8 @@ public interface IAiChatService
 {
     Task<IReadOnlyList<AiThreadView>> ListThreadsAsync(Guid userId, CancellationToken ct);
     Task<AiThreadView> CreateThreadAsync(Guid userId, string? title, CancellationToken ct);
+    Task<AiThreadView> RenameThreadAsync(Guid userId, Guid threadId, string title, CancellationToken ct);
+    Task DeleteThreadAsync(Guid userId, Guid threadId, CancellationToken ct);
     Task<IReadOnlyList<AiMessageView>> ListMessagesAsync(Guid userId, Guid threadId, int limit, CancellationToken ct);
     Task<AiMessageView> SendAsync(Guid userId, Guid threadId, string text, byte[]? imageData, string? imageMimeType, CancellationToken ct);
 }
@@ -51,6 +53,28 @@ public sealed class AiChatService : IAiChatService
         await _store.AddThreadAsync(thread, ct);
         await _store.SaveChangesAsync(ct);
         return MapThread(thread, 0);
+    }
+
+    public async Task<AiThreadView> RenameThreadAsync(
+        Guid userId, Guid threadId, string title, CancellationToken ct)
+    {
+        var normalized = title?.Trim() ?? string.Empty;
+        if (normalized.Length is < 1 or > 200)
+            throw Invalid("title", "Tiêu đề phải có độ dài từ 1 đến 200 ký tự.");
+
+        var thread = await RequireOwnedThread(userId, threadId, ct);
+        thread.Rename(normalized);
+        await _store.SaveChangesAsync(ct);
+        var messages = await _store.ListMessagesAsync(threadId, 100, ct);
+        return MapThread(thread, messages.Count);
+    }
+
+    public async Task DeleteThreadAsync(Guid userId, Guid threadId, CancellationToken ct)
+    {
+        var thread = await RequireOwnedThread(userId, threadId, ct);
+        await _store.RemoveMessagesAsync(threadId, ct);
+        thread.SoftDelete();
+        await _store.SaveChangesAsync(ct);
     }
 
     public async Task<IReadOnlyList<AiMessageView>> ListMessagesAsync(

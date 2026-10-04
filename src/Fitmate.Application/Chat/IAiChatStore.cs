@@ -9,6 +9,7 @@ public interface IAiChatStore
     Task AddThreadAsync(ChatThread thread, CancellationToken ct);
     Task<IReadOnlyList<ChatMessage>> ListMessagesAsync(Guid threadId, int limit, CancellationToken ct);
     Task AddMessageAsync(ChatMessage message, CancellationToken ct);
+    Task RemoveMessagesAsync(Guid threadId, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }
 

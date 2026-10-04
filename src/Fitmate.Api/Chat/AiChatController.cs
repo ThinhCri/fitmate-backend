@@ -26,6 +26,17 @@ public sealed class AiChatController : ControllerBase
         return Created($"/api/v1/chat/ai/threads/{created.Id}", created);
     }
 
+    [HttpPatch("threads/{id:guid}")]
+    public async Task<IActionResult> RenameThread(Guid id, [FromBody] RenameAiThreadBody body, CancellationToken ct) =>
+        Ok(await _service.RenameThreadAsync(UserId(), id, body.Title, ct));
+
+    [HttpDelete("threads/{id:guid}")]
+    public async Task<IActionResult> DeleteThread(Guid id, CancellationToken ct)
+    {
+        await _service.DeleteThreadAsync(UserId(), id, ct);
+        return NoContent();
+    }
+
     [HttpGet("threads/{id:guid}/messages")]
     public async Task<IActionResult> ListMessages(Guid id, [FromQuery] int limit = 30, CancellationToken ct = default) =>
         Ok(new { items = await _service.ListMessagesAsync(UserId(), id, limit, ct), nextCursor = (string?)null });
@@ -62,6 +73,7 @@ public sealed class AiChatController : ControllerBase
 }
 
 public sealed record CreateAiThreadBody([property: JsonPropertyName("title")] string? Title);
+public sealed record RenameAiThreadBody([property: JsonPropertyName("title")] string Title);
 public sealed record SendAiMessageBody(
     [property: JsonPropertyName("thread_id")] Guid ThreadId,
     [property: JsonPropertyName("text")] string Text);

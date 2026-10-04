@@ -39,5 +39,11 @@ public sealed class EfAiChatStore : IAiChatStore
     public async Task AddMessageAsync(ChatMessage message, CancellationToken ct) =>
         await _db.ChatMessages.AddAsync(message, ct);
 
+    public async Task RemoveMessagesAsync(Guid threadId, CancellationToken ct)
+    {
+        var messages = await _db.ChatMessages.Where(x => x.ThreadId == threadId).ToListAsync(ct);
+        _db.ChatMessages.RemoveRange(messages);
+    }
+
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
 }

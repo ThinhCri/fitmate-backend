@@ -2627,6 +2627,46 @@ paths:
                     type: string
                     nullable: true
 
+  /chat/ai/threads/{id}:
+    patch:
+      tags: [Chat]
+      summary: Đổi tên cuộc trò chuyện AI của người dùng hiện tại
+      operationId: renameAiThread
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatThread'
+        '404':
+          description: Thread không tồn tại hoặc không thuộc người dùng
+    delete:
+      tags: [Chat]
+      summary: Xóa cuộc trò chuyện AI và toàn bộ tin nhắn của người dùng hiện tại
+      operationId: deleteAiThread
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          description: Thread không tồn tại hoặc không thuộc người dùng
+
   /chat/ai/messages:
     post:
       tags: [Chat]
