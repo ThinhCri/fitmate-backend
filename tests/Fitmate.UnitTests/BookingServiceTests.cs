@@ -243,7 +243,8 @@ public class BookingServiceTests
         var apptStore = new InMemoryAppointmentStore();
         var outbox = new CapturingOutbox();
         var member = Guid.NewGuid();
-        var appt = Appointment.CreateHold(member, Guid.NewGuid(), Guid.NewGuid(), DateTime.UtcNow, DateTime.UtcNow, 60, 100_000);
+        var slot = DateTime.UtcNow.AddDays(2);
+        var appt = Appointment.CreateHold(member, Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
         apptStore.Items[appt.Id] = appt;
 
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
@@ -252,6 +253,23 @@ public class BookingServiceTests
         cancelled.Status.Should().Be(AppointmentStatus.Cancelled);
         cancelled.Note.Should().Be("Bận đột xuất");
         outbox.Messages.Should().Contain(m => m.Type == "booking.cancelled");
+    }
+
+    [Fact]
+    public async Task Cancel_ByMemberWithin24Hours_IsRejected()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var member = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddHours(23);
+        var appt = Appointment.CreateHold(member, Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        apptStore.Items[appt.Id] = appt;
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+
+        var act = () => svc.CancelAsync(member, appt.Id, "Bận việc đột xuất", CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>()
+            .Where(e => e.Code == ErrorCodes.Booking.CannotTransition);
+        appt.Status.Should().Be(AppointmentStatus.Held);
     }
 
     [Fact]
@@ -268,7 +286,7 @@ public class BookingServiceTests
     }
 
     [Fact]
-    public async Task Complete_HappyPath_MarksCompleted_AndOutbox()
+    public async Task Complete_HappyPath_AwaitsMemberConfirmation_AndOutbox()
     {
         var apptStore = new InMemoryAppointmentStore();
         var outbox = new CapturingOutbox();
@@ -282,8 +300,8 @@ public class BookingServiceTests
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
         var done = await svc.CompleteAsync(pt, appt.Id, CancellationToken.None);
 
-        done.Status.Should().Be(AppointmentStatus.Completed);
-        outbox.Messages.Should().Contain(m => m.Type == "booking.completed");
+        done.Status.Should().Be(AppointmentStatus.AwaitingMemberConfirmation);
+        outbox.Messages.Should().Contain(m => m.Type == "booking.completion_submitted");
     }
 
     [Fact]
@@ -487,7 +505,7 @@ public class BookingServiceTests
     }
 
     [Fact]
-    public async Task Complete_FromInProgress_HappyPath_MarksCompleted()
+    public async Task Complete_FromInProgress_HappyPath_AwaitsMemberConfirmation()
     {
         var apptStore = new InMemoryAppointmentStore();
         var outbox = new CapturingOutbox();
@@ -501,8 +519,8 @@ public class BookingServiceTests
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), outbox);
         var done = await svc.CompleteAsync(pt, appt.Id, CancellationToken.None);
 
-        done.Status.Should().Be(AppointmentStatus.Completed);
-        outbox.Messages.Should().Contain(m => m.Type == "booking.completed");
+        done.Status.Should().Be(AppointmentStatus.AwaitingMemberConfirmation);
+        outbox.Messages.Should().Contain(m => m.Type == "booking.completion_submitted");
     }
 
     [Fact]

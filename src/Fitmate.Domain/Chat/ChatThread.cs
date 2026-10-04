@@ -25,4 +25,10 @@ public class ChatThread : AuditableEntity
         LastMessageAt = DateTime.UtcNow;
         Touch();
     }
+
+    public void Rename(string title)
+    {
+        Title = title;
+        Touch();
+    }
 }

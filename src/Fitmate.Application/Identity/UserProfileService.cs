@@ -1,15 +1,23 @@
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
+using Fitmate.Application.Storage;
 
 namespace Fitmate.Application.Identity;
 
 public class UserProfileService : IUserProfileService
 {
     private readonly IUserProfileStore _store;
+    private readonly ISignedUrlService? _signedUrl;
 
     public UserProfileService(IUserProfileStore store)
     {
         _store = store;
+    }
+
+    public UserProfileService(IUserProfileStore store, ISignedUrlService signedUrl)
+    {
+        _store = store;
+        _signedUrl = signedUrl;
     }
 
     public async Task<UserProfileDto> GetMyProfileAsync(Guid userId, CancellationToken ct)
@@ -80,6 +88,37 @@ public class UserProfileService : IUserProfileService
         return MapToDto(user, profile, role);
     }
 
+    public async Task<UserProfileDto> AttachAvatarAsync(Guid userId, AttachAvatarRequest request, CancellationToken ct)
+    {
+        var expectedPrefix = $"avatars/{userId:N}_";
+        var storageKey = request.StorageKey?.Trim().Replace('\\', '/');
+        if (string.IsNullOrWhiteSpace(storageKey) ||
+            storageKey.Contains("..", StringComparison.Ordinal) ||
+            !storageKey.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid,
+                "Avatar storage key is invalid or does not belong to this account.",
+                new Dictionary<string, string[]> { ["storage_key"] = new[] { "Upload the avatar with category 'avatars' using this account first." } });
+        }
+
+        var user = await _store.FindUserByIdAsync(userId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {userId} not found.");
+        user.AvatarStorageKey = storageKey;
+        user.AvatarUrl = null;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _store.SaveChangesAsync(ct);
+
+        var profile = await _store.FindProfileByUserIdAsync(userId, ct);
+        if (profile is null)
+        {
+            profile = UserProfile.Create(userId);
+            await _store.AddProfileAsync(profile, ct);
+            await _store.SaveChangesAsync(ct);
+        }
+        var role = await _store.GetPrimaryRoleAsync(userId, ct) ?? "member";
+        return MapToDto(user, profile, role);
+    }
+
     public async Task<PublicUserProfileDto> GetPublicProfileAsync(Guid targetUserId, CancellationToken ct)
     {
         var user = await _store.FindUserByIdAsync(targetUserId, ct);
@@ -92,7 +131,7 @@ public class UserProfileService : IUserProfileService
         return new PublicUserProfileDto(
             Id: user.Id,
             FullName: user.FullName,
-            AvatarUrl: user.AvatarUrl,
+            AvatarUrl: ResolveAvatarUrl(user),
             Role: role.ToLowerInvariant(),
             FitnessGoal: profile?.FitnessGoal,
             CreatedAtUtc: user.CreatedAt);
@@ -109,7 +148,7 @@ public class UserProfileService : IUserProfileService
         return results.Select(r => new PublicUserProfileDto(
             Id: r.User.Id,
             FullName: r.User.FullName,
-            AvatarUrl: r.User.AvatarUrl,
+            AvatarUrl: ResolveAvatarUrl(r.User),
             Role: r.Role.ToLowerInvariant(),
             FitnessGoal: r.Profile?.FitnessGoal,
             CreatedAtUtc: r.User.CreatedAt)).ToList();
@@ -146,13 +185,13 @@ public class UserProfileService : IUserProfileService
                 new Dictionary<string, string[]> { ["avatar_url"] = new[] { "Avatar URL must not exceed 500 characters." } });
     }
 
-    private static UserProfileDto MapToDto(ApplicationUser user, UserProfile profile, string role)
+    private UserProfileDto MapToDto(ApplicationUser user, UserProfile profile, string role)
     {
         return new UserProfileDto(
             Id: user.Id,
             Email: user.Email ?? "",
             FullName: user.FullName,
-            AvatarUrl: user.AvatarUrl,
+            AvatarUrl: ResolveAvatarUrl(user),
             Phone: profile.Phone,
             Gender: profile.Gender?.ToString().ToLowerInvariant(),
             Birthday: profile.Birthday,
@@ -167,6 +206,13 @@ public class UserProfileService : IUserProfileService
             Bio: profile.Bio,
             PreferredTimeSlots: profile.PreferredTimeSlots ?? new List<string>(),
             HealthNotes: profile.HealthNotes);
+    }
+
+    private string? ResolveAvatarUrl(ApplicationUser user)
+    {
+        if (!string.IsNullOrWhiteSpace(user.AvatarStorageKey) && _signedUrl is not null)
+            return _signedUrl.CreatePresignedReadUrl(user.AvatarStorageKey, TimeSpan.FromMinutes(15)).ToString();
+        return user.AvatarUrl;
     }
 }
 

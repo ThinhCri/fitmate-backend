@@ -39,6 +39,15 @@ public class UsersController : ControllerBase
         return Ok(updated);
     }
 
+    [HttpPut("me/avatar")]
+    [Authorize]
+    public async Task<IActionResult> AttachAvatar([FromBody] AttachAvatarRequest request, CancellationToken ct)
+    {
+        var userId = ResolveUserId();
+        if (userId is null) return Unauthorized();
+        return Ok(await _profileService.AttachAvatarAsync(userId.Value, request, ct));
+    }
+
     [HttpGet("{id:guid}/profile")]
     [Authorize]
     public async Task<IActionResult> GetPublicProfile([FromRoute] Guid id, CancellationToken ct)

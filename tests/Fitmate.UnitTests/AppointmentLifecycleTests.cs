@@ -25,7 +25,7 @@ public class AppointmentLifecycleTests
         appt.PriceListedVnd.Should().Be(200_000);
         appt.DurationMinutes.Should().Be(60);
         appt.HoldExpiresAtUtc.Should().NotBeNull();
-        appt.HoldExpiresAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(5), TimeSpan.FromSeconds(5));
+        appt.HoldExpiresAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(10), TimeSpan.FromSeconds(5));
         appt.CompletedAtUtc.Should().BeNull();
         appt.LegacyCompletionTimeUnknown.Should().BeFalse();
     }
@@ -124,7 +124,7 @@ public class AppointmentLifecycleTests
     }
 
     [Fact]
-    public void CompleteByPt_Transitions_InProgress_To_Completed_When_Slot_Has_Ended()
+    public void CompleteByPt_Transitions_To_AwaitingMemberConfirmation_When_Slot_Has_Ended()
     {
         var slot = DateTime.UtcNow.AddMinutes(-70); // 60 min session ended 10 min ago
         var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
@@ -134,8 +134,10 @@ public class AppointmentLifecycleTests
         var completedTime = DateTime.UtcNow;
         appt.CompleteByPt(completedTime);
 
-        appt.Status.Should().Be(AppointmentStatus.Completed);
-        appt.CompletedAtUtc.Should().Be(completedTime);
+        appt.Status.Should().Be(AppointmentStatus.AwaitingMemberConfirmation);
+        appt.CompletedAtUtc.Should().BeNull();
+        appt.CompletionSubmittedAtUtc.Should().Be(completedTime);
+        appt.MemberConfirmationDeadlineUtc.Should().Be(completedTime.AddHours(24));
         appt.LegacyCompletionTimeUnknown.Should().BeFalse();
     }
 
@@ -176,6 +178,37 @@ public class AppointmentLifecycleTests
         var act = () => appt.Cancel("Try cancel completed");
         act.Should().Throw<ConflictException>()
             .Where(e => e.Code == ErrorCodes.Booking.CannotTransition);
+    }
+
+    [Fact]
+    public void MemberConfirmation_Completes_AwaitingBooking()
+    {
+        var slot = DateTime.UtcNow.AddMinutes(-70);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.InProgress);
+        appt.CompleteByPt();
+
+        appt.ConfirmCompletionByMember();
+
+        appt.Status.Should().Be(AppointmentStatus.Completed);
+        appt.CompletedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void MemberDispute_BlocksCompletion()
+    {
+        var slot = DateTime.UtcNow.AddMinutes(-70);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.InProgress);
+        appt.CompleteByPt();
+
+        appt.DisputeCompletion("PT kết thúc buổi tập nhưng không tham gia.");
+
+        appt.Status.Should().Be(AppointmentStatus.Disputed);
+        appt.DisputedAtUtc.Should().NotBeNull();
+        appt.CompletedAtUtc.Should().BeNull();
     }
 
     [Theory]

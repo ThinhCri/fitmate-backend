@@ -129,6 +129,15 @@ public class EfAppointmentStore : IAppointmentStore
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<Appointment>> GetAwaitingConfirmationPastDeadlineAsync(DateTime nowUtc, int limit, CancellationToken ct)
+        => await _db.Appointments
+            .Where(a => a.Status == AppointmentStatus.AwaitingMemberConfirmation &&
+                        a.MemberConfirmationDeadlineUtc != null &&
+                        a.MemberConfirmationDeadlineUtc <= nowUtc)
+            .OrderBy(a => a.MemberConfirmationDeadlineUtc)
+            .Take(limit)
+            .ToListAsync(ct);
+
     public async Task AddAsync(Appointment appointment, CancellationToken ct)
         => await _db.Appointments.AddAsync(appointment, ct);
 

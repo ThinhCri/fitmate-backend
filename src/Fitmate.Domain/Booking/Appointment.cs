@@ -21,6 +21,9 @@ public class Appointment : AuditableEntity
     public DateTime? ConfirmedAtUtc { get; private set; }
     public DateTime? StartedAtUtc { get; private set; }
     public DateTime? CancelledAtUtc { get; private set; }
+    public DateTime? CompletionSubmittedAtUtc { get; private set; }
+    public DateTime? MemberConfirmationDeadlineUtc { get; private set; }
+    public DateTime? DisputedAtUtc { get; private set; }
     public int RescheduledCount { get; private set; }
     public long PriceListedVnd { get; private set; }
     public long DiscountVnd { get; private set; }
@@ -38,7 +41,7 @@ public class Appointment : AuditableEntity
         DateTime slotStartUtc, DateTime slotStartLocal, int durationMinutes,
         long priceListedVnd, TimeSpan? holdTtl = null)
     {
-        var ttl = holdTtl ?? TimeSpan.FromMinutes(5);
+        var ttl = holdTtl ?? TimeSpan.FromMinutes(10);
         return new Appointment
         {
             Id = Guid.NewGuid(),
@@ -104,9 +107,44 @@ public class Appointment : AuditableEntity
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot complete booking in status {Status}.");
         if (DateTime.UtcNow < SlotStartUtc.AddMinutes(DurationMinutes))
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, "Cannot complete appointment before slot end.");
+        var submittedAt = completedAtUtc ?? DateTime.UtcNow;
+        Status = AppointmentStatus.AwaitingMemberConfirmation;
+        CompletionSubmittedAtUtc = submittedAt;
+        MemberConfirmationDeadlineUtc = submittedAt.AddHours(24);
+        Touch();
+    }
+
+    public void ConfirmCompletionByMember(DateTime? confirmedAtUtc = null)
+    {
+        if (Status != AppointmentStatus.AwaitingMemberConfirmation)
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot confirm completion in status {Status}.");
         Status = AppointmentStatus.Completed;
-        CompletedAtUtc = completedAtUtc ?? DateTime.UtcNow;
+        CompletedAtUtc = confirmedAtUtc ?? DateTime.UtcNow;
         LegacyCompletionTimeUnknown = false;
+        Touch();
+    }
+
+    public void AutoConfirmCompletion(DateTime nowUtc)
+    {
+        if (Status != AppointmentStatus.AwaitingMemberConfirmation ||
+            !MemberConfirmationDeadlineUtc.HasValue ||
+            MemberConfirmationDeadlineUtc.Value > nowUtc)
+            return;
+        ConfirmCompletionByMember(nowUtc);
+    }
+
+    public void DisputeCompletion(string reason, DateTime? disputedAtUtc = null)
+    {
+        if (Status != AppointmentStatus.AwaitingMemberConfirmation)
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot dispute completion in status {Status}.");
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 5)
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "Dispute reason must have at least 5 characters.",
+                new Dictionary<string, string[]> { ["reason"] = new[] { "min 5 chars" } });
+        Status = AppointmentStatus.Disputed;
+        DisputedAtUtc = disputedAtUtc ?? DateTime.UtcNow;
+        Note = reason.Trim();
         Touch();
     }
 

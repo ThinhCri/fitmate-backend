@@ -72,3 +72,6 @@ tests/load/results/*.json
 node_modules/
 package.json
 package-lock.json
+
+# ===== Local AI artifacts (large/unreviewed; keep outside Git) =====
+/AI/

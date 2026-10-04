@@ -38,6 +38,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using System.Threading.RateLimiting;
 
+Fitmate.Api.DotEnvLoader.Load();
+
 // CLI dispatch: neu co args[0] = seed-admin (hoac tuong lai create-user, etc.) thi chay command roi thoat.
 // Khong khoi dong web host -> nhanh, it footprint.
 // args[0] co the la flag cua dotnet/ef tool (--applicationName, --project, --verbosity, ...)
@@ -274,6 +276,8 @@ builder.Services.AddScoped<IBlockService, Fitmate.Application.Social.BlockServic
 // BE-191: friend chat (5 endpoints, friend scope only — AI chat is out of scope).
 builder.Services.AddScoped<IChatStore, Fitmate.Infrastructure.Persistence.Chat.EfChatStore>();
 builder.Services.AddScoped<IChatService, Fitmate.Application.Chat.ChatService>();
+builder.Services.AddScoped<IAiChatStore, Fitmate.Infrastructure.Persistence.Chat.EfAiChatStore>();
+builder.Services.AddScoped<IAiChatService, Fitmate.Application.Chat.AiChatService>();
 
 // BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();
@@ -301,22 +305,54 @@ builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightSer
 // BE-170 & BE-817: AI capability adapters & options. Disabled by default awaiting .pt handoff.
 builder.Services.Configure<Fitmate.Application.Ai.AiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName));
+builder.Services.Configure<Fitmate.Application.Ai.GeminiOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName));
+builder.Services.Configure<Fitmate.Application.Ai.GroqOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Ai.GroqOptions.SectionName));
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
-
-var aiOptions = builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName).Get<Fitmate.Application.Ai.AiOptions>();
-if (aiOptions != null && aiOptions.Enabled && aiOptions.Provider == "python_service")
+var aiOptions = builder.Configuration
+    .GetSection(Fitmate.Application.Ai.AiOptions.SectionName)
+    .Get<Fitmate.Application.Ai.AiOptions>() ?? new Fitmate.Application.Ai.AiOptions();
+if (string.Equals(aiOptions.Provider, "python_service", StringComparison.OrdinalIgnoreCase))
 {
-    builder.Services.AddHttpClient<IAiNutritionAdapter, Fitmate.Application.Nutrition.HttpAiNutritionAdapter>(client =>
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Nutrition.PythonAiNutritionAdapter>((sp, client) =>
     {
-        client.Timeout = TimeSpan.FromSeconds(aiOptions.TimeoutSeconds > 0 ? aiOptions.TimeoutSeconds : 300);
+        var options = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<Fitmate.Application.Ai.AiOptions>>().Value;
+        client.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds > 0 ? options.TimeoutSeconds : 30);
     });
+    builder.Services.AddScoped<IAiNutritionAdapter>(sp =>
+        sp.GetRequiredService<Fitmate.Infrastructure.Nutrition.PythonAiNutritionAdapter>());
 }
 else
 {
-    builder.Services.AddScoped<IAiNutritionAdapter, Fitmate.Application.Nutrition.AiNutritionStubAdapter>();
+    builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
 }
 builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter, Fitmate.Application.Workout.AiWorkoutStubAdapter>();
-builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.AiCompanionStubAdapter>();
+var geminiOptions = builder.Configuration
+    .GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName)
+    .Get<Fitmate.Application.Ai.GeminiOptions>() ?? new Fitmate.Application.Ai.GeminiOptions();
+var groqOptions = builder.Configuration
+    .GetSection(Fitmate.Application.Ai.GroqOptions.SectionName)
+    .Get<Fitmate.Application.Ai.GroqOptions>() ?? new Fitmate.Application.Ai.GroqOptions();
+if (string.Equals(aiOptions.CompanionProvider, "groq", StringComparison.OrdinalIgnoreCase) && groqOptions.Enabled)
+{
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GroqCompanionAdapter>(client =>
+        client.Timeout = TimeSpan.FromSeconds(groqOptions.TimeoutSeconds > 0 ? groqOptions.TimeoutSeconds : 60));
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter>(sp =>
+        sp.GetRequiredService<Fitmate.Infrastructure.Chat.GroqCompanionAdapter>());
+}
+else if ((string.Equals(aiOptions.CompanionProvider, "gemini", StringComparison.OrdinalIgnoreCase) ||
+          string.Equals(aiOptions.CompanionProvider, "stub", StringComparison.OrdinalIgnoreCase)) && geminiOptions.Enabled)
+{
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>(client =>
+        client.Timeout = TimeSpan.FromSeconds(geminiOptions.TimeoutSeconds > 0 ? geminiOptions.TimeoutSeconds : 60));
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter>(sp =>
+        sp.GetRequiredService<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>());
+}
+else
+{
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.AiCompanionStubAdapter>();
+}
 builder.Services.AddScoped<INutritionService, NutritionService>();
 // BE-813: dashboard daily progress summary.
 builder.Services.AddScoped<Fitmate.Application.Dashboard.IDashboardStore, Fitmate.Infrastructure.Dashboard.EfDashboardStore>();
@@ -388,11 +424,51 @@ builder.Services.AddHostedService<Fitmate.Infrastructure.Booking.BookingExpirati
 // Outbox handler for `notification.push_requested`.
 builder.Services.AddScoped<IOutboxHandler, Fitmate.Application.Notifications.Handlers.NotificationPushHandler>();
 
-// BE-420: Storage adapter (local volume + HMAC presigned URL).
-builder.Services.Configure<Fitmate.Application.Storage.StorageOptions>(
-    builder.Configuration.GetSection(Fitmate.Application.Storage.StorageOptions.SectionName));
-builder.Services.AddSingleton<Fitmate.Application.Storage.IStorageService, Fitmate.Infrastructure.Storage.LocalStorageService>();
-builder.Services.AddSingleton<Fitmate.Application.Storage.ISignedUrlService, Fitmate.Infrastructure.Storage.HmacSignedUrlService>();
+// BE-816: local storage for development, Cloudflare R2 for durable environments.
+var storageBackend = (builder.Configuration["STORAGE_BACKEND"]
+    ?? builder.Configuration["Storage:Backend"]
+    ?? "local").Trim().ToLowerInvariant();
+builder.Services.Configure<Fitmate.Application.Storage.StorageOptions>(options =>
+{
+    builder.Configuration.GetSection(Fitmate.Application.Storage.StorageOptions.SectionName).Bind(options);
+    options.Backend = storageBackend;
+    options.BasePath = builder.Configuration["STORAGE_LOCAL_PATH"] ?? options.BasePath;
+    options.BaseUrl = builder.Configuration["STORAGE_PUBLIC_BASE_URL"] ?? options.BaseUrl;
+    options.R2AccountId = builder.Configuration["R2_ACCOUNT_ID"] ?? options.R2AccountId;
+    options.R2AccessKeyId = builder.Configuration["R2_ACCESS_KEY_ID"] ?? options.R2AccessKeyId;
+    options.R2SecretAccessKey = builder.Configuration["R2_SECRET_ACCESS_KEY"] ?? options.R2SecretAccessKey;
+    options.R2BucketName = builder.Configuration["R2_BUCKET_NAME"] ?? options.R2BucketName;
+});
+
+if (storageBackend == "r2")
+{
+    var accountId = builder.Configuration["R2_ACCOUNT_ID"] ?? builder.Configuration["Storage:R2AccountId"];
+    var accessKeyId = builder.Configuration["R2_ACCESS_KEY_ID"] ?? builder.Configuration["Storage:R2AccessKeyId"];
+    var secretAccessKey = builder.Configuration["R2_SECRET_ACCESS_KEY"] ?? builder.Configuration["Storage:R2SecretAccessKey"];
+    var bucketName = builder.Configuration["R2_BUCKET_NAME"] ?? builder.Configuration["Storage:R2BucketName"];
+    if (new[] { accountId, accessKeyId, secretAccessKey, bucketName }.Any(string.IsNullOrWhiteSpace))
+        throw new InvalidOperationException("R2 storage requires R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET_NAME.");
+
+    builder.Services.AddSingleton<Amazon.S3.IAmazonS3>(_ => new Amazon.S3.AmazonS3Client(
+        new Amazon.Runtime.BasicAWSCredentials(accessKeyId, secretAccessKey),
+        new Amazon.S3.AmazonS3Config
+        {
+            ServiceURL = $"https://{accountId}.r2.cloudflarestorage.com",
+            ForcePathStyle = true,
+            AuthenticationRegion = "auto"
+        }));
+    builder.Services.AddSingleton<Fitmate.Application.Storage.IStorageService, Fitmate.Infrastructure.Storage.R2StorageService>();
+    builder.Services.AddSingleton<Fitmate.Application.Storage.ISignedUrlService, Fitmate.Infrastructure.Storage.R2SignedUrlService>();
+}
+else if (storageBackend == "local")
+{
+    builder.Services.AddSingleton<Fitmate.Application.Storage.IStorageService, Fitmate.Infrastructure.Storage.LocalStorageService>();
+    builder.Services.AddSingleton<Fitmate.Application.Storage.ISignedUrlService, Fitmate.Infrastructure.Storage.HmacSignedUrlService>();
+}
+else
+{
+    throw new InvalidOperationException("STORAGE_BACKEND must be 'local' or 'r2'.");
+}
 
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.
@@ -800,24 +876,27 @@ app.UseMiddleware<IdempotencyMiddleware>();
 
 // BE-420: HMAC-signed-URL middleware (gates /uploads/*). Must be BEFORE UseStaticFiles so
 // invalid/expired URLs short-circuit before the file system is touched.
-app.UseMiddleware<Fitmate.Api.Storage.SignedUrlMiddleware>();
-// Static files served from StorageOptions.BasePath. The request path segment is derived
-// from StorageOptions.BaseUrl (the part after the last '/').
-var storageBasePath = Path.GetFullPath(builder.Configuration["Storage:BasePath"] ?? "./uploads");
-Directory.CreateDirectory(storageBasePath);
-var storageBaseUrl = (builder.Configuration["Storage:BaseUrl"] ?? "http://localhost:5116/uploads").TrimEnd('/');
-var storageRequestPath = storageBaseUrl[(storageBaseUrl.LastIndexOf('/') + 1)..];
-var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
-contentTypeProvider.Mappings[".jpg"] = "image/jpeg";
-contentTypeProvider.Mappings[".png"] = "image/png";
-contentTypeProvider.Mappings[".webp"] = "image/webp";
-app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+if (storageBackend == "local")
 {
-    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(storageBasePath),
-    RequestPath = "/" + storageRequestPath,
-    ServeUnknownFileTypes = false,
-    ContentTypeProvider = contentTypeProvider
-});
+    app.UseMiddleware<Fitmate.Api.Storage.SignedUrlMiddleware>();
+    var storageBasePath = Path.GetFullPath(builder.Configuration["STORAGE_LOCAL_PATH"]
+        ?? builder.Configuration["Storage:BasePath"] ?? "./uploads");
+    Directory.CreateDirectory(storageBasePath);
+    var storageBaseUrl = (builder.Configuration["STORAGE_PUBLIC_BASE_URL"]
+        ?? builder.Configuration["Storage:BaseUrl"] ?? "http://localhost:5116/uploads").TrimEnd('/');
+    var storageRequestPath = storageBaseUrl[(storageBaseUrl.LastIndexOf('/') + 1)..];
+    var contentTypeProvider = new Microsoft.AspNetCore.StaticFiles.FileExtensionContentTypeProvider();
+    contentTypeProvider.Mappings[".jpg"] = "image/jpeg";
+    contentTypeProvider.Mappings[".png"] = "image/png";
+    contentTypeProvider.Mappings[".webp"] = "image/webp";
+    app.UseStaticFiles(new Microsoft.AspNetCore.Builder.StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(storageBasePath),
+        RequestPath = "/" + storageRequestPath,
+        ServeUnknownFileTypes = false,
+        ContentTypeProvider = contentTypeProvider
+    });
+}
 
 static string TitleForStatus(int status) => status switch
 {

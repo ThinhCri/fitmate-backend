@@ -44,7 +44,7 @@ public class BookingService : IBookingService
         _services = services;
         _outbox = outbox;
         _authz = authz;
-        _holdTtl = holdTtl ?? TimeSpan.FromMinutes(5); // domain-rules.md §3.6
+        _holdTtl = holdTtl ?? TimeSpan.FromMinutes(10);
         _ledger = ledger;
         _payments = payments;
     }
@@ -98,6 +98,11 @@ public class BookingService : IBookingService
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
         if (appt.MemberId != actorUserId && appt.PtUserId != actorUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner or PT.");
+
+        if (appt.MemberId == actorUserId && DateTime.UtcNow > appt.SlotStartUtc.AddHours(-24))
+            throw new ConflictException(
+                ErrorCodes.Booking.CannotTransition,
+                "Bạn chỉ có thể tự hủy lịch trước giờ bắt đầu ít nhất 24 giờ. Vui lòng liên hệ hỗ trợ nếu có tình huống khẩn cấp.");
 
         return await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
         {
@@ -178,23 +183,55 @@ public class BookingService : IBookingService
         {
             appt.CompleteByPt();
             await _appointments.SaveChangesAsync(ct);
-
-            if (_ledger != null && appt.ActualPaidVnd > 0 && !await _ledger.HasEntriesForAppointmentAsync(appt.Id, ct))
-            {
-                var completedAt = appt.CompletedAtUtc ?? DateTime.UtcNow;
-                var entries = new[]
-                {
-                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, appt.ActualPaidVnd, completedAt, ptUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}"),
-                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.PlatformCommission, appt.PlatformFeeVnd, completedAt, ptUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}"),
-                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayable, appt.TrainerShareVnd, completedAt, ptUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}")
-                };
-                await _ledger.AddEntriesAsync(entries, ct);
-                await _ledger.SaveChangesAsync(ct);
-            }
-
-            _outbox.Enqueue("booking.completed", new { appointmentId, ptUserId, memberId = appt.MemberId });
+            _outbox.Enqueue("booking.completion_submitted", new { appointmentId, ptUserId, memberId = appt.MemberId, deadlineUtc = appt.MemberConfirmationDeadlineUtc });
             return appt;
         }, ct);
+    }
+
+    public async Task<Appointment> ConfirmCompletionAsync(Guid memberId, Guid appointmentId, CancellationToken ct)
+    {
+        var appt = await _appointments.FindByIdAsync(appointmentId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
+        if (appt.MemberId != memberId)
+            throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Only the booking member can confirm completion.");
+
+        return await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+        {
+            appt.ConfirmCompletionByMember();
+            await RecordCompletionLedgerAsync(appt, ct);
+            await _appointments.SaveChangesAsync(ct);
+            _outbox.Enqueue("booking.completed", new { appointmentId, ptUserId = appt.PtUserId, memberId });
+            return appt;
+        }, ct);
+    }
+
+    public async Task<Appointment> DisputeCompletionAsync(Guid memberId, Guid appointmentId, string reason, CancellationToken ct)
+    {
+        var appt = await _appointments.FindByIdAsync(appointmentId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment {appointmentId} not found.");
+        if (appt.MemberId != memberId)
+            throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Only the booking member can report a completion issue.");
+        return await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+        {
+            appt.DisputeCompletion(reason);
+            await _appointments.SaveChangesAsync(ct);
+            _outbox.Enqueue("booking.disputed", new { appointmentId, ptUserId = appt.PtUserId, memberId, reason = reason.Trim() });
+            return appt;
+        }, ct);
+    }
+
+    private async Task RecordCompletionLedgerAsync(Appointment appt, CancellationToken ct)
+    {
+        if (_ledger == null || appt.ActualPaidVnd <= 0 || await _ledger.HasEntriesForAppointmentAsync(appt.Id, ct)) return;
+        var completedAt = appt.CompletedAtUtc ?? DateTime.UtcNow;
+        var entries = new[]
+        {
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, appt.ActualPaidVnd, completedAt, appt.PtUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.PlatformCommission, appt.PlatformFeeVnd, completedAt, appt.PtUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayable, appt.TrainerShareVnd, completedAt, appt.PtUserId.ToString(), appointmentId: appt.Id, paymentId: appt.PaymentId, sourceEventId: $"booking.completed:{appt.Id}")
+        };
+        await _ledger.AddEntriesAsync(entries, ct);
+        await _ledger.SaveChangesAsync(ct);
     }
 
 
@@ -244,6 +281,26 @@ public class BookingService : IBookingService
                 {
                     _outbox.Enqueue("finance.refund_required", new { appointmentId = appt.Id, paymentId = appt.PaymentId.Value, amountVnd = appt.ActualPaidVnd, reason = "PT acceptance deadline expired" });
                 }
+                return true;
+            }, ct);
+            count++;
+        }
+
+        var awaitingConfirmation = await _appointments.GetAwaitingConfirmationPastDeadlineAsync(nowUtc, 50, ct);
+        foreach (var appt in awaitingConfirmation)
+        {
+            await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
+            {
+                appt.AutoConfirmCompletion(nowUtc);
+                await RecordCompletionLedgerAsync(appt, ct);
+                await _appointments.SaveChangesAsync(ct);
+                _outbox.Enqueue("booking.completed", new
+                {
+                    appointmentId = appt.Id,
+                    memberId = appt.MemberId,
+                    ptUserId = appt.PtUserId,
+                    confirmationSource = "deadline"
+                });
                 return true;
             }, ct);
             count++;

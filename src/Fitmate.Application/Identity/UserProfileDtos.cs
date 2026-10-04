@@ -22,6 +22,9 @@ public sealed record UserProfileDto(
     [property: JsonPropertyName("preferred_time_slots")] List<string>? PreferredTimeSlots = null,
     [property: JsonPropertyName("health_notes")] string? HealthNotes = null);
 
+public sealed record AttachAvatarRequest(
+    [property: JsonPropertyName("storage_key")] string StorageKey);
+
 public sealed record UserProfileUpdateRequest(
     [property: JsonPropertyName("full_name")] string? FullName,
     [property: JsonPropertyName("avatar_url")] string? AvatarUrl,

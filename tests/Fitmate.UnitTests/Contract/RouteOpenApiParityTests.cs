@@ -60,19 +60,9 @@ public class RouteOpenApiParityTests
     /// Operations declared in OpenAPI but NOT implemented at runtime because
     /// the capability is not yet available. Each entry documents:
     /// operation, reason, task ID, removal condition, expected capability state.
-    /// STRICT RULE: ONLY AI operations pending implementation are permitted.
+    /// Keep empty once every published capability has a runtime endpoint.
     /// </summary>
-    private static readonly CapabilityAllowlistEntry[] CapabilityNotImplementedAllowlist =
-    {
-        new("GET /api/v1/chat/ai/threads", "AI companion not implemented", "BE-817",
-            "Remove when AI adapter is integrated and verified", "disabled"),
-        new("POST /api/v1/chat/ai/threads", "AI companion not implemented", "BE-817",
-            "Remove when AI adapter is integrated and verified", "disabled"),
-        new("GET /api/v1/chat/ai/threads/{id}/messages", "AI companion not implemented", "BE-817",
-            "Remove when AI adapter is integrated and verified", "disabled"),
-        new("POST /api/v1/chat/ai/messages", "AI companion not implemented", "BE-817",
-            "Remove when AI adapter is integrated and verified", "disabled"),
-    };
+    private static readonly CapabilityAllowlistEntry[] CapabilityNotImplementedAllowlist = [];
 
     // ═══════════════════════════════════════════════════════════════════════
     // 0. OpenAPI Document Strict Validation (Diagnostic, Duplicate Keys, Refs)

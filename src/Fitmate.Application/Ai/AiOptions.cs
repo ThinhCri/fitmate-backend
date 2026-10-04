@@ -44,8 +44,26 @@ public sealed class AiOptions
     public string Provider { get; set; } = "stub";
 
     /// <summary>
+    /// Provider for AI Companion chat: "stub", "gemini", or "groq".
+    /// Kept separate from Provider because nutrition inference uses its own runtime.
+    /// </summary>
+    public string CompanionProvider { get; set; } = "stub";
+
+    /// <summary>
     /// Optional external path or URI to the artifact/model file, configured outside the source tree.
     /// </summary>
     public string? ModelPath { get; set; }
+
+    /// <summary>
+    /// Base URL of the separately deployed inference service when Provider is
+    /// "python_service". Keep this value outside source control.
+    /// </summary>
+    public string? BaseUrl { get; set; }
+
+    /// <summary>
+    /// Shared bearer token used only for backend-to-inference authentication.
+    /// It must never be exposed to the mobile or admin clients.
+    /// </summary>
+    public string? InternalToken { get; set; }
 }
 

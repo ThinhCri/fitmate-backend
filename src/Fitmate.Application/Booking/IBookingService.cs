@@ -8,11 +8,11 @@ namespace Fitmate.Application.Booking;
 /// </summary>
 public interface IBookingService
 {
-    /// <summary>Member tạo hold cho 1 slot. TTL 5 phút (domain-rules.md §3.6).</summary>
+    /// <summary>Member tạo hold cho 1 slot. TTL 10 phút.</summary>
     Task<(BookingHold Hold, Appointment Appointment)> CreateHoldAsync(
         Guid memberId, Guid ptUserId, Guid serviceId, DateTime slotStartUtc, CancellationToken ct);
 
-    /// <summary>Member/PT cancel. Reason bắt buộc ≥ 5 chars.</summary>
+    /// <summary>Member/PT cancel. Reason bắt buộc ≥ 5 chars; member chỉ tự hủy trước giờ bắt đầu ít nhất 24 giờ.</summary>
     Task<Appointment> CancelAsync(Guid actorUserId, Guid appointmentId, string reason, CancellationToken ct);
 
     /// <summary>PT confirm/accept booking (Pending → Confirmed). Domain-rules.md §3.2.</summary>
@@ -21,8 +21,11 @@ public interface IBookingService
     /// <summary>PT start session (Confirmed → InProgress). Domain-rules.md §3.2.</summary>
     Task<Appointment> StartAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
 
-    /// <summary>PT complete booking (InProgress → Completed). Domain-rules.md §3.2.</summary>
+    /// <summary>PT gửi kết quả buổi tập (InProgress → AwaitingMemberConfirmation). Domain-rules.md §3.2.</summary>
     Task<Appointment> CompleteAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
+
+    Task<Appointment> ConfirmCompletionAsync(Guid memberId, Guid appointmentId, CancellationToken ct);
+    Task<Appointment> DisputeCompletionAsync(Guid memberId, Guid appointmentId, string reason, CancellationToken ct);
 
     /// <summary>List booking của member (phân trang).</summary>
     Task<(IReadOnlyList<Appointment> Items, int Total)> ListByMemberAsync(Guid memberId, AppointmentStatus? status, int page, int pageSize, CancellationToken ct);
@@ -36,6 +39,6 @@ public interface IBookingService
     /// <summary>Lookup appointment theo id (cho internal use).</summary>
     Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct);
 
-    /// <summary>Sweep and expire old holds (>5m) and pending appointments whose acceptance deadline has passed.</summary>
+    /// <summary>Expire hold/pending quá hạn và tự xác nhận kết quả sau 24 giờ không tranh chấp.</summary>
     Task<int> ExpireOldHoldsAndPendingAsync(DateTime nowUtc, CancellationToken ct);
 }

@@ -23,7 +23,7 @@ public class BookingsController : ControllerBase
         _booking = booking;
     }
 
-    /// <summary>Member giữ chỗ (TTL 5 phút).</summary>
+    /// <summary>Member giữ chỗ (TTL 10 phút).</summary>
     [HttpPost("bookings/holds")]
     public async Task<IActionResult> CreateHold(
         [FromServices] ICurrentUserAccessor current,
@@ -101,6 +101,23 @@ public class BookingsController : ControllerBase
         CancellationToken ct)
     {
         var appt = await _booking.CompleteAsync(current.GetUserIdOrThrow(), id, ct);
+        return Ok(AppointmentResponse.FromDomain(appt));
+    }
+
+    [HttpPost("me/bookings/{id:guid}/confirm-completion")]
+    public async Task<ActionResult<AppointmentResponse>> ConfirmCompletion(
+        [FromServices] ICurrentUserAccessor current, Guid id, CancellationToken ct)
+    {
+        var appt = await _booking.ConfirmCompletionAsync(current.GetUserIdOrThrow(), id, ct);
+        return Ok(AppointmentResponse.FromDomain(appt));
+    }
+
+    [HttpPost("me/bookings/{id:guid}/dispute")]
+    public async Task<ActionResult<AppointmentResponse>> DisputeCompletion(
+        [FromServices] ICurrentUserAccessor current, Guid id,
+        [FromBody] BookingDisputeRequest body, CancellationToken ct)
+    {
+        var appt = await _booking.DisputeCompletionAsync(current.GetUserIdOrThrow(), id, body.Reason, ct);
         return Ok(AppointmentResponse.FromDomain(appt));
     }
 
@@ -282,6 +299,7 @@ public sealed record BookingHoldStatusResponse(
     [property: JsonPropertyName("is_active")] bool IsActive
 );
 public sealed record CancelBookingRequest([property: JsonPropertyName("reason")] string Reason);
+public sealed record BookingDisputeRequest([property: JsonPropertyName("reason")] string Reason);
 public sealed record CreateRescheduleRequestBody(
     [property: JsonPropertyName("new_slot_start_utc")] DateTime NewSlotStartUtc,
     [property: JsonPropertyName("reason")] string Reason

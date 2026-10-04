@@ -120,7 +120,7 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 100000, null);
         payment.MarkPaid("test-completed-" + Guid.NewGuid());
         appt.AttachPayment(payment.Id, 100000, 0, .1m, 10000, 90000, "v1");
-        appt.ForceStatusForTesting(AppointmentStatus.Completed);
+        appt.ForceStatusForTesting(AppointmentStatus.Completed, DateTime.UtcNow.AddHours(-25));
         db.AddRange(appt, payment);
         await db.SaveChangesAsync();
         return (appt.Id, payment.Id);

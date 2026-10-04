@@ -30,7 +30,10 @@ public enum AppointmentStatus
     InProgress = 3,
     Completed = 4,
     Cancelled = 5,
-    Expired = 6
+    Expired = 6,
+    AwaitingMemberConfirmation = 7,
+    Disputed = 8,
+    NoShow = 9
 }
 
 public enum BookingStatus

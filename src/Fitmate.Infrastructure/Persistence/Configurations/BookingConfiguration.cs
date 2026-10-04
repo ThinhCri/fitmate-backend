@@ -30,6 +30,9 @@ public class AppointmentConfiguration : IEntityTypeConfiguration<Appointment>
         e.Property(x => x.ConfirmedAtUtc).HasColumnName("confirmed_at_utc");
         e.Property(x => x.StartedAtUtc).HasColumnName("started_at_utc");
         e.Property(x => x.CancelledAtUtc).HasColumnName("cancelled_at_utc");
+        e.Property(x => x.CompletionSubmittedAtUtc).HasColumnName("completion_submitted_at_utc");
+        e.Property(x => x.MemberConfirmationDeadlineUtc).HasColumnName("member_confirmation_deadline_utc");
+        e.Property(x => x.DisputedAtUtc).HasColumnName("disputed_at_utc");
         e.Property(x => x.RescheduledCount).HasColumnName("rescheduled_count");
         e.Property(x => x.PlatformFeeRate).HasColumnType("numeric(5,4)");
         e.HasIndex(x => new { x.PtUserId, x.SlotStartUtc });
@@ -96,4 +99,3 @@ public class BookingRescheduleRequestConfiguration : IEntityTypeConfiguration<Bo
             .HasFilter("status = 0");
     }
 }
-

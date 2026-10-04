@@ -44,12 +44,20 @@ services:
       DB_SSLMODE: ${DB_SSLMODE:-prefer}
       # Disable push by default in local so the smoke endpoint stack is simpler; toggle in .env for full E2E.
       FEATURE_PUSH_ENABLED: ${FEATURE_PUSH_ENABLED:-false}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_PATH: ${STORAGE_LOCAL_PATH:-/data/uploads}
+      STORAGE_PUBLIC_BASE_URL: ${STORAGE_PUBLIC_BASE_URL:-http://localhost:8080/uploads}
+      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
       # Persist DataProtection key ring across container recreates. See BE-300 plan rev 3 §3.6.
       - fitmate-dpkeys:/home/fitmate/.aspnet/DataProtection-Keys
+      - fitmate-uploads:/data/uploads
     ports:
       - "${API_PORT:-8080}:8080"
 
@@ -78,3 +86,4 @@ services:
 volumes:
   fitmate-postgres-data:
   fitmate-dpkeys:
+  fitmate-uploads:

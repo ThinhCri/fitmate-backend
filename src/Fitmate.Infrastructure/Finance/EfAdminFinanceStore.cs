@@ -34,6 +34,8 @@ public class EfAdminFinanceStore : IAdminFinanceStore
             .Where(a => a.ActualPaidVnd > 0 && (a.Status == AppointmentStatus.Pending
                      || a.Status == AppointmentStatus.Confirmed
                      || a.Status == AppointmentStatus.InProgress
+                     || a.Status == AppointmentStatus.AwaitingMemberConfirmation
+                     || a.Status == AppointmentStatus.Disputed
                      || a.Status == AppointmentStatus.Completed
                      || a.Status == AppointmentStatus.Cancelled))
             .Select(a => new
@@ -58,7 +60,9 @@ public class EfAdminFinanceStore : IAdminFinanceStore
             PlatformFeeVnd: a.PlatformFeeVnd,
             TrainerShareVnd: a.TrainerShareVnd,
             RefundedVnd: a.RefundedSoFar,
-            IsPaid: a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress,
+            IsPaid: a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed ||
+                a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.AwaitingMemberConfirmation ||
+                a.Status == AppointmentStatus.Disputed,
             IsCompleted: a.Status == AppointmentStatus.Completed,
             IsRefunded: a.RefundedSoFar > 0)).ToList();
     }
@@ -121,9 +125,9 @@ public class EfAdminFinanceStore : IAdminFinanceStore
                 e.OccurredAtUtc)).ToList();
         }
 
-        // Project 2 entries / Paid booking (platform_fee + trainer_share) và 1 entry / Refund succeeded.
+        // Legacy fallback: only a completed booking recognizes platform/trainer revenue.
         var bookings = await _db.Appointments
-            .Where(a => a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Cancelled)
+            .Where(a => a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Cancelled)
             .OrderBy(a => a.CreatedAt)
             .Select(a => new { a.Id, a.CreatedAt, a.PlatformFeeVnd, a.TrainerShareVnd, a.Status })
             .ToListAsync(ct);
@@ -138,7 +142,7 @@ public class EfAdminFinanceStore : IAdminFinanceStore
 
         if (type is null or LedgerEntryType.PlatformFee or LedgerEntryType.TrainerShare)
         {
-            foreach (var b in bookings.Where(x => x.Status == AppointmentStatus.Pending || x.Status == AppointmentStatus.Confirmed || x.Status == AppointmentStatus.InProgress || x.Status == AppointmentStatus.Completed))
+            foreach (var b in bookings.Where(x => x.Status == AppointmentStatus.Completed))
             {
                 if (type is null or LedgerEntryType.PlatformFee)
                     rows.Add(("platform_fee", b.PlatformFeeVnd, b.Id, b.Id, null, b.CreatedAt));
@@ -193,7 +197,7 @@ public class EfAdminFinanceStore : IAdminFinanceStore
     private async Task<int> CountLedgerInternalAsync(LedgerEntryType? type, CancellationToken ct)
     {
         int paidBookings = await _db.Appointments
-            .CountAsync(a => a.ActualPaidVnd > 0 && (a.Status == AppointmentStatus.Pending || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.InProgress || a.Status == AppointmentStatus.Completed), ct);
+            .CountAsync(a => a.ActualPaidVnd > 0 && a.Status == AppointmentStatus.Completed, ct);
         int succeededRefunds = await _db.Refunds.CountAsync(r => r.Status == RefundStatus.Succeeded, ct);
         int payouts = await _db.Set<ManualPtSettlement>().CountAsync(s => s.Status == "paid", ct);
 

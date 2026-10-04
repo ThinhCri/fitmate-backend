@@ -7,8 +7,9 @@ namespace Fitmate.Infrastructure.Booking;
 
 /// <summary>
 /// Background worker định kỳ quét và chuyển trạng thái Expired cho:
-/// 1. Held appointments quá hạn hold_expires_at_utc (5 phút)
-/// 2. Pending appointments quá hạn acceptance_deadline_utc (min(paid_at + 24h, slot_start))
+/// 1. Held appointments quá hạn hold_expires_at_utc (10 phút)
+/// 2. Legacy pending appointments quá hạn acceptance_deadline_utc
+/// 3. Completion submissions not disputed within 24 hours
 /// </summary>
 public class BookingExpirationBackgroundService : BackgroundService
 {

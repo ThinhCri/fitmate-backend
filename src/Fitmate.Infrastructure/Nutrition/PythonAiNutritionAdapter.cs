@@ -83,7 +83,6 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
 
             if (response.StatusCode == HttpStatusCode.BadGateway)
                 throw new AiInvalidOutputException();
-
             if (response.StatusCode == HttpStatusCode.UnprocessableEntity ||
                 response.StatusCode == HttpStatusCode.BadRequest)
             {
@@ -210,7 +209,6 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
 
         return number;
     }
-
     private static ValidationException InvalidFile(string message) => new(
         ErrorCodes.Validation.FieldInvalid,
         message,

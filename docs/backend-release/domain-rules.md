@@ -35,16 +35,16 @@ Client không PATCH status tùy ý; transition đi qua command có guard + audit
 
 | Chuyển | Actor/trigger | Guard và kết quả |
 |---|---|---|
-| none → Held | Member hoặc PT đặt PT khác | Dịch vụ active, PT verified, không self-book; atomic giữ interval; TTL 5 phút |
-| Held → Pending | Verified payment settlement | Payment đúng merchant/amount/currency/booking; hold còn hợp lệ; không cần app còn mở |
+| none → Held | Member hoặc PT đặt PT khác | Dịch vụ active, PT verified, không self-book; atomic giữ interval; TTL 10 phút |
+| Held → Confirmed | Verified payment settlement | Slot công khai là chấp thuận trước của PT; payment đúng merchant/amount/currency/booking; hold còn hợp lệ; không cần PT accept lại |
 | Held → Expired | Worker | TTL hết, chưa settlement hợp lệ; giải phóng slot |
-| Pending → Confirmed | PT của booking accept | Đã Paid, slot vẫn thuộc booking, chưa hết acceptance deadline |
-| Pending → Expired | Worker | PT chưa accept trước min(paid_at + 24h, slot_start); yêu cầu refund toàn bộ |
 | Confirmed → InProgress | PT explicit start | Paid; không trước slot_start - 5 phút; không auto-start chỉ vì đồng hồ |
-| InProgress → Completed | PT explicit complete | Sau slot_end; không dispute đang mở; client retry không nhân revenue |
+| InProgress → AwaitingMemberConfirmation | PT explicit complete | Sau slot_end; lưu thời điểm gửi hoàn tất và mở cửa sổ phản hồi 24 giờ |
+| AwaitingMemberConfirmation → Completed | Member confirm hoặc worker sau 24 giờ | Không có dispute; chỉ lúc này mới ghi nhận doanh thu |
+| AwaitingMemberConfirmation → Disputed | Member báo vấn đề trong 24 giờ | Chặn completion/payout và chuyển Admin xử lý ngoại lệ |
 | Held/Pending/Confirmed/InProgress → Cancelled | Participant hoặc Admin | Chưa Completed; lý do; tạo refund nếu đã Paid; audit |
 
-- Chỉ bán slot bắt đầu ít nhất 30 phút sau thời điểm tạo hold; 30 phút/24 giờ là mặc định sản phẩm mới, cấu hình versioned và công bố trước checkout.
+- Chỉ bán slot bắt đầu ít nhất 30 phút sau thời điểm tạo hold; hold 10 phút. Member chỉ được tự hủy khi còn ít nhất 24 giờ trước slot; sát hơn phải mở yêu cầu hỗ trợ. PT hủy tạo hoàn tiền toàn bộ và audit.
 - IPN và expiry cùng lúc serialize bằng transaction/lock; verify payment đến muộn không chiếm slot đã cấp cho người khác. Ghi tiền đã nhận và tạo case refund/đối soát, không báo booking confirmed.
 - Browser return chỉ là UX hint; client poll payment/booking. /bookings/confirm nếu giữ để tương thích phải idempotent, không tin client nói Paid.
 - Không giữ DB transaction trong lúc gọi payment provider. Outbox/provider attempt có recovery sau crash.

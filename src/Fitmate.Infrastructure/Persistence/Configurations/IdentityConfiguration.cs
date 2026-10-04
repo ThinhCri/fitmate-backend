@@ -17,6 +17,7 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         e.HasKey(x => x.Id);
         e.Property(x => x.FullName).HasMaxLength(120).IsRequired();
         e.Property(x => x.AvatarUrl).HasMaxLength(500);
+        e.Property(x => x.AvatarStorageKey).HasMaxLength(1024);
         e.Property(x => x.Status).HasConversion<int>();
         e.Property(x => x.Timezone).HasMaxLength(64).IsRequired();
         e.Property(x => x.LastActiveAt);
