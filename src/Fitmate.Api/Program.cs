@@ -307,8 +307,8 @@ builder.Services.Configure<Fitmate.Application.Ai.AiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName));
 builder.Services.Configure<Fitmate.Application.Ai.GeminiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName));
-builder.Services.Configure<Fitmate.Application.Ai.OpenRouterOptions>(
-    builder.Configuration.GetSection(Fitmate.Application.Ai.OpenRouterOptions.SectionName));
+builder.Services.Configure<Fitmate.Application.Ai.GroqOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Ai.GroqOptions.SectionName));
 builder.Services.AddScoped<INutritionStore, Fitmate.Infrastructure.Nutrition.EfNutritionStore>();
 var aiOptions = builder.Configuration
     .GetSection(Fitmate.Application.Ai.AiOptions.SectionName)
@@ -331,15 +331,15 @@ builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter, Fitmat
 var geminiOptions = builder.Configuration
     .GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName)
     .Get<Fitmate.Application.Ai.GeminiOptions>() ?? new Fitmate.Application.Ai.GeminiOptions();
-var openRouterOptions = builder.Configuration
-    .GetSection(Fitmate.Application.Ai.OpenRouterOptions.SectionName)
-    .Get<Fitmate.Application.Ai.OpenRouterOptions>() ?? new Fitmate.Application.Ai.OpenRouterOptions();
-if (string.Equals(aiOptions.CompanionProvider, "openrouter", StringComparison.OrdinalIgnoreCase) && openRouterOptions.Enabled)
+var groqOptions = builder.Configuration
+    .GetSection(Fitmate.Application.Ai.GroqOptions.SectionName)
+    .Get<Fitmate.Application.Ai.GroqOptions>() ?? new Fitmate.Application.Ai.GroqOptions();
+if (string.Equals(aiOptions.CompanionProvider, "groq", StringComparison.OrdinalIgnoreCase) && groqOptions.Enabled)
 {
-    builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.OpenRouterCompanionAdapter>(client =>
-        client.Timeout = TimeSpan.FromSeconds(openRouterOptions.TimeoutSeconds > 0 ? openRouterOptions.TimeoutSeconds : 60));
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GroqCompanionAdapter>(client =>
+        client.Timeout = TimeSpan.FromSeconds(groqOptions.TimeoutSeconds > 0 ? groqOptions.TimeoutSeconds : 60));
     builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter>(sp =>
-        sp.GetRequiredService<Fitmate.Infrastructure.Chat.OpenRouterCompanionAdapter>());
+        sp.GetRequiredService<Fitmate.Infrastructure.Chat.GroqCompanionAdapter>());
 }
 else if ((string.Equals(aiOptions.CompanionProvider, "gemini", StringComparison.OrdinalIgnoreCase) ||
           string.Equals(aiOptions.CompanionProvider, "stub", StringComparison.OrdinalIgnoreCase)) && geminiOptions.Enabled)

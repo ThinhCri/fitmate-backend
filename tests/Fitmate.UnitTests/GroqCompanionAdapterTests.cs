@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 
 namespace Fitmate.UnitTests;
 
-public class OpenRouterCompanionAdapterTests
+public class GroqCompanionAdapterTests
 {
     [Fact]
     public async Task GenerateReply_TextRequest_ReturnsAssistantContent()
@@ -18,15 +18,16 @@ public class OpenRouterCompanionAdapterTests
         var handler = new Handler(async request =>
         {
             payload = await request.Content!.ReadAsStringAsync();
+            request.RequestUri.Should().Be("https://api.groq.com/openai/v1/chat/completions");
             request.Headers.Authorization!.Scheme.Should().Be("Bearer");
-            return Json(HttpStatusCode.OK, """{"choices":[{"message":{"content":"Xin chào từ OpenRouter"}}]}""");
+            return Json(HttpStatusCode.OK, """{"choices":[{"message":{"content":"Xin chào từ Groq"}}]}""");
         });
 
         var result = await NewAdapter(handler).GenerateReplyAsync(Request(), default);
 
-        result.ReplyText.Should().Be("Xin chào từ OpenRouter");
-        result.Source.Should().Be("openrouter");
-        payload.Should().Contain("qwen/qwen3.8-27b:free").And.Contain("\"role\":\"user\"");
+        result.ReplyText.Should().Be("Xin chào từ Groq");
+        result.Source.Should().Be("groq");
+        payload.Should().Contain("qwen/qwen3.8-27b").And.Contain("\"role\":\"user\"");
     }
 
     [Fact]
@@ -36,7 +37,7 @@ public class OpenRouterCompanionAdapterTests
         var handler = new Handler(async request =>
         {
             payload = await request.Content!.ReadAsStringAsync();
-            return Json(HttpStatusCode.OK, """{"choices":[{"message":{"content":"Đã nhận ảnh"}}]}""");
+            return Json(HttpStatusCode.OK, """{"choices":[{"message":{"content":"Image received"}}]}""");
         });
 
         await NewAdapter(handler).GenerateReplyAsync(Request(new byte[] { 1, 2, 3 }, "image/jpeg"), default);
@@ -60,16 +61,16 @@ public class OpenRouterCompanionAdapterTests
         await action.Should().ThrowAsync<AiUnavailableException>();
     }
 
-    private static OpenRouterCompanionAdapter NewAdapter(HttpMessageHandler handler)
+    private static GroqCompanionAdapter NewAdapter(HttpMessageHandler handler)
     {
-        var openRouter = Options.Create(new OpenRouterOptions
+        var groq = Options.Create(new GroqOptions
         {
             Enabled = true,
             ApiKey = "test-key",
-            Model = "qwen/qwen3.8-27b:free"
+            Model = "qwen/qwen3.8-27b"
         });
         var ai = Options.Create(new AiOptions { Enabled = true, CompanionChatEnabled = true });
-        return new OpenRouterCompanionAdapter(new HttpClient(handler), openRouter, ai);
+        return new GroqCompanionAdapter(new HttpClient(handler), groq, ai);
     }
 
     private static CompanionChatRequest Request(byte[]? image = null, string? mimeType = null) =>

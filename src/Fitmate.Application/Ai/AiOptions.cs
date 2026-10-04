@@ -44,7 +44,7 @@ public sealed class AiOptions
     public string Provider { get; set; } = "stub";
 
     /// <summary>
-    /// Provider for AI Companion chat: "stub", "gemini", or "openrouter".
+    /// Provider for AI Companion chat: "stub", "gemini", or "groq".
     /// Kept separate from Provider because nutrition inference uses its own runtime.
     /// </summary>
     public string CompanionProvider { get; set; } = "stub";
