@@ -105,16 +105,24 @@ public class HttpAiNutritionAdapter : IAiNutritionAdapter
 
     private static NutritionScanResultView ReadResult(JsonElement root)
     {
+        var topLevelIngredients = ReadIngredients(root);
+
         if (root.TryGetProperty("items", out var itemsElement) &&
             itemsElement.ValueKind == JsonValueKind.Array)
         {
             var items = itemsElement.EnumerateArray()
-                .Select(item => new NutritionScanItemView(
-                    RequiredString(item, "name"),
-                    RoundedInt(item, "calories"),
-                    RoundedInt(item, "protein_g"),
-                    RoundedInt(item, "carbs_g"),
-                    RoundedInt(item, "fat_g")))
+                .Select(item =>
+                {
+                    var itemIngredients = ReadIngredients(item);
+                    var ingredients = itemIngredients.Count > 0 ? itemIngredients : topLevelIngredients;
+                    return new NutritionScanItemView(
+                        RequiredString(item, "name"),
+                        RoundedInt(item, "calories"),
+                        RoundedInt(item, "protein_g"),
+                        RoundedInt(item, "carbs_g"),
+                        RoundedInt(item, "fat_g"),
+                        ingredients.Count > 0 ? ingredients : null);
+                })
                 .ToList();
 
             return new NutritionScanResultView(
@@ -131,22 +139,8 @@ public class HttpAiNutritionAdapter : IAiNutritionAdapter
             throw new JsonException("AI response is missing items or ingredients.");
         }
 
-        var names = new List<string>();
-        foreach (var ingredient in ingredientsElement.EnumerateArray())
-        {
-            var name = ingredient.ValueKind == JsonValueKind.Object
-                ? OptionalString(ingredient, "name")
-                : ingredient.ValueKind == JsonValueKind.String
-                    ? ingredient.GetString()
-                    : null;
-
-            name = CleanName(name);
-            if (!string.IsNullOrWhiteSpace(name) &&
-                !names.Contains(name, StringComparer.OrdinalIgnoreCase))
-            {
-                names.Add(name);
-            }
-        }
+        var ingredients = ReadIngredients(root);
+        var names = ingredients.Select(ingredient => ingredient.Name).ToList();
 
         if (names.Count == 0)
             names.Add("Khong xac dinh");
@@ -166,12 +160,48 @@ public class HttpAiNutritionAdapter : IAiNutritionAdapter
                     calories,
                     protein,
                     carbs,
-                    fat)
+                    fat,
+                    ingredients.Count > 0 ? ingredients : null)
             },
             calories,
             unknown ? 0.2m : 0.9m,
             "ai_estimate",
             "Ket qua uoc tinh, vui long kiem tra truoc khi luu.");
+    }
+
+    private static IReadOnlyList<NutritionScanIngredientView> ReadIngredients(JsonElement element)
+    {
+        if (!element.TryGetProperty("ingredients", out var ingredientsElement) ||
+            ingredientsElement.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<NutritionScanIngredientView>();
+        }
+
+        var ingredients = new List<NutritionScanIngredientView>();
+        foreach (var ingredient in ingredientsElement.EnumerateArray())
+        {
+            var name = ingredient.ValueKind == JsonValueKind.Object
+                ? OptionalString(ingredient, "name")
+                : ingredient.ValueKind == JsonValueKind.String
+                    ? ingredient.GetString()
+                    : null;
+
+            name = CleanName(name);
+            if (string.IsNullOrWhiteSpace(name) ||
+                ingredients.Any(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var portion = ingredient.ValueKind == JsonValueKind.Object
+                ? RoundedInt(ingredient, "portion_estimate_g")
+                : 0;
+            ingredients.Add(new NutritionScanIngredientView(name, portion));
+            if (ingredients.Count >= 8)
+                break;
+        }
+
+        return ingredients;
     }
 
     private static string RequiredString(JsonElement element, string name)

@@ -47,7 +47,13 @@ public sealed record NutritionScanItemView(
     [property: JsonPropertyName("calories")] int Calories,
     [property: JsonPropertyName("protein_g")] int ProteinG,
     [property: JsonPropertyName("carbs_g")] int CarbsG,
-    [property: JsonPropertyName("fat_g")] int FatG);
+    [property: JsonPropertyName("fat_g")] int FatG,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [property: JsonPropertyName("ingredients")] IReadOnlyList<NutritionScanIngredientView>? Ingredients = null);
+
+public sealed record NutritionScanIngredientView(
+    [property: JsonPropertyName("name")] string Name,
+    [property: JsonPropertyName("portion_estimate_g")] int PortionEstimateG);
 
 // ─── Command ─────────────────────────────────────────────────────────────────
 
