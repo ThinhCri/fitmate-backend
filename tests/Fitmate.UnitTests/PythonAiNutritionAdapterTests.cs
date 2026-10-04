@@ -50,6 +50,36 @@ public sealed class PythonAiNutritionAdapterTests
     }
 
     [Fact]
+    public async Task EstimateFromImageAsync_AcceptsNutrition5kIngredientObjectSchema()
+    {
+        var adapter = CreateAdapter(new StubHandler(_ => Task.FromResult(Json(HttpStatusCode.OK,
+            """
+            {
+              "ingredients": [
+                {"name":"corn tortilla","portion_estimate_g":15},
+                {"name":"chicken","portion_estimate_g":30},
+                {"name":"salsa","portion_estimate_g":20}
+              ],
+              "calories_kcal":600,
+              "protein_g":70,
+              "carbs_g":180,
+              "fat_g":30
+            }
+            """))));
+        using var image = new MemoryStream(new byte[] { 1, 2, 3 });
+
+        var result = await adapter.EstimateFromImageAsync(image, "image/jpeg", CancellationToken.None);
+
+        result.TotalCalories.Should().Be(600);
+        result.Items.Should().ContainSingle();
+        result.Items[0].Name.Should().Be("corn tortilla, chicken, salsa");
+        result.Items[0].ProteinG.Should().Be(70);
+        result.Items[0].CarbsG.Should().Be(180);
+        result.Items[0].FatG.Should().Be(30);
+        result.Source.Should().Be("ai_estimate");
+    }
+
+    [Fact]
     public async Task EstimateFromImageAsync_MapsRateLimit()
     {
         var adapter = CreateAdapter(new StubHandler(_ =>

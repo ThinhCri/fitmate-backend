@@ -147,7 +147,7 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
         if (!root.TryGetProperty("items", out var itemsElement) ||
             itemsElement.ValueKind != JsonValueKind.Array)
         {
-            throw new JsonException("AI response is missing items.");
+            return ReadNutrition5kResult(root);
         }
 
         var items = new List<NutritionScanItemView>();
@@ -169,6 +169,57 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
             OptionalString(root, "note"));
     }
 
+    private static NutritionScanResultView ReadNutrition5kResult(JsonElement root)
+    {
+        if (!root.TryGetProperty("ingredients", out var ingredientsElement) ||
+            ingredientsElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("AI response is missing items or ingredients.");
+        }
+
+        var names = new List<string>();
+        foreach (var ingredient in ingredientsElement.EnumerateArray())
+        {
+            var name = ingredient.ValueKind == JsonValueKind.Object
+                ? OptionalString(ingredient, "name")
+                : ingredient.ValueKind == JsonValueKind.String
+                    ? ingredient.GetString()
+                    : null;
+
+            name = CleanName(name);
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            if (!names.Contains(name, StringComparer.OrdinalIgnoreCase))
+                names.Add(name);
+        }
+
+        if (names.Count == 0)
+            names.Add("Khong xac dinh");
+
+        var calories = RoundedInt(root, "calories_kcal");
+        var protein = RoundedInt(root, "protein_g");
+        var carbs = RoundedInt(root, "carbs_g");
+        var fat = RoundedInt(root, "fat_g");
+        var unknown = calories == 0 && names.Count == 1 &&
+            string.Equals(names[0], "Khong xac dinh", StringComparison.OrdinalIgnoreCase);
+
+        return new NutritionScanResultView(
+            new[]
+            {
+                new NutritionScanItemView(
+                    string.Join(", ", names.Take(8)),
+                    calories,
+                    protein,
+                    carbs,
+                    fat)
+            },
+            calories,
+            unknown ? 0.2m : 0.9m,
+            "ai_estimate",
+            "Ket qua uoc tinh, vui long kiem tra truoc khi luu.");
+    }
+
     private static string RequiredString(JsonElement element, string name)
     {
         if (!element.TryGetProperty(name, out var value) ||
@@ -188,6 +239,25 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
         if (value.ValueKind != JsonValueKind.String)
             throw new JsonException($"AI response field '{name}' is invalid.");
         return value.GetString();
+    }
+
+    private static string CleanName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var text = value
+            .Replace("\\n", " ", StringComparison.Ordinal)
+            .Replace("\\t", " ", StringComparison.Ordinal)
+            .Replace('\n', ' ')
+            .Replace('\t', ' ')
+            .Replace("\\", " ", StringComparison.Ordinal)
+            .Trim(' ', '.', ',', ';', ':', '-', '_');
+
+        while (text.Contains("  ", StringComparison.Ordinal))
+            text = text.Replace("  ", " ", StringComparison.Ordinal);
+
+        return text.Length <= 200 ? text : text[..200];
     }
 
     private static int RoundedInt(JsonElement element, string name)

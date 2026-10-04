@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Fitmate.Application.Ai;
 using Fitmate.Domain.Common;
 using Microsoft.Extensions.Logging;
@@ -85,32 +84,8 @@ public class HttpAiNutritionAdapter : IAiNutritionAdapter
 
             _logger.LogInformation("AI Server response: {Body}", responseJson);
 
-            var result = JsonSerializer.Deserialize<QwenPredictionResponse>(responseJson);
-
-            if (result == null)
-            {
-                throw new AiUnavailableException("Invalid response from AI server.");
-            }
-
-            var itemName = result.Ingredients != null && result.Ingredients.Count > 0 
-                ? string.Join(", ", result.Ingredients) 
-                : "Unknown Food";
-
-            var item = new NutritionScanItemView(
-                Name: itemName,
-                Calories: (int)result.CaloriesKcal,
-                ProteinG: (int)result.ProteinG,
-                CarbsG: (int)result.CarbsG,
-                FatG: (int)result.FatG
-            );
-
-            return new NutritionScanResultView(
-                Items: new List<NutritionScanItemView> { item },
-                TotalCalories: (int)result.CaloriesKcal,
-                Confidence: 0.9m,
-                Source: "ai_estimate",
-                Note: $"Portion estimate: {result.PortionEstimateG}g"
-            );
+            using var document = JsonDocument.Parse(responseJson);
+            return ReadResult(document.RootElement);
         }
         catch (AiUnavailableException)
         {
@@ -128,24 +103,134 @@ public class HttpAiNutritionAdapter : IAiNutritionAdapter
         }
     }
 
-    private class QwenPredictionResponse
+    private static NutritionScanResultView ReadResult(JsonElement root)
     {
-        [JsonPropertyName("ingredients")]
-        public List<string>? Ingredients { get; set; }
+        if (root.TryGetProperty("items", out var itemsElement) &&
+            itemsElement.ValueKind == JsonValueKind.Array)
+        {
+            var items = itemsElement.EnumerateArray()
+                .Select(item => new NutritionScanItemView(
+                    RequiredString(item, "name"),
+                    RoundedInt(item, "calories"),
+                    RoundedInt(item, "protein_g"),
+                    RoundedInt(item, "carbs_g"),
+                    RoundedInt(item, "fat_g")))
+                .ToList();
 
-        [JsonPropertyName("portion_estimate_g")]
-        public decimal PortionEstimateG { get; set; }
+            return new NutritionScanResultView(
+                items,
+                RoundedInt(root, "total_calories"),
+                DecimalNumber(root, "confidence"),
+                RequiredString(root, "source"),
+                OptionalString(root, "note"));
+        }
 
-        [JsonPropertyName("calories_kcal")]
-        public decimal CaloriesKcal { get; set; }
+        if (!root.TryGetProperty("ingredients", out var ingredientsElement) ||
+            ingredientsElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("AI response is missing items or ingredients.");
+        }
 
-        [JsonPropertyName("protein_g")]
-        public decimal ProteinG { get; set; }
+        var names = new List<string>();
+        foreach (var ingredient in ingredientsElement.EnumerateArray())
+        {
+            var name = ingredient.ValueKind == JsonValueKind.Object
+                ? OptionalString(ingredient, "name")
+                : ingredient.ValueKind == JsonValueKind.String
+                    ? ingredient.GetString()
+                    : null;
 
-        [JsonPropertyName("carbs_g")]
-        public decimal CarbsG { get; set; }
+            name = CleanName(name);
+            if (!string.IsNullOrWhiteSpace(name) &&
+                !names.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                names.Add(name);
+            }
+        }
 
-        [JsonPropertyName("fat_g")]
-        public decimal FatG { get; set; }
+        if (names.Count == 0)
+            names.Add("Khong xac dinh");
+
+        var calories = RoundedInt(root, "calories_kcal");
+        var protein = RoundedInt(root, "protein_g");
+        var carbs = RoundedInt(root, "carbs_g");
+        var fat = RoundedInt(root, "fat_g");
+        var unknown = calories == 0 && names.Count == 1 &&
+            string.Equals(names[0], "Khong xac dinh", StringComparison.OrdinalIgnoreCase);
+
+        return new NutritionScanResultView(
+            new[]
+            {
+                new NutritionScanItemView(
+                    string.Join(", ", names.Take(8)),
+                    calories,
+                    protein,
+                    carbs,
+                    fat)
+            },
+            calories,
+            unknown ? 0.2m : 0.9m,
+            "ai_estimate",
+            "Ket qua uoc tinh, vui long kiem tra truoc khi luu.");
+    }
+
+    private static string RequiredString(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.String ||
+            string.IsNullOrWhiteSpace(value.GetString()))
+        {
+            throw new JsonException($"AI response field '{name}' is invalid.");
+        }
+
+        return value.GetString()!;
+    }
+
+    private static string? OptionalString(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+        if (value.ValueKind != JsonValueKind.String)
+            throw new JsonException($"AI response field '{name}' is invalid.");
+        return value.GetString();
+    }
+
+    private static int RoundedInt(JsonElement element, string name)
+    {
+        var value = DecimalNumber(element, name);
+        if (value < int.MinValue || value > int.MaxValue)
+            throw new JsonException($"AI response field '{name}' is out of range.");
+        return (int)Math.Round(value, MidpointRounding.AwayFromZero);
+    }
+
+    private static decimal DecimalNumber(JsonElement element, string name)
+    {
+        if (!element.TryGetProperty(name, out var value) ||
+            value.ValueKind != JsonValueKind.Number ||
+            !value.TryGetDecimal(out var number))
+        {
+            throw new JsonException($"AI response field '{name}' is invalid.");
+        }
+
+        return number;
+    }
+
+    private static string CleanName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var text = value
+            .Replace("\\n", " ", StringComparison.Ordinal)
+            .Replace("\\t", " ", StringComparison.Ordinal)
+            .Replace('\n', ' ')
+            .Replace('\t', ' ')
+            .Replace("\\", " ", StringComparison.Ordinal)
+            .Trim(' ', '.', ',', ';', ':', '-', '_');
+
+        while (text.Contains("  ", StringComparison.Ordinal))
+            text = text.Replace("  ", " ", StringComparison.Ordinal);
+
+        return text.Length <= 200 ? text : text[..200];
     }
 }
