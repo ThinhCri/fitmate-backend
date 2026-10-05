@@ -370,11 +370,7 @@ public class AuthController : ControllerBase
         if (!validation.IsValid)
             return BadRequest(ValidationProblem(validation));
 
-        ApplicationUser? user = null;
-        if (!string.IsNullOrWhiteSpace(request.Email))
-        {
-            user = await _users.FindByEmailAsync(request.Email);
-        }
+        var user = await _users.FindByEmailAsync(request.Email);
 
         if (user is null || user.IsDeleted || user.Status == Domain.Common.UserStatus.Locked)
         {

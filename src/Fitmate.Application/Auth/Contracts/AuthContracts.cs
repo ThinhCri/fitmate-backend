@@ -43,7 +43,7 @@ public record ForgotPasswordRequest(
 public record ResetPasswordRequest(
     [property: JsonPropertyName("token")] string Token,
     [property: JsonPropertyName("new_password")] string NewPassword,
-    [property: JsonPropertyName("email")] string? Email = null);
+    [property: JsonPropertyName("email")] string Email);
 
 public record ChangePasswordRequest(
     [property: JsonPropertyName("current_password")] string CurrentPassword,

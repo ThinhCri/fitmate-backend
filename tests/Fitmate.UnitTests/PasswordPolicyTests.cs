@@ -86,7 +86,8 @@ public class PasswordPolicyTests
     {
         var result = new ResetPasswordRequestValidator().Validate(new ResetPasswordRequest(
             Token: "some-reset-token",
-            NewPassword: "Short1!"));
+            NewPassword: "Short1!",
+            Email: "user@fitmate.vn"));
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName == nameof(ResetPasswordRequest.NewPassword));
@@ -132,7 +133,7 @@ public class PasswordPolicyTests
         // Client hiển thị message của BE; nếu 3 chỗ lệch nhau thì admin thấy thông báo khác nhau.
         var register = new RegisterRequestValidator().Validate(Registration("Short1!"));
         var reset = new ResetPasswordRequestValidator()
-            .Validate(new ResetPasswordRequest("t", "Short1!"));
+            .Validate(new ResetPasswordRequest("t", "Short1!", "user@fitmate.vn"));
         var change = new ChangePasswordRequestValidator()
             .Validate(new ChangePasswordRequest("CurrentPass1", "Short1!"));
 

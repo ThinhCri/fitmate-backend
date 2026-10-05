@@ -109,9 +109,9 @@ public class ResetPasswordRequestValidator : AbstractValidator<ResetPasswordRequ
             .MaximumLength(PasswordPolicy.MaximumLength);
 
         RuleFor(x => x.Email)
+            .NotEmpty().WithMessage("Email is required")
             .EmailAddress().WithMessage("Email must be a valid email address")
-            .MaximumLength(254)
-            .When(x => !string.IsNullOrEmpty(x.Email));
+            .MaximumLength(254);
     }
 }
 

@@ -114,6 +114,15 @@ public class AuthValidatorTests
     }
 
     [Fact]
+    public async Task ResetPasswordRequest_MissingEmail_Fails()
+    {
+        var validator = new ResetPasswordRequestValidator();
+        var result = await validator.ValidateAsync(new ResetPasswordRequest("valid-token-123", "NewPassword123", ""));
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.PropertyName == "Email");
+    }
+
+    [Fact]
     public async Task ChangePasswordRequest_SamePassword_Fails()
     {
         var validator = new ChangePasswordRequestValidator();
