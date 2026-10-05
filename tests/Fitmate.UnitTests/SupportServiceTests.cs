@@ -6,9 +6,9 @@ using FluentAssertions;
 namespace Fitmate.UnitTests;
 
 /// <summary>
-/// R08: SupportService pháº£i tráº£ ValidationException (400 + errors map) chá»© khÃ´ng pháº£i
-/// ArgumentException (500) khi input ngÆ°á»i dÃ¹ng rá»—ng / sai enum. NgoÃ i ra kiá»ƒm tra
-/// pagination clamp vÃ  reply/transition Ä‘á»ƒ báº£o Ä‘áº£m service giá»¯ há»£p Ä‘á»“ng vá»›i controller.
+/// R08: SupportService phải trả ValidationException (400 + errors map) chứ không phải
+/// ArgumentException (500) khi input ngÆ°á»i dùng rỗng / sai enum. Ngoài ra kiểm tra
+/// pagination clamp và reply/transition để bảo đảm service giữ hợp đồng với controller.
 /// </summary>
 public class SupportServiceTests
 {
@@ -59,9 +59,9 @@ public class SupportServiceTests
     private static readonly Guid AdminId = Guid.NewGuid();
 
     private static CreateSupportTicketRequest ValidRequest(
-        string subject = "KhÃ´ng Ä‘Äƒng nháº­p Ä‘Æ°á»£c",
+        string subject = "Không đăng nhập được",
         string category = "Account",
-        string message = "TÃ´i khÃ´ng nháº­n Ä‘Æ°á»£c mÃ£ xÃ¡c thá»±c.") =>
+        string message = "Tôi không nhận được mã xác thực.") =>
         new(subject, category, Priority: null, message, AttachmentUrls: null);
 
     // ---------- Create: validation ----------
@@ -78,7 +78,7 @@ public class SupportServiceTests
         ex.Which.HttpStatus.Should().Be(400);
         ex.Which.Code.Should().Be(ErrorCodes.Validation.FieldInvalid);
         ex.Which.Errors.Should().ContainKey("subject");
-        store.Added.Should().BeEmpty("validation pháº£i cháº·n trÆ°á»›c khi ghi vÃ o store");
+        store.Added.Should().BeEmpty("validation phải chặn trước khi ghi vào store");
     }
 
     [Fact]
@@ -120,10 +120,10 @@ public class SupportServiceTests
         store.Added.Should().ContainSingle();
         dto.Id.Should().Be(store.Added[0].Id);
         dto.UserId.Should().Be(UserId);
-        dto.Subject.Should().Be("KhÃ´ng Ä‘Äƒng nháº­p Ä‘Æ°á»£c");
+        dto.Subject.Should().Be("Không đăng nhập được");
         dto.Status.Should().Be(SupportTicketStatus.Open.ToString());
-        dto.Messages.Should().HaveCount(1, "ticket má»›i pháº£i cÃ³ message khá»Ÿi táº¡o");
-        dto.Messages[0].Content.Should().Be("TÃ´i khÃ´ng nháº­n Ä‘Æ°á»£c mÃ£ xÃ¡c thá»±c.");
+        dto.Messages.Should().HaveCount(1, "ticket mới phải có message khởi tạo");
+        dto.Messages[0].Content.Should().Be("Tôi không nhận được mã xác thực.");
     }
 
     // ---------- Admin status transition ----------
@@ -134,7 +134,7 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         store.Items[id] = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         var sut = new SupportService(store);
 
         var act = () => sut.AdminChangeStatusAsync(id, new AdminChangeStatusRequest("banana"), CancellationToken.None);
@@ -143,18 +143,18 @@ public class SupportServiceTests
         ex.Which.HttpStatus.Should().Be(400);
         ex.Which.Code.Should().Be(ErrorCodes.Validation.FieldInvalid);
         ex.Which.Errors.Should().ContainKey("status");
-        ex.Which.Message.Should().Contain("banana", "message pháº£i nÃªu rÃµ giÃ¡ trá»‹ sai");
+        ex.Which.Message.Should().Contain("banana", "message phải nêu rõ giá trị sai");
     }
 
     [Fact]
     public async Task AdminChangeStatus_OutOfRangeNumericEnum_ThrowsValidation()
     {
-        // "99" parse Ä‘Æ°á»£c thÃ nh enum (long) nhÆ°ng khÃ´ng pháº£i giÃ¡ trá»‹ Ä‘á»‹nh nghÄ©a.
-        // LÆ°u Ã½: "2" lÃ  InProgress â€” há»£p lá»‡, khÃ´ng dÃ¹ng lÃ m case Ã¢m.
+        // "99" parse được thành enum (long) nhưng không phải giá trị định nghĩa.
+        // Lưu ý: "2" là InProgress — hợp lệ, không dùng làm case âm.
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         store.Items[id] = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         var sut = new SupportService(store);
 
         var act = () => sut.AdminChangeStatusAsync(id, new AdminChangeStatusRequest("99"), CancellationToken.None);
@@ -170,7 +170,7 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         store.Items[id] = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         var sut = new SupportService(store);
 
         var dto = await sut.AdminChangeStatusAsync(id, new AdminChangeStatusRequest("2"), CancellationToken.None);
@@ -184,7 +184,7 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         store.Items[id] = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         var sut = new SupportService(store);
 
         var dto = await sut.AdminChangeStatusAsync(
@@ -213,7 +213,7 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var sut = new SupportService(store);
 
-        // page=0, pageSize=0 â†’ pháº£i clamp thÃ nh (1, 20) trÆ°á»›c khi gá»i store.
+        // page=0, pageSize=0 → phải clamp thành (1, 20) trước khi gá»i store.
         var result = await sut.ListAdminTicketsAsync(null, null, 0, 0, CancellationToken.None);
 
         result.Page.Should().Be(1);
@@ -253,14 +253,14 @@ public class SupportServiceTests
     [Fact]
     public async Task ListAdmin_UndefinedEnumStatus_IsIgnored_NotSilentlyEmptyList()
     {
-        // status="99" parse Ä‘Æ°á»£c thÃ nh enum nhÆ°ng khÃ´ng pháº£i giÃ¡ trá»‹ Ä‘á»‹nh nghÄ©a.
-        // TrÆ°á»›c khi sá»­a, store nháº­n Status=99 â†’ 0 dÃ²ng, admin tÆ°á»Ÿng khÃ´ng cÃ³ ticket.
+        // status="99" parse được thành enum nhưng không phải giá trị định nghĩa.
+        // Trước khi sửa, store nhận Status=99 → 0 dòng, admin tưởng không có ticket.
         var store = new InMemoryStore();
         var sut = new SupportService(store);
 
         await sut.ListAdminTicketsAsync("99", null, 1, 25, CancellationToken.None);
 
-        store.LastAdminFilter.Status.Should().BeNull("enum khÃ´ng Ä‘á»‹nh nghÄ©a pháº£i bá»‹ bá» qua, khÃ´ng lá»c sai");
+        store.LastAdminFilter.Status.Should().BeNull("enum không định nghĩa phải bị bá» qua, không lá»c sai");
     }
 
     [Fact]
@@ -296,7 +296,7 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         store.Items[id] = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         var sut = new SupportService(store);
 
         var act = () => sut.UserReplyTicketAsync(id, UserId, new ReplySupportTicketRequest("  ", null), CancellationToken.None);
@@ -312,12 +312,12 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         var ticket = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         ticket.CloseByUser(UserId);
         store.Items[id] = ticket;
         var sut = new SupportService(store);
 
-        var act = () => sut.UserReplyTicketAsync(id, UserId, new ReplySupportTicketRequest("Xin há»— trá»£ thÃªm", null), CancellationToken.None);
+        var act = () => sut.UserReplyTicketAsync(id, UserId, new ReplySupportTicketRequest("Xin hỗ trợ thêm", null), CancellationToken.None);
 
         var ex = await act.Should().ThrowAsync<ConflictException>();
         ex.Which.HttpStatus.Should().Be(409);
@@ -330,12 +330,12 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         var ticket = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         ticket.CloseByUser(UserId);
         store.Items[id] = ticket;
         var sut = new SupportService(store);
 
-        var act = () => sut.AdminReplyTicketAsync(id, AdminId, new ReplySupportTicketRequest("ÄÃ£ xá»­ lÃ½", null), CancellationToken.None);
+        var act = () => sut.AdminReplyTicketAsync(id, AdminId, new ReplySupportTicketRequest("ÄÃ£ xử lý", null), CancellationToken.None);
 
         var ex = await act.Should().ThrowAsync<ConflictException>();
         ex.Which.HttpStatus.Should().Be(409);
@@ -348,13 +348,13 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         store.Items[id] = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         var other = Guid.NewGuid();
         var sut = new SupportService(store);
 
-        var dto = await sut.UserReplyTicketAsync(id, other, new ReplySupportTicketRequest("Xin má»Ÿ", null), CancellationToken.None);
+        var dto = await sut.UserReplyTicketAsync(id, other, new ReplySupportTicketRequest("Xin mở", null), CancellationToken.None);
 
-        dto.Should().BeNull("IDOR: ticket cá»§a ngÆ°á»i khÃ¡c pháº£i tráº£ 404 chá»© khÃ´ng pháº£i 403");
+        dto.Should().BeNull("IDOR: ticket của ngÆ°á»i khác phải trả 404 chứ không phải 403");
     }
 
     [Fact]
@@ -363,7 +363,7 @@ public class SupportServiceTests
         var store = new InMemoryStore();
         var id = Guid.NewGuid();
         store.Items[id] = SupportTicket.Create(
-            UserId, "Máº¥t tiá»n", "Billing", SupportTicketPriority.High, "TÃ´i bá»‹ trá»« tiá»n hai láº§n.");
+            UserId, "Mất tiá»n", "Billing", SupportTicketPriority.High, "Tôi bị trừ tiá»n hai lần.");
         var sut = new SupportService(store);
 
         var dto = await sut.GetTicketAsync(id, Guid.NewGuid(), isAdmin: false, CancellationToken.None);
