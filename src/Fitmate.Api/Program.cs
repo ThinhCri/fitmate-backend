@@ -503,6 +503,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         opt.MapInboundClaims = false;
         opt.Events = new JwtBearerEvents
         {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                if (!string.IsNullOrWhiteSpace(accessToken) && context.HttpContext.Request.Path.StartsWithSegments("/hubs/realtime"))
+                    context.Token = accessToken;
+                return Task.CompletedTask;
+            },
             OnTokenValidated = async context =>
             {
                 var principal = context.Principal!;
@@ -633,6 +640,10 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddSignalR();
+builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, Fitmate.Api.Realtime.FitmateUserIdProvider>();
+builder.Services.AddSingleton<Fitmate.Application.Realtime.IRealtimeNotifier, Fitmate.Api.Realtime.SignalRRealtimeNotifier>();
+
 // BE-822: Built-in Rate Limiting (.NET 8)
 var rateLimitOpts = builder.Configuration.GetSection("RateLimit").Get<RateLimitOptions>() ?? new RateLimitOptions();
 if (int.TryParse(builder.Configuration["RATE_LIMIT_PER_MINUTE_PER_IP"], out var perMin))
@@ -648,6 +659,8 @@ builder.Services.AddRateLimiter(options =>
     options.OnRejected = async (context, token) =>
     {
         context.HttpContext.Response.ContentType = "application/problem+json";
+        if (context.Lease.TryGetMetadata(System.Threading.RateLimiting.MetadataName.RetryAfter, out var retryAfter))
+            context.HttpContext.Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
         var traceId = FitmateProblemDetails.ResolveTraceId(context.HttpContext);
         var problem = FitmateProblemDetails.Create(
             status: StatusCodes.Status429TooManyRequests,
@@ -952,6 +965,7 @@ app.MapGet("/", () => Results.Ok(new
 }));
 
 app.MapControllers();
+app.MapHub<Fitmate.Api.Realtime.FitmateRealtimeHub>("/hubs/realtime");
 
 app.Run();
 

@@ -1,6 +1,7 @@
 using Fitmate.Application.Notifications;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Trainers;
+using Fitmate.Application.Realtime;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Social;
@@ -19,6 +20,7 @@ public class FriendService : IFriendService
     private readonly ISocialStore _socialStore;
     private readonly IOutboxDispatcher _outbox;
     private readonly IPushDeliveryDispatcher _push;
+    private readonly IRealtimeNotifier? _realtime;
 
     private const int DefaultLimit = 20;
     private const int MaxLimit = 100;
@@ -29,7 +31,8 @@ public class FriendService : IFriendService
         IUserRoleLookup users,
         ISocialStore socialStore,
         IOutboxDispatcher outbox,
-        IPushDeliveryDispatcher push)
+        IPushDeliveryDispatcher push,
+        IRealtimeNotifier? realtime = null)
     {
         _store = store;
         _blockStore = blockStore;
@@ -37,6 +40,7 @@ public class FriendService : IFriendService
         _socialStore = socialStore;
         _outbox = outbox;
         _push = push;
+        _realtime = realtime;
     }
 
     // ─── Use cases ──────────────────────────────────────────────────────────
@@ -97,6 +101,18 @@ public class FriendService : IFriendService
         await _push.DispatchAsync(pushPayload, ct);
 
         await _store.SaveChangesAsync(ct);
+        if (_realtime is not null)
+        {
+            await _realtime.NotifyUsersAsync(new[] { senderId, recipientId }, "friends.updated", new
+            {
+                request_id = request.Id,
+                reason = "request_created"
+            }, ct);
+            await _realtime.NotifyUsersAsync(new[] { recipientId }, "notifications.updated", new
+            {
+                reason = "friend_request"
+            }, ct);
+        }
         return ToView(request);
     }
 
@@ -157,6 +173,18 @@ public class FriendService : IFriendService
         await _push.DispatchAsync(pushPayload, ct);
 
         await _store.SaveChangesAsync(ct);
+        if (_realtime is not null)
+        {
+            await _realtime.NotifyUsersAsync(new[] { request.SenderId, request.RecipientId }, "friends.updated", new
+            {
+                request_id = request.Id,
+                reason = "request_accepted"
+            }, ct);
+            await _realtime.NotifyUsersAsync(new[] { request.SenderId }, "notifications.updated", new
+            {
+                reason = "friend_request_accepted"
+            }, ct);
+        }
     }
 
     public async Task RejectRequestAsync(Guid actorId, Guid requestId, CancellationToken ct)
@@ -178,6 +206,12 @@ public class FriendService : IFriendService
         // Outbox không enqueue để tránh consumer tạo event thừa.
 
         await _store.SaveChangesAsync(ct);
+        if (_realtime is not null)
+            await _realtime.NotifyUsersAsync(new[] { request.SenderId, request.RecipientId }, "friends.updated", new
+            {
+                request_id = request.Id,
+                reason = "request_rejected"
+            }, ct);
     }
 
     public async Task CancelRequestAsync(Guid actorId, Guid requestId, CancellationToken ct)
@@ -195,6 +229,12 @@ public class FriendService : IFriendService
         request.Cancel();
         await _store.UpdateFriendRequestAsync(request, ct);
         await _store.SaveChangesAsync(ct);
+        if (_realtime is not null)
+            await _realtime.NotifyUsersAsync(new[] { request.SenderId, request.RecipientId }, "friends.updated", new
+            {
+                request_id = request.Id,
+                reason = "request_cancelled"
+            }, ct);
     }
 
     public async Task UnfriendAsync(Guid actorId, Guid otherUserId, CancellationToken ct)
@@ -219,6 +259,12 @@ public class FriendService : IFriendService
         });
 
         await _store.SaveChangesAsync(ct);
+        if (_realtime is not null)
+            await _realtime.NotifyUsersAsync(new[] { actorId, otherUserId }, "friends.updated", new
+            {
+                other_user_id = otherUserId,
+                reason = "friend_removed"
+            }, ct);
     }
 
     public async Task<FriendPage> ListFriendsAsync(Guid userId, string? cursor, int limit, CancellationToken ct)

@@ -3,6 +3,7 @@ using Fitmate.Domain.Common;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Social;
 using Fitmate.Application.Storage;
+using Fitmate.Application.Realtime;
 
 namespace Fitmate.Application.Chat;
 
@@ -14,6 +15,7 @@ public sealed class ChatService : IChatService
     private readonly IOutboxDispatcher _outbox;
     private readonly TimeProvider _clock;
     private readonly ISignedUrlService? _signedUrl;
+    private readonly IRealtimeNotifier? _realtime;
 
     private const int MaxTextLength = 2000;
     private const int DefaultListLimit = 30;
@@ -26,7 +28,8 @@ public sealed class ChatService : IChatService
         IBlockStore blockStore,
         IOutboxDispatcher outbox,
         TimeProvider clock,
-        ISignedUrlService? signedUrl = null)
+        ISignedUrlService? signedUrl = null,
+        IRealtimeNotifier? realtime = null)
     {
         _store = store;
         _friendService = friendService;
@@ -34,6 +37,7 @@ public sealed class ChatService : IChatService
         _outbox = outbox;
         _clock = clock;
         _signedUrl = signedUrl;
+        _realtime = realtime;
     }
 
     public async Task<ChatMessageDto> SendFriendMessageAsync(
@@ -106,6 +110,14 @@ public sealed class ChatService : IChatService
             source_event_id = message.Id,
             source_type = "chat_message_sent"
         });
+
+        if (_realtime is not null)
+            await _realtime.NotifyUsersAsync(new[] { senderId, peerUserId }, "chat.updated", new
+            {
+                conversation_id = conversation.Id,
+                message_id = message.Id,
+                reason = "message_sent"
+            }, ct);
 
         return ToDto(message, senderId);
     }
@@ -251,6 +263,13 @@ public sealed class ChatService : IChatService
         else existing.Change(reaction);
         await _store.SaveChangesAsync(ct);
         message = await _store.FindMessageAsync(messageId, ct) ?? message;
+        if (_realtime is not null)
+            await _realtime.NotifyUsersAsync(new[] { conversation.UserLowId, conversation.UserHighId }, "chat.updated", new
+            {
+                conversation_id = conversation.Id,
+                message_id = messageId,
+                reason = "reaction_changed"
+            }, ct);
         return MapReactions(message, viewerId);
     }
 

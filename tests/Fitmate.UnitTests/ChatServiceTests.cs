@@ -1,6 +1,7 @@
 using Fitmate.Application.Chat;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Social;
+using Fitmate.Application.Realtime;
 using Fitmate.Domain.Chat;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
@@ -179,9 +180,19 @@ public class ChatServiceTests
         public override DateTimeOffset GetUtcNow() => _now;
     }
 
-    private static ChatService CreateSvc(InMemoryChatStore store, InMemoryFriendService friendSvc, InMemoryBlockStore blocks, CapturingOutbox outbox, DateTimeOffset? now = null)
+    private sealed class CapturingRealtime : IRealtimeNotifier
     {
-        return new ChatService(store, friendSvc, blocks, outbox, new FixedClock(now ?? new DateTimeOffset(2026, 9, 20, 10, 0, 0, TimeSpan.Zero)));
+        public List<(IReadOnlyList<Guid> Users, string EventName)> Events { get; } = new();
+        public Task NotifyUsersAsync(IEnumerable<Guid> userIds, string eventName, object payload, CancellationToken ct)
+        {
+            Events.Add((userIds.ToList(), eventName));
+            return Task.CompletedTask;
+        }
+    }
+
+    private static ChatService CreateSvc(InMemoryChatStore store, InMemoryFriendService friendSvc, InMemoryBlockStore blocks, CapturingOutbox outbox, DateTimeOffset? now = null, IRealtimeNotifier? realtime = null)
+    {
+        return new ChatService(store, friendSvc, blocks, outbox, new FixedClock(now ?? new DateTimeOffset(2026, 9, 20, 10, 0, 0, TimeSpan.Zero)), realtime: realtime);
     }
 
     // =========== Permission tests ===========
@@ -573,6 +584,21 @@ public class ChatServiceTests
 
         outbox.Enqueued.Should().HaveCount(1);
         outbox.Enqueued[0].Type.Should().Be("chat.message.sent");
+    }
+
+    [Fact]
+    public async Task Send_NotifiesBothParticipants_InRealtime()
+    {
+        var friendSvc = new InMemoryFriendService();
+        friendSvc.Friends.Add(Alice.CompareTo(Bob) < 0 ? (Alice, Bob) : (Bob, Alice));
+        var realtime = new CapturingRealtime();
+        var svc = CreateSvc(new InMemoryChatStore(), friendSvc, new InMemoryBlockStore(), new CapturingOutbox(), realtime: realtime);
+
+        await svc.SendFriendMessageAsync(Alice, Bob, "hello", null, CancellationToken.None);
+
+        realtime.Events.Should().ContainSingle();
+        realtime.Events[0].EventName.Should().Be("chat.updated");
+        realtime.Events[0].Users.Should().BeEquivalentTo(new[] { Alice, Bob });
     }
 
     [Fact]
