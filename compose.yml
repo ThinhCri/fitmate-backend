@@ -26,6 +26,20 @@ services:
     restart: unless-stopped
     # Default ports removed; verify override (compose.verify300.yml) sets 11025/18025.
 
+  food-ai:
+    build:
+      context: ../qwen_food_be_bundle/qwen_food_be_bundle
+      dockerfile: Dockerfile
+    image: fitmate-food-ai:local
+    profiles: ["ai"]
+    restart: unless-stopped
+    environment:
+      AI_INTERNAL_TOKEN: ${Ai__InternalToken:-}
+      MAX_IMAGE_BYTES: ${Ai__MaxImageSizeBytes:-10485760}
+      MAX_CONCURRENT_INFERENCE: 1
+    ports:
+      - "127.0.0.1:${AI_PORT:-8000}:8000"
+
   api:
     build:
       context: .

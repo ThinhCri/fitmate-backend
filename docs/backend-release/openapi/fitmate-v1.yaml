@@ -6358,6 +6358,7 @@ components:
           type: integer
         confidence:
           type: number
+          nullable: true
         source:
           type: string
           enum: [ai_estimate]

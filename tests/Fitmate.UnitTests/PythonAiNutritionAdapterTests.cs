@@ -58,6 +58,18 @@ public sealed class PythonAiNutritionAdapterTests
     }
 
     [Fact]
+    public async Task EstimateFromImageAsync_AcceptsUnavailableConfidence()
+    {
+        var adapter = CreateAdapter(new StubHandler(_ => Task.FromResult(Json(HttpStatusCode.OK,
+            """{"items":[{"name":"Cơm gà","calories":520,"protein_g":32,"carbs_g":65,"fat_g":14}],"total_calories":520,"confidence":null,"source":"ai_estimate","note":"AI estimate"}"""))));
+        using var image = new MemoryStream(new byte[] { 1 });
+
+        var result = await adapter.EstimateFromImageAsync(image, "image/jpeg", CancellationToken.None);
+
+        result.Confidence.Should().BeNull();
+    }
+
+    [Fact]
     public async Task EstimateFromImageAsync_RequiresEnabledConfiguration()
     {
         var options = Options.Create(new AiOptions { Provider = "python_service" });

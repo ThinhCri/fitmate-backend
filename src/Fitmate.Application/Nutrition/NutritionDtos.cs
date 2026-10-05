@@ -38,7 +38,7 @@ public sealed record MealScheduleView(
 public sealed record NutritionScanResultView(
     [property: JsonPropertyName("items")] IReadOnlyList<NutritionScanItemView> Items,
     [property: JsonPropertyName("total_calories")] int TotalCalories,
-    [property: JsonPropertyName("confidence")] decimal Confidence,
+    [property: JsonPropertyName("confidence")] decimal? Confidence,
     [property: JsonPropertyName("source")] string Source,
     [property: JsonPropertyName("note")] string? Note);
 

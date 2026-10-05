@@ -125,7 +125,7 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
         var invalid = result is null ||
             result.Items is null || result.Items.Count == 0 || result.Items.Count > 20 ||
             result.TotalCalories < 0 || result.TotalCalories > 10000 ||
-            result.Confidence < 0 || result.Confidence > 1 ||
+            (result.Confidence.HasValue && (result.Confidence < 0 || result.Confidence > 1)) ||
             !string.Equals(result.Source, "ai_estimate", StringComparison.Ordinal) ||
             result.Items.Any(item =>
                 string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 200 ||
