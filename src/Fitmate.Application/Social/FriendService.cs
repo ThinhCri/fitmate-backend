@@ -89,8 +89,8 @@ public class FriendService : IFriendService
         var pushPayload = new NotificationPayload(
             recipientId,
             NotificationType.FriendRequest,
-            $"Friend request from {senderName}",
-            null,
+            "Bạn có lời mời kết bạn mới",
+            $"{senderName} đã gửi cho bạn một lời mời kết bạn.",
             new { requestId = request.Id, senderId },
             request.Id,
             "friend_request_sent");
@@ -149,8 +149,8 @@ public class FriendService : IFriendService
         var pushPayload = new NotificationPayload(
             request.SenderId,
             NotificationType.FriendRequest,
-            $"{actorName} accepted your friend request",
-            null,
+            "Lời mời kết bạn đã được chấp nhận",
+            $"{actorName} đã chấp nhận lời mời kết bạn của bạn.",
             new { requestId = request.Id, senderId = request.SenderId },
             request.Id,
             "friend_request_accepted");
