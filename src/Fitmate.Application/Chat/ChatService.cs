@@ -2,6 +2,7 @@ using Fitmate.Domain.Chat;
 using Fitmate.Domain.Common;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Social;
+using Fitmate.Application.Storage;
 
 namespace Fitmate.Application.Chat;
 
@@ -12,27 +13,36 @@ public sealed class ChatService : IChatService
     private readonly IBlockStore _blockStore;
     private readonly IOutboxDispatcher _outbox;
     private readonly TimeProvider _clock;
+    private readonly ISignedUrlService? _signedUrl;
 
     private const int MaxTextLength = 2000;
     private const int DefaultListLimit = 30;
     private const int MaxListLimit = 100;
+    private static readonly HashSet<string> AllowedReactions = new(StringComparer.Ordinal) { "❤️", "👍", "😂", "😮", "😢" };
 
     public ChatService(
         IChatStore store,
         IFriendService friendService,
         IBlockStore blockStore,
         IOutboxDispatcher outbox,
-        TimeProvider clock)
+        TimeProvider clock,
+        ISignedUrlService? signedUrl = null)
     {
         _store = store;
         _friendService = friendService;
         _blockStore = blockStore;
         _outbox = outbox;
         _clock = clock;
+        _signedUrl = signedUrl;
     }
 
     public async Task<ChatMessageDto> SendFriendMessageAsync(
         Guid senderId, Guid peerUserId, string text, Guid? clientMessageId, CancellationToken ct)
+        => await SendFriendMessageWithImagesAsync(senderId, peerUserId, text, clientMessageId, Array.Empty<string>(), ct);
+
+    public async Task<ChatMessageDto> SendFriendMessageWithImagesAsync(
+        Guid senderId, Guid peerUserId, string text, Guid? clientMessageId,
+        IReadOnlyList<string> imageStorageKeys, CancellationToken ct)
     {
         EnsureAuthenticated(senderId);
 
@@ -41,15 +51,24 @@ public sealed class ChatService : IChatService
                 "Cannot send message to yourself.",
                 new Dictionary<string, string[]> { ["peerUserId"] = new[] { "Cannot message self." } });
 
-        if (string.IsNullOrWhiteSpace(text))
+        var normalizedText = text?.Trim() ?? string.Empty;
+        var normalizedImages = imageStorageKeys.Distinct(StringComparer.Ordinal).ToList();
+        if (string.IsNullOrWhiteSpace(normalizedText) && normalizedImages.Count == 0)
             throw new ValidationException(ErrorCodes.Chat.EmptyText,
                 "Message text is required.",
                 new Dictionary<string, string[]> { ["text"] = new[] { "Text cannot be empty." } });
 
-        if (text.Length > MaxTextLength)
+        if (normalizedText.Length > MaxTextLength)
             throw new ValidationException(ErrorCodes.Chat.TextTooLong,
                 $"Message text exceeds {MaxTextLength} chars.",
                 new Dictionary<string, string[]> { ["text"] = new[] { $"Text max length is {MaxTextLength}." } });
+        if (normalizedImages.Count > 5)
+            throw new ValidationException(ErrorCodes.Validation.TooMany, "Mỗi tin nhắn được gửi tối đa 5 ảnh.",
+                new Dictionary<string, string[]> { ["image_storage_keys"] = new[] { "max 5 images" } });
+        var expectedPrefix = $"chat/{senderId:N}_";
+        if (normalizedImages.Any(key => string.IsNullOrWhiteSpace(key) || !key.StartsWith(expectedPrefix, StringComparison.Ordinal)))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Ảnh phải do chính tài khoản hiện tại tải lên.",
+                new Dictionary<string, string[]> { ["image_storage_keys"] = new[] { "invalid ownership" } });
 
         if (await _blockStore.IsBlockedEitherWayAsync(senderId, peerUserId, ct))
             throw new ForbiddenException(ErrorCodes.Chat.Blocked, "Cannot send message: blocked.");
@@ -64,14 +83,15 @@ public sealed class ChatService : IChatService
             var existing = await _store.FindMessageByClientMessageIdAsync(conversation.Id, clientMessageId.Value, ct);
             if (existing is not null)
             {
-                if (!string.Equals(existing.Text, text, StringComparison.Ordinal))
+                if (!string.Equals(existing.Text, normalizedText, StringComparison.Ordinal) ||
+                    !existing.ImageStorageKeys.SequenceEqual(normalizedImages, StringComparer.Ordinal))
                     throw new ConflictException(ErrorCodes.Chat.IdempotencyMismatch,
                         "Same client_message_id with different payload.");
-                return ToDto(existing);
+                return ToDto(existing, senderId);
             }
         }
 
-        var message = ChatMessage.CreatePeer(conversation.Id, senderId, text, clientMessageId);
+        var message = ChatMessage.CreatePeer(conversation.Id, senderId, normalizedText, clientMessageId, normalizedImages);
         await _store.AddMessageAsync(message, ct);
 
         conversation.TouchLastMessage();
@@ -87,7 +107,7 @@ public sealed class ChatService : IChatService
             source_type = "chat_message_sent"
         });
 
-        return ToDto(message);
+        return ToDto(message, senderId);
     }
 
     public async Task<ConversationPage> ListConversationsAsync(Guid viewerId, string? cursor, int limit, CancellationToken ct)
@@ -103,7 +123,7 @@ public sealed class ChatService : IChatService
         var items = page.Select(r => new ConversationDto(
             r.ConversationId,
             new FriendSummaryDto(r.PeerUserId, null, null),
-            r.LastMessage is null ? null : ToDto(r.LastMessage),
+            r.LastMessage is null ? null : ToDto(r.LastMessage, viewerId),
             r.UnreadCount,
             r.LastMessageAt)).ToList();
 
@@ -132,7 +152,7 @@ public sealed class ChatService : IChatService
         var hasMore = rows.Count > effectiveLimit;
         var page = hasMore ? rows.Take(effectiveLimit).ToList() : rows.ToList();
 
-        var items = page.Select(ToDto).ToList();
+        var items = page.Select(message => ToDto(message, viewerId)).ToList();
         string? next = null;
         if (hasMore)
         {
@@ -202,19 +222,57 @@ public sealed class ChatService : IChatService
         return new ConversationDto(
             conversationId,
             new FriendSummaryDto(peer, null, null),
-            last is null ? null : ToDto(last),
+            last is null ? null : ToDto(last, viewerId),
             unread,
             conv.LastMessageAt);
     }
 
-    private static ChatMessageDto ToDto(ChatMessage m) => new(
+    public async Task<IReadOnlyList<ChatReactionDto>> ToggleReactionAsync(Guid viewerId, Guid messageId, string reaction, CancellationToken ct)
+    {
+        EnsureAuthenticated(viewerId);
+        if (!AllowedReactions.Contains(reaction))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Cảm xúc không được hỗ trợ.",
+                new Dictionary<string, string[]> { ["reaction"] = new[] { "allowed: ❤️ 👍 😂 😮 😢" } });
+        var message = await _store.FindMessageAsync(messageId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Chat.MessageNotFound, "Không tìm thấy tin nhắn.");
+        var conversation = message.ConversationId.HasValue
+            ? await _store.FindConversationAsync(message.ConversationId.Value, ct)
+            : null;
+        if (conversation is null || !conversation.IsParticipant(viewerId))
+            throw new NotFoundException(ErrorCodes.Chat.MessageNotFound, "Không tìm thấy tin nhắn.");
+        var peerUserId = conversation.OtherParticipant(viewerId);
+        if (await _blockStore.IsBlockedEitherWayAsync(viewerId, peerUserId, ct))
+            throw new ForbiddenException(ErrorCodes.Chat.Blocked, "Không thể thả cảm xúc vì tương tác đã bị chặn.");
+        if (!await _friendService.IsFriendAsync(viewerId, peerUserId, ct))
+            throw new ForbiddenException(ErrorCodes.Chat.NotFriend, "Chỉ bạn bè mới có thể thả cảm xúc.");
+        var existing = await _store.FindReactionAsync(messageId, viewerId, ct);
+        if (existing is null) await _store.AddReactionAsync(ChatMessageReaction.Create(messageId, viewerId, reaction), ct);
+        else if (existing.Reaction == reaction) _store.RemoveReaction(existing);
+        else existing.Change(reaction);
+        await _store.SaveChangesAsync(ct);
+        message = await _store.FindMessageAsync(messageId, ct) ?? message;
+        return MapReactions(message, viewerId);
+    }
+
+    private ChatMessageDto ToDto(ChatMessage m, Guid viewerId) => new(
         m.Id,
         m.ConversationId,
         m.SenderUserId ?? Guid.Empty,
         m.Sender.ToString().ToLowerInvariant(),
         m.Text,
         m.CreatedAt,
-        m.ClientMessageId);
+        m.ClientMessageId,
+        _signedUrl is null
+            ? new List<string>()
+            : m.ImageStorageKeys.Select(key => _signedUrl.CreatePresignedReadUrl(key, TimeSpan.FromMinutes(15)).ToString()).ToList(),
+        m.ImageStorageKeys,
+        MapReactions(m, viewerId));
+
+    private static IReadOnlyList<ChatReactionDto> MapReactions(ChatMessage message, Guid viewerId)
+        => message.Reactions.GroupBy(item => item.Reaction)
+            .Select(group => new ChatReactionDto(group.Key, group.Count(), group.Any(item => item.UserId == viewerId)))
+            .OrderBy(item => Array.IndexOf(new[] { "❤️", "👍", "😂", "😮", "😢" }, item.Reaction))
+            .ToList();
 
     private static int ClampLimit(int limit)
     {

@@ -170,7 +170,7 @@ public class EfChatStore : IChatStore
     public async Task<IReadOnlyList<ChatMessage>> ListMessagesAsync(
         Guid conversationId, DateTime? cursorCreatedAt, Guid? cursorMessageId, int limit, CancellationToken ct)
     {
-        var q = _db.ChatMessages.AsNoTracking()
+        var q = _db.ChatMessages.AsNoTracking().Include(m => m.Reactions)
             .Where(m => m.ConversationId == conversationId);
 
         if (cursorCreatedAt.HasValue && cursorMessageId.HasValue)
@@ -189,8 +189,16 @@ public class EfChatStore : IChatStore
     }
 
     public Task<ChatMessage?> FindMessageAsync(Guid messageId, CancellationToken ct)
-        => _db.ChatMessages.AsNoTracking()
+        => _db.ChatMessages.Include(x => x.Reactions)
             .FirstOrDefaultAsync(m => m.Id == messageId, ct);
+
+    public Task<ChatMessageReaction?> FindReactionAsync(Guid messageId, Guid userId, CancellationToken ct)
+        => _db.ChatMessageReactions.FirstOrDefaultAsync(x => x.MessageId == messageId && x.UserId == userId, ct);
+
+    public Task AddReactionAsync(ChatMessageReaction reaction, CancellationToken ct)
+        => _db.ChatMessageReactions.AddAsync(reaction, ct).AsTask();
+
+    public void RemoveReaction(ChatMessageReaction reaction) => _db.ChatMessageReactions.Remove(reaction);
 
     public Task<ChatThreadRead?> GetThreadReadAsync(Guid conversationId, Guid userId, CancellationToken ct)
         => _db.ChatThreadReads.FirstOrDefaultAsync(r => r.ConversationId == conversationId && r.UserId == userId, ct);

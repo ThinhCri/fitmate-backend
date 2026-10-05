@@ -22,11 +22,12 @@ public class ChatController : ControllerBase
     public async Task<IActionResult> SendMessage([FromBody] SendMessageBody body, CancellationToken ct)
     {
         var senderId = GetUserId();
-        var msg = await _svc.SendFriendMessageAsync(
+        var msg = await _svc.SendFriendMessageWithImagesAsync(
             senderId,
             body.PeerUserId,
             body.Text,
             body.ClientMessageId,
+            body.ImageStorageKeys ?? new List<string>(),
             ct);
         return Created($"/api/v1/chat/friends/conversations/{msg.ConversationId}", msg);
     }
@@ -70,6 +71,10 @@ public class ChatController : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("friends/messages/{id:guid}/reactions")]
+    public async Task<IActionResult> ToggleReaction(Guid id, [FromBody] ToggleMessageReactionBody body, CancellationToken ct)
+        => Ok(new { items = await _svc.ToggleReactionAsync(GetUserId(), id, body.Reaction, ct) });
+
     private Guid GetUserId()
     {
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
@@ -82,7 +87,11 @@ public class ChatController : ControllerBase
 public sealed record SendMessageBody(
     [property: JsonPropertyName("peer_user_id")] Guid PeerUserId,
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId);
+    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId,
+    [property: JsonPropertyName("image_storage_keys")] List<string>? ImageStorageKeys = null);
 
 public sealed record MarkReadBody(
     [property: JsonPropertyName("last_read_message_id")] Guid LastReadMessageId);
+
+public sealed record ToggleMessageReactionBody(
+    [property: JsonPropertyName("reaction")] string Reaction);

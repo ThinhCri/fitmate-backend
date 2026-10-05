@@ -35,6 +35,9 @@ public class ChatContractTests
             "sender_user_id",
             "sender",
             "text",
+            "image_urls",
+            "image_storage_keys",
+            "reactions",
             "created_at",
             "client_message_id"
         };
@@ -165,7 +168,7 @@ public class ChatContractTests
         // 1. ChatMessage schema
         doc.Components.Schemas.Should().ContainKey("ChatMessage");
         var chatMsgSchema = doc.Components.Schemas["ChatMessage"];
-        var expectedChatMsgProps = new[] { "id", "conversation_id", "sender_user_id", "sender", "text", "client_message_id", "created_at" };
+        var expectedChatMsgProps = new[] { "id", "conversation_id", "sender_user_id", "sender", "text", "image_urls", "image_storage_keys", "reactions", "client_message_id", "created_at" };
         chatMsgSchema.Properties.Keys.Should().BeEquivalentTo(expectedChatMsgProps);
 
         // 2. ChatPeer schema

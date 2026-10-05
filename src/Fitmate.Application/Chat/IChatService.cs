@@ -21,6 +21,11 @@ public interface IChatService
     Task<ChatMessageDto> SendFriendMessageAsync(
         Guid senderId, Guid peerUserId, string text, Guid? clientMessageId, CancellationToken ct);
 
+    Task<ChatMessageDto> SendFriendMessageWithImagesAsync(
+        Guid senderId, Guid peerUserId, string text, Guid? clientMessageId,
+        IReadOnlyList<string> imageStorageKeys, CancellationToken ct)
+        => SendFriendMessageAsync(senderId, peerUserId, text, clientMessageId, ct);
+
     /// <summary>
     /// List conversations của caller, kèm peer summary + last message + unread count. Cursor pagination.
     /// </summary>
@@ -38,6 +43,7 @@ public interface IChatService
 
     /// <summary>Single conversation info (cho navigation từ notification/deep link).</summary>
     Task<ConversationDto> GetConversationAsync(Guid viewerId, Guid conversationId, CancellationToken ct);
+    Task<IReadOnlyList<ChatReactionDto>> ToggleReactionAsync(Guid viewerId, Guid messageId, string reaction, CancellationToken ct);
 }
 
 // ==================== DTOs ====================
@@ -49,7 +55,15 @@ public sealed record ChatMessageDto(
     [property: JsonPropertyName("sender")] string Sender,
     [property: JsonPropertyName("text")] string Text,
     [property: JsonPropertyName("created_at")] DateTime CreatedAt,
-    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId);
+    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId,
+    [property: JsonPropertyName("image_urls")] IReadOnlyList<string>? ImageUrls = null,
+    [property: JsonPropertyName("image_storage_keys")] IReadOnlyList<string>? ImageStorageKeys = null,
+    [property: JsonPropertyName("reactions")] IReadOnlyList<ChatReactionDto>? Reactions = null);
+
+public sealed record ChatReactionDto(
+    [property: JsonPropertyName("reaction")] string Reaction,
+    [property: JsonPropertyName("count")] int Count,
+    [property: JsonPropertyName("reacted_by_viewer")] bool ReactedByViewer);
 
 public sealed record FriendSummaryDto(
     [property: JsonPropertyName("user_id")] Guid UserId,
@@ -76,4 +90,5 @@ public sealed record MessagesPage(
 public sealed record SendFriendMessageRequest(
     [property: JsonPropertyName("peer_user_id")] Guid PeerUserId,
     [property: JsonPropertyName("text")] string Text,
-    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId);
+    [property: JsonPropertyName("client_message_id")] Guid? ClientMessageId,
+    [property: JsonPropertyName("image_storage_keys")] IReadOnlyList<string>? ImageStorageKeys = null);

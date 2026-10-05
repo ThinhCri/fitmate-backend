@@ -33,7 +33,8 @@ public sealed class StorageOptions
     {
         "avatars",
         "certificates",
-        "posts"
+        "posts",
+        "chat"
     };
 
     /// <summary>Secret key for HMAC-SHA256 signed URL generation (min 32 chars).</summary>

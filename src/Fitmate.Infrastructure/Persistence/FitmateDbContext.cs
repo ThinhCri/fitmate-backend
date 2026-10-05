@@ -75,6 +75,7 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     // Chat
     public DbSet<ChatThread> ChatThreads => Set<ChatThread>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<ChatMessageReaction> ChatMessageReactions => Set<ChatMessageReaction>();
 
     // BE-191: friend chat
     public DbSet<FriendConversation> FriendConversations => Set<FriendConversation>();

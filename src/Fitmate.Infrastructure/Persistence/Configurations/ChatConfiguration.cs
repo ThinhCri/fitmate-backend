@@ -72,6 +72,7 @@ public class ChatMessageConfiguration : IEntityTypeConfiguration<ChatMessage>
         e.Property(x => x.Sender).HasConversion<int>();
         e.Property(x => x.SenderUserId);
         e.Property(x => x.Text).HasMaxLength(8000).IsRequired();
+        e.Property(x => x.ImageStorageKeys).HasColumnType("text[]");
         e.Property(x => x.Confidence).HasColumnType("numeric(3,2)");
         e.Property(x => x.ClientMessageId);
         e.HasIndex(x => new { x.ThreadId, x.CreatedAt });
@@ -83,5 +84,16 @@ public class ChatMessageConfiguration : IEntityTypeConfiguration<ChatMessage>
         e.HasIndex(x => new { x.ConversationId, x.ClientMessageId })
             .IsUnique()
             .HasFilter("\"ConversationId\" IS NOT NULL AND \"ClientMessageId\" IS NOT NULL");
+        e.HasMany(x => x.Reactions).WithOne().HasForeignKey(x => x.MessageId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class ChatMessageReactionConfiguration : IEntityTypeConfiguration<ChatMessageReaction>
+{
+    public void Configure(EntityTypeBuilder<ChatMessageReaction> e)
+    {
+        e.ToTable("chat_message_reactions");
+        e.HasKey(x => new { x.MessageId, x.UserId });
+        e.Property(x => x.Reaction).HasMaxLength(8).IsRequired();
     }
 }

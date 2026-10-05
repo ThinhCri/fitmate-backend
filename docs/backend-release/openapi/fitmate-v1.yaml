@@ -2890,13 +2890,14 @@ paths:
       description: |
         BE-191. Sender lấy từ authenticated context. Chỉ gửi được khi vẫn là
         bạn và không bị block ở cả 2 chiều. Idempotent qua `client_message_id`.
+        Mỗi tin nhắn có thể chứa nội dung chữ, tối đa 5 ảnh, hoặc cả hai.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [peer_user_id, text]
+              required: [peer_user_id]
               properties:
                 peer_user_id:
                   type: string
@@ -2904,8 +2905,13 @@ paths:
                   description: "BE-191: thay peer_email (DEC-036). UUID của người nhận."
                 text:
                   type: string
-                  minLength: 1
                   maxLength: 2000
+                image_storage_keys:
+                  type: array
+                  maxItems: 5
+                  uniqueItems: true
+                  items:
+                    type: string
                 client_message_id:
                   type: string
                   format: uuid
@@ -3060,6 +3066,53 @@ paths:
                 $ref: '#/components/schemas/ProblemDetails'
         '404':
           description: Không phải participant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /chat/friends/messages/{id}/reactions:
+    post:
+      tags: [Chat]
+      summary: Thả hoặc bỏ cảm xúc trên tin nhắn
+      operationId: toggleFriendMessageReaction
+      description: |
+        Chỉ participant của cuộc trò chuyện được thao tác. Gửi lại cùng cảm xúc
+        sẽ bỏ cảm xúc; gửi cảm xúc khác sẽ thay cảm xúc hiện tại của người xem.
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reaction]
+              properties:
+                reaction:
+                  type: string
+                  enum: ["❤️", "👍", "😂", "😮", "😢"]
+      responses:
+        '200':
+          description: Danh sách tổng hợp cảm xúc mới nhất
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChatReaction'
+        '400':
+          description: Cảm xúc không được hỗ trợ
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '404':
+          description: Không tìm thấy tin nhắn trong cuộc trò chuyện của caller
           content:
             application/json:
               schema:
@@ -6384,7 +6437,6 @@ components:
           description: Chỉ trả storage key cho chính chủ bài viết; người xem khác nhận mảng rỗng.
           items:
             type: string
-
     PostInput:
       type: object
       required: [content, visibility]
@@ -6468,9 +6520,23 @@ components:
         created_at:
           type: string
           format: date-time
+
         likes_count:
           type: integer
         liked_by_viewer:
+          type: boolean
+
+    ChatReaction:
+      type: object
+      required: [reaction, count, reacted_by_viewer]
+      properties:
+        reaction:
+          type: string
+          enum: ["❤️", "👍", "😂", "😮", "😢"]
+        count:
+          type: integer
+          minimum: 1
+        reacted_by_viewer:
           type: boolean
 
     ToggleState:
@@ -6645,6 +6711,21 @@ components:
         text:
           type: string
           maxLength: 2000
+        image_urls:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            format: uri
+        image_storage_keys:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+        reactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ChatReaction'
         client_message_id:
           type: string
           format: uuid

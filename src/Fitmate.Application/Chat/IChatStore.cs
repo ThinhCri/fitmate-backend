@@ -44,6 +44,9 @@ public interface IChatStore
         Guid conversationId, DateTime? cursorCreatedAt, Guid? cursorMessageId, int limit, CancellationToken ct);
 
     Task<ChatMessage?> FindMessageAsync(Guid messageId, CancellationToken ct);
+    Task<ChatMessageReaction?> FindReactionAsync(Guid messageId, Guid userId, CancellationToken ct);
+    Task AddReactionAsync(ChatMessageReaction reaction, CancellationToken ct);
+    void RemoveReaction(ChatMessageReaction reaction);
 
     Task<ChatThreadRead?> GetThreadReadAsync(Guid conversationId, Guid userId, CancellationToken ct);
 

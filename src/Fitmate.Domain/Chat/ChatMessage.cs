@@ -15,6 +15,8 @@ public class ChatMessage : AuditableEntity
     public ChatMessageSender Sender { get; private set; }
     public Guid? SenderUserId { get; private set; }
     public string Text { get; private set; } = null!;
+    public List<string> ImageStorageKeys { get; private set; } = new();
+    public List<ChatMessageReaction> Reactions { get; private set; } = new();
     public decimal? Confidence { get; private set; }
 
     /// <summary>
@@ -46,17 +48,42 @@ public class ChatMessage : AuditableEntity
         UpdatedAt = DateTime.UtcNow
     };
 
-    public static ChatMessage CreatePeer(Guid conversationId, Guid senderId, string text, Guid? clientMessageId = null) => new()
+    public static ChatMessage CreatePeer(Guid conversationId, Guid senderId, string text, Guid? clientMessageId = null,
+        IReadOnlyList<string>? imageStorageKeys = null) => new()
     {
         Id = Guid.NewGuid(),
         ConversationId = conversationId,
         Sender = ChatMessageSender.Peer,
         SenderUserId = senderId,
         Text = text,
+        ImageStorageKeys = imageStorageKeys?.Distinct(StringComparer.Ordinal).ToList() ?? new(),
         ClientMessageId = clientMessageId,
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
+}
+
+public class ChatMessageReaction : AuditableEntity
+{
+    public Guid MessageId { get; private set; }
+    public Guid UserId { get; private set; }
+    public string Reaction { get; private set; } = null!;
+
+    private ChatMessageReaction() { }
+    public static ChatMessageReaction Create(Guid messageId, Guid userId, string reaction) => new()
+    {
+        MessageId = messageId,
+        UserId = userId,
+        Reaction = reaction,
+        CreatedAt = DateTime.UtcNow,
+        UpdatedAt = DateTime.UtcNow
+    };
+
+    public void Change(string reaction)
+    {
+        Reaction = reaction;
+        Touch();
+    }
 }
 
 public enum ChatMessageSender

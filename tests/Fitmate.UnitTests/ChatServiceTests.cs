@@ -24,6 +24,7 @@ public class ChatServiceTests
     {
         public Dictionary<Guid, FriendConversation> Conversations { get; } = new();
         public List<ChatMessage> Messages { get; } = new();
+        public List<ChatMessageReaction> Reactions { get; } = new();
         public Dictionary<(Guid, Guid), ChatThreadRead> Reads { get; } = new();
 
         public Task<FriendConversation> GetOrCreateConversationAsync(Guid a, Guid b, CancellationToken ct)
@@ -89,6 +90,23 @@ public class ChatServiceTests
 
         public Task<ChatMessage?> FindMessageAsync(Guid id, CancellationToken ct)
             => Task.FromResult(Messages.FirstOrDefault(m => m.Id == id));
+
+        public Task<ChatMessageReaction?> FindReactionAsync(Guid messageId, Guid userId, CancellationToken ct)
+            => Task.FromResult(Reactions.FirstOrDefault(r => r.MessageId == messageId && r.UserId == userId));
+
+        public Task AddReactionAsync(ChatMessageReaction reaction, CancellationToken ct)
+        {
+            Reactions.Add(reaction);
+            var message = Messages.First(m => m.Id == reaction.MessageId);
+            message.Reactions.Add(reaction);
+            return Task.CompletedTask;
+        }
+
+        public void RemoveReaction(ChatMessageReaction reaction)
+        {
+            Reactions.Remove(reaction);
+            Messages.First(m => m.Id == reaction.MessageId).Reactions.Remove(reaction);
+        }
 
         public Task<ChatThreadRead?> GetThreadReadAsync(Guid convId, Guid userId, CancellationToken ct)
             => Task.FromResult(Reads.TryGetValue((convId, userId), out var r) ? r : null);
@@ -555,6 +573,53 @@ public class ChatServiceTests
 
         outbox.Enqueued.Should().HaveCount(1);
         outbox.Enqueued[0].Type.Should().Be("chat.message.sent");
+    }
+
+    [Fact]
+    public async Task ToggleReaction_AddsChangesAndRemovesViewerReaction()
+    {
+        var friendSvc = new InMemoryFriendService();
+        friendSvc.Friends.Add(Alice.CompareTo(Bob) < 0 ? (Alice, Bob) : (Bob, Alice));
+        var store = new InMemoryChatStore();
+        var svc = CreateSvc(store, friendSvc, new InMemoryBlockStore(), new CapturingOutbox());
+        var message = await svc.SendFriendMessageAsync(Alice, Bob, "hello", null, CancellationToken.None);
+
+        var added = await svc.ToggleReactionAsync(Bob, message.Id, "❤️", CancellationToken.None);
+        added.Should().ContainSingle(x => x.Reaction == "❤️" && x.Count == 1 && x.ReactedByViewer);
+
+        var changed = await svc.ToggleReactionAsync(Bob, message.Id, "👍", CancellationToken.None);
+        changed.Should().ContainSingle(x => x.Reaction == "👍" && x.Count == 1 && x.ReactedByViewer);
+
+        var removed = await svc.ToggleReactionAsync(Bob, message.Id, "👍", CancellationToken.None);
+        removed.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ToggleReaction_ByNonParticipant_HidesMessage()
+    {
+        var friendSvc = new InMemoryFriendService();
+        friendSvc.Friends.Add(Alice.CompareTo(Bob) < 0 ? (Alice, Bob) : (Bob, Alice));
+        var store = new InMemoryChatStore();
+        var svc = CreateSvc(store, friendSvc, new InMemoryBlockStore(), new CapturingOutbox());
+        var message = await svc.SendFriendMessageAsync(Alice, Bob, "hello", null, CancellationToken.None);
+
+        var act = () => svc.ToggleReactionAsync(Carol, message.Id, "❤️", CancellationToken.None);
+        await act.Should().ThrowAsync<NotFoundException>();
+    }
+
+    [Fact]
+    public async Task ToggleReaction_WhenBlocked_RejectsNewInteraction()
+    {
+        var friendSvc = new InMemoryFriendService();
+        friendSvc.Friends.Add(Alice.CompareTo(Bob) < 0 ? (Alice, Bob) : (Bob, Alice));
+        var store = new InMemoryChatStore();
+        var blocks = new InMemoryBlockStore();
+        var svc = CreateSvc(store, friendSvc, blocks, new CapturingOutbox());
+        var message = await svc.SendFriendMessageAsync(Alice, Bob, "hello", null, CancellationToken.None);
+        blocks.Blocks.Add((Alice, Bob));
+
+        var act = () => svc.ToggleReactionAsync(Bob, message.Id, "❤️", CancellationToken.None);
+        await act.Should().ThrowAsync<ForbiddenException>();
     }
 
     // =========== GetConversation ===========
