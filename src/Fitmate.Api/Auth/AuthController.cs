@@ -293,9 +293,10 @@ public class AuthController : ControllerBase
         var user = await _users.FindByEmailAsync(request.Email);
         if (user is not null && !user.IsDeleted && user.Status != Domain.Common.UserStatus.Locked)
         {
-            var token = await _users.GeneratePasswordResetTokenAsync(user);
+            var token = await _users.GenerateUserTokenAsync(
+                user, TokenOptions.DefaultEmailProvider, "password-reset");
             outbox.Enqueue("auth.password_reset_requested", new Fitmate.Application.Email.Handlers.PasswordResetPayloadDto(
-                user.Id, user.Email!, protector.Protect(token), user.FullName, DateTime.UtcNow.AddMinutes(15)));
+                user.Id, user.Email!, protector.Protect(token), user.FullName, DateTime.UtcNow.AddMinutes(5)));
             await db.SaveChangesAsync(ct);
         }
 
@@ -375,12 +376,23 @@ public class AuthController : ControllerBase
         if (user is null || user.IsDeleted || user.Status == Domain.Common.UserStatus.Locked)
         {
             var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
-            var prob = FitmateProblemDetails.Create(400, "Invalid or expired token",
-                ErrorCodes.ValidationFailed, "invalid-reset-token", "The password reset token is invalid or expired.", trace);
+            var prob = FitmateProblemDetails.Create(400, "Invalid or expired code",
+                ErrorCodes.ValidationFailed, "invalid-reset-code", "The password reset code is invalid or expired.", trace);
             return StatusCode(400, prob);
         }
 
-        var result = await _users.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        var validCode = await _users.VerifyUserTokenAsync(
+            user, TokenOptions.DefaultEmailProvider, "password-reset", request.Token);
+        if (!validCode)
+        {
+            var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
+            var prob = FitmateProblemDetails.Create(400, "Invalid or expired code",
+                ErrorCodes.ValidationFailed, "invalid-reset-code", "The password reset code is invalid or expired.", trace);
+            return StatusCode(400, prob);
+        }
+
+        var identityResetToken = await _users.GeneratePasswordResetTokenAsync(user);
+        var result = await _users.ResetPasswordAsync(user, identityResetToken, request.NewPassword);
         if (!result.Succeeded)
         {
             var detail = string.Join("; ", result.Errors.Select(e => e.Description));

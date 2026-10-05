@@ -4,10 +4,10 @@ namespace Fitmate.Application.Email;
 
 public class EmailTemplateRenderer : IEmailTemplateRenderer
 {
-    public EmailMessage RenderPasswordReset(string toEmail, string? fullName, string resetUrl, TimeSpan ttl)
+    public EmailMessage RenderPasswordReset(string toEmail, string? fullName, string resetCode, TimeSpan ttl)
     {
         var safeName = WebUtility.HtmlEncode(fullName ?? "bạn");
-        var safeUrl = WebUtility.HtmlEncode(resetUrl);
+        var safeCode = WebUtility.HtmlEncode(resetCode);
         var ttlText = ttl.TotalMinutes >= 60
             ? $"{(int)ttl.TotalHours} giờ"
             : $"{(int)ttl.TotalMinutes} phút";
@@ -17,8 +17,9 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
         var html = $"""
             <h2>Xin chào {safeName},</h2>
             <p>Bạn (hoặc ai đó) đã yêu cầu đặt lại mật khẩu tài khoản Fitmate.</p>
-            <p>Nhấn vào liên kết bên dưới để đặt lại mật khẩu. Liên kết có hiệu lực trong <strong>{ttlText}</strong> và chỉ sử dụng được <strong>01 lần</strong>.</p>
-            <p><a href="{safeUrl}">{safeUrl}</a></p>
+            <p>Nhập mã sau trong ứng dụng để đặt lại mật khẩu. Mã có hiệu lực trong <strong>{ttlText}</strong>.</p>
+            <p style="font-size:32px;font-weight:700;letter-spacing:8px;">{safeCode}</p>
+            <p>Không chia sẻ mã này với bất kỳ ai.</p>
             <p>Nếu bạn không yêu cầu thao tác này, vui lòng bỏ qua email này. Mật khẩu của bạn sẽ không thay đổi.</p>
             <hr/>
             <p style="font-size:12px;color:#888;">Đây là email tự động từ Fitmate. Vui lòng không trả lời email này.</p>
@@ -28,9 +29,9 @@ public class EmailTemplateRenderer : IEmailTemplateRenderer
             Xin chào {fullName ?? "bạn"},
 
             Bạn (hoặc ai đó) đã yêu cầu đặt lại mật khẩu tài khoản Fitmate.
-            Truy cập liên kết bên dưới để đặt lại mật khẩu. Liên kết có hiệu lực trong {ttlText} và chỉ sử dụng được 01 lần.
+            Nhập mã sau trong ứng dụng để đặt lại mật khẩu. Mã có hiệu lực trong {ttlText}.
 
-            {resetUrl}
+            Mã đặt lại mật khẩu: {resetCode}
 
             Nếu bạn không yêu cầu thao tác này, vui lòng bỏ qua email này.
             """;

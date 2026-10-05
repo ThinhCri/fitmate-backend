@@ -306,7 +306,7 @@ paths:
   /auth/password/reset:
     post:
       tags: [Auth]
-      summary: Reset password với token
+      summary: Đặt lại mật khẩu bằng mã email 6 chữ số
       operationId: resetPassword
       security: []
       requestBody:
@@ -319,6 +319,7 @@ paths:
               properties:
                 token:
                   type: string
+                  pattern: '^[0-9]{6}$'
                 new_password:
                   type: string
                   minLength: 12
@@ -330,7 +331,7 @@ paths:
         '204':
           description: No Content
         '400':
-          description: Token không hợp lệ hoặc password yếu
+          description: Mã không hợp lệ hoặc mật khẩu yếu
           content:
             application/json:
               schema:

@@ -95,7 +95,7 @@ public class EmailOutboxHandlerTests
 
         _userManager.Setup(m => m.FindByIdAsync(userId.ToString()))
             .ReturnsAsync(user);
-        _protector.Setup(p => p.Unprotect("protected-token")).Returns("plain-token");
+        _protector.Setup(p => p.Unprotect("protected-token")).Returns("123456");
         _renderer.Setup(r => r.RenderPasswordReset(
             "user@example.com", "Test User", It.IsAny<string>(), It.IsAny<TimeSpan>()))
             .Returns(new EmailMessage("user@example.com", "Subject", "<h1>HTML</h1>", "Plain"));

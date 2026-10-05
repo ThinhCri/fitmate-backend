@@ -51,7 +51,7 @@ public class EmailOutboxIntegrationTests
             NullLogger<PasswordResetEmailOutboxHandler>.Instance);
 
         var payload = new PasswordResetPayloadDto(
-            userId, "user@example.com", "prot:plain-token", "Test User",
+            userId, "user@example.com", "prot:123456", "Test User",
             DateTime.UtcNow.AddMinutes(10));
 
         var msg = OutboxMessage.Enqueue(

@@ -101,7 +101,7 @@ public class ResetPasswordRequestValidator : AbstractValidator<ResetPasswordRequ
     public ResetPasswordRequestValidator()
     {
         RuleFor(x => x.Token)
-            .NotEmpty().WithMessage("Reset token is required");
+            .Matches("^[0-9]{6}$").WithMessage("Reset code must contain exactly 6 digits");
 
         RuleFor(x => x.NewPassword)
             .NotEmpty().WithMessage("New password is required")

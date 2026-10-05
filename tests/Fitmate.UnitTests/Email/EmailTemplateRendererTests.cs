@@ -8,22 +8,22 @@ public class EmailTemplateRendererTests
     private readonly EmailTemplateRenderer _renderer = new();
 
     [Fact]
-    public void RenderPasswordReset_HtmlEncodesFullName_AndContainsTtlAndActionUrl()
+    public void RenderPasswordReset_HtmlEncodesFullName_AndContainsTtlAndCode()
     {
         var maliciousName = "<script>alert('xss')</script> John";
-        var resetUrl = "https://fitmate.vn/reset-password?token=safe-token&email=test%40fitmate.vn";
-        var ttl = TimeSpan.FromMinutes(15);
+        var resetCode = "123456";
+        var ttl = TimeSpan.FromMinutes(5);
 
-        var msg = _renderer.RenderPasswordReset("user@example.com", maliciousName, resetUrl, ttl);
+        var msg = _renderer.RenderPasswordReset("user@example.com", maliciousName, resetCode, ttl);
 
         Assert.Equal("user@example.com", msg.ToEmail);
         Assert.Contains("[Fitmate]", msg.Subject);
         Assert.DoesNotContain("<script>", msg.HtmlBody);
         Assert.Contains("&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt; John", msg.HtmlBody);
-        Assert.Contains("15 phút", msg.HtmlBody);
-        Assert.Contains("https://fitmate.vn/reset-password?token=safe-token&amp;email=test%40fitmate.vn", msg.HtmlBody);
-        Assert.Contains(resetUrl, msg.PlainTextBody);
-        Assert.Contains("01 lần", msg.PlainTextBody);
+        Assert.Contains("5 phút", msg.HtmlBody);
+        Assert.Contains(resetCode, msg.HtmlBody);
+        Assert.Contains(resetCode, msg.PlainTextBody);
+        Assert.DoesNotContain("http", msg.HtmlBody);
     }
 
     [Fact]

@@ -14,7 +14,6 @@ public class PasswordResetEmailOutboxHandler : IOutboxHandler
     private readonly IEmailTemplateRenderer _templateRenderer;
     private readonly IEmailTokenProtector _tokenProtector;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly EmailOptions _options;
     private readonly ILogger<PasswordResetEmailOutboxHandler> _logger;
 
     public string Type => "auth.password_reset_requested";
@@ -31,7 +30,7 @@ public class PasswordResetEmailOutboxHandler : IOutboxHandler
         _templateRenderer = templateRenderer;
         _tokenProtector = tokenProtector;
         _userManager = userManager;
-        _options = options.Value;
+        _ = options;
         _logger = logger;
     }
 
@@ -48,7 +47,7 @@ public class PasswordResetEmailOutboxHandler : IOutboxHandler
         }
 
         // 1. Kiểm tra hạn dùng của token nếu có metadata thời gian
-        var ttl = TimeSpan.FromMinutes(15);
+        var ttl = TimeSpan.FromMinutes(5);
         if (payload.ExpiresAtUtc.HasValue && payload.ExpiresAtUtc.Value <= DateTime.UtcNow)
         {
             _logger.LogWarning("Password reset token for user {UserId} already expired at {ExpiresAt}. Dropping stale email.",
@@ -76,12 +75,8 @@ public class PasswordResetEmailOutboxHandler : IOutboxHandler
             throw new TerminalOutboxException("TOKEN_UNPROTECT_FAILED: Cryptographic token validation failed", ex);
         }
 
-        // 4. Xây dựng liên kết tuyệt đối từ cấu hình tin cậy
-        var baseUrl = _options.FrontendBaseUrl.TrimEnd('/');
-        var resetUrl = $"{baseUrl}/reset-password?token={Uri.EscapeDataString(plainToken)}&email={Uri.EscapeDataString(payload.Email)}";
-
-        // 5. Render email và gửi qua SMTP
-        var message = _templateRenderer.RenderPasswordReset(payload.Email, payload.FullName, resetUrl, ttl);
+        // 4. Gửi mã ngắn để người dùng nhập trực tiếp trong ứng dụng.
+        var message = _templateRenderer.RenderPasswordReset(payload.Email, payload.FullName, plainToken, ttl);
         await _emailSender.SendAsync(message, ct);
 
         _logger.LogInformation("Password reset email sent successfully to user {UserId}", payload.UserId);

@@ -100,7 +100,7 @@ public class AuthValidatorTests
     public async Task ResetPasswordRequest_Valid_Passes()
     {
         var validator = new ResetPasswordRequestValidator();
-        var result = await validator.ValidateAsync(new ResetPasswordRequest("valid-token-123", "NewPassword123", "user@fitmate.vn"));
+        var result = await validator.ValidateAsync(new ResetPasswordRequest("123456", "NewPassword123", "user@fitmate.vn"));
         result.IsValid.Should().BeTrue();
     }
 
@@ -108,7 +108,7 @@ public class AuthValidatorTests
     public async Task ResetPasswordRequest_ShortPassword_Fails()
     {
         var validator = new ResetPasswordRequestValidator();
-        var result = await validator.ValidateAsync(new ResetPasswordRequest("valid-token-123", "short", "user@fitmate.vn"));
+        var result = await validator.ValidateAsync(new ResetPasswordRequest("123456", "short", "user@fitmate.vn"));
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName == "NewPassword");
     }
@@ -117,7 +117,7 @@ public class AuthValidatorTests
     public async Task ResetPasswordRequest_MissingEmail_Fails()
     {
         var validator = new ResetPasswordRequestValidator();
-        var result = await validator.ValidateAsync(new ResetPasswordRequest("valid-token-123", "NewPassword123", ""));
+        var result = await validator.ValidateAsync(new ResetPasswordRequest("123456", "NewPassword123", ""));
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e => e.PropertyName == "Email");
     }
