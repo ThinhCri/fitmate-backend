@@ -227,6 +227,8 @@ public class SocialContractTests
         var doc = reader.Read(stream, out var diagnostic);
         diagnostic.Errors.Should().BeEmpty();
 
+        doc.Paths.Should().ContainKey("/social/bookmarks");
+
         doc.Components.Schemas.Should().ContainKey("Post");
         var postSchema = doc.Components.Schemas["Post"];
         var expectedPostProperties = new HashSet<string>

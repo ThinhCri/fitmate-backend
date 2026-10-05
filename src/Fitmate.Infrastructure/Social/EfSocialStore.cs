@@ -93,6 +93,37 @@ public class EfSocialStore : ISocialStore
         return (rows, null); // controller/service tự encode cursor dựa trên last row
     }
 
+    public async Task<IReadOnlyList<SocialPostRow>> ListBookmarkedPostsAsync(
+        Guid viewerId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
+    {
+        var friendIds = _db.Friendships
+            .Where(f => f.UserLowId == viewerId || f.UserHighId == viewerId)
+            .Select(f => f.UserLowId == viewerId ? f.UserHighId : f.UserLowId);
+        var blockedUserIds = _db.BlockedUsers
+            .Where(b => b.BlockerId == viewerId || b.BlockedId == viewerId)
+            .Select(b => b.BlockerId == viewerId ? b.BlockedId : b.BlockerId);
+
+        var query = from bookmark in _db.PostBookmarks
+                    join post in _db.Posts on bookmark.PostId equals post.Id
+                    where bookmark.UserId == viewerId
+                       && post.DeletedAt == null
+                       && !blockedUserIds.Contains(post.AuthorId)
+                       && (post.Visibility == PostVisibility.Public
+                           || post.AuthorId == viewerId
+                           || (post.Visibility == PostVisibility.Friends && friendIds.Contains(post.AuthorId)))
+                    select post;
+
+        if (cursorCreatedAt.HasValue && cursorId.HasValue)
+            query = query.Where(post => post.CreatedAt < cursorCreatedAt.Value
+                || (post.CreatedAt == cursorCreatedAt.Value && post.Id.CompareTo(cursorId.Value) < 0));
+
+        var entities = await query.OrderByDescending(post => post.CreatedAt)
+            .ThenByDescending(post => post.Id)
+            .Take(limit)
+            .ToListAsync(ct);
+        return entities.Select(ToRow).ToList();
+    }
+
     public async Task<SocialPostRow?> GetPostByIdAsync(Guid postId, CancellationToken ct)
     {
         var p = await _db.Posts.FirstOrDefaultAsync(x => x.Id == postId && x.DeletedAt == null, ct);

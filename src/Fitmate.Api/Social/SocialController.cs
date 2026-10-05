@@ -73,6 +73,16 @@ public class SocialController : ControllerBase
         return NoContent();
     }
 
+    [HttpGet("bookmarks")]
+    public async Task<IActionResult> ListBookmarks(
+        [FromQuery] string? cursor,
+        [FromQuery] int limit = 20,
+        CancellationToken ct = default)
+    {
+        var page = await _svc.ListBookmarkedPostsAsync(GetUserId(), cursor, limit, ct);
+        return Ok(new { items = page.Items, nextCursor = page.NextCursor });
+    }
+
     [HttpPatch("posts/{id:guid}")]
     public async Task<IActionResult> UpdatePost(Guid id, [FromBody] UpdatePostBody body, CancellationToken ct)
         => Ok(await _svc.UpdatePostAsync(GetUserId(), id,

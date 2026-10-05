@@ -89,6 +89,31 @@ public class SocialService : ISocialService
         return new PostPage(views, next);
     }
 
+    public async Task<PostPage> ListBookmarkedPostsAsync(Guid viewerId, string? cursor, int limit, CancellationToken ct)
+    {
+        EnsureAuthenticated(viewerId);
+        if (limit < 1) limit = DefaultLimit;
+        if (limit > MaxLimit) limit = MaxLimit;
+
+        var (createdAt, id) = ParseCursor(cursor);
+        var rows = await _store.ListBookmarkedPostsAsync(viewerId, createdAt, id, limit + 1, ct);
+        var hasMore = rows.Count > limit;
+        var page = hasMore ? rows.Take(limit).ToList() : rows.ToList();
+        var next = hasMore && page.Count > 0 ? EncodeCursor(page[^1].CreatedAt, page[^1].Id) : null;
+
+        var views = new List<PostView>(page.Count);
+        foreach (var row in page)
+        {
+            var author = await _store.GetAuthorAsync(row.AuthorId, ct);
+            views.Add(ToView(row, author, viewerId) with
+            {
+                SavedByViewer = true,
+                ReactedByViewer = await _store.HasReactionAsync(row.Id, viewerId, ct)
+            });
+        }
+        return new PostPage(views, next);
+    }
+
     private static void EnsureAuthenticated(Guid userId)
     {
         if (userId == Guid.Empty)

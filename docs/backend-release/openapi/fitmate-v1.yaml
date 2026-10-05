@@ -2390,6 +2390,31 @@ paths:
               schema:
                 $ref: '#/components/schemas/ToggleState'
 
+  /social/bookmarks:
+    get:
+      tags: [Social]
+      summary: Danh sách bài viết người dùng đã lưu
+      operationId: listBookmarkedPosts
+      parameters:
+        - in: query
+          name: cursor
+          schema: {type: string}
+        - in: query
+          name: limit
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: Danh sách bookmark còn tồn tại và người dùng còn quyền xem
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Post'}
+                  nextCursor: {type: string, nullable: true}
+
   /social/comments/{id}/like:
     post:
       tags: [Social]

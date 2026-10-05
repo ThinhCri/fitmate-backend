@@ -8,6 +8,8 @@ public interface ISocialStore
 {
     Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
         Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct);
+    Task<IReadOnlyList<SocialPostRow>> ListBookmarkedPostsAsync(
+        Guid viewerId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct);
 
     Task<SocialPostRow?> GetPostByIdAsync(Guid postId, CancellationToken ct);
     Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct);

@@ -123,6 +123,7 @@ public class ModerationServiceTests
         public Dictionary<Guid, SocialPostRow> Posts { get; } = new();
         public Dictionary<Guid, SocialCommentRow> Comments { get; } = new();
         public Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct) => throw new NotImplementedException();
+        public Task<IReadOnlyList<SocialPostRow>> ListBookmarkedPostsAsync(Guid viewerId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct) => throw new NotImplementedException();
         public Task<SocialPostRow?> GetPostByIdAsync(Guid postId, CancellationToken ct) => Task.FromResult<SocialPostRow?>(Posts.GetValueOrDefault(postId));
         public Task<SocialPostRow?> GetPostWithAuthorAsync(Guid postId, CancellationToken ct) => GetPostByIdAsync(postId, ct);
         public Task AddPostAsync(SocialPostRow row, CancellationToken ct) { Posts[row.Id] = row; return Task.CompletedTask; }

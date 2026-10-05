@@ -44,6 +44,7 @@ public class SocialServiceTests
         public List<SocialReactionRow> Reactions { get; } = new();
         public List<(Guid ReporterId, ReportTargetType Kind, Guid TargetId, string Reason, string? Details, string? IdempotencyKey)> Reports { get; } = new();
         public Dictionary<Guid, SocialAuthorRow> Authors { get; } = new();
+        public HashSet<(Guid PostId, Guid UserId)> Bookmarks { get; } = new();
 
         public Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
             Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
@@ -58,6 +59,18 @@ public class SocialServiceTests
                               || (p.CreatedAt == cursorCreatedAt.Value && p.Id.CompareTo(cursorId.Value) < 0));
             var ordered = q.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id).Take(limit).ToList();
             return Task.FromResult<(IReadOnlyList<SocialPostRow>, string?)>((ordered, null));
+        }
+
+        public Task<IReadOnlyList<SocialPostRow>> ListBookmarkedPostsAsync(
+            Guid viewerId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
+        {
+            var bookmarkedIds = Bookmarks.Where(x => x.UserId == viewerId).Select(x => x.PostId).ToHashSet();
+            var query = Posts.Where(post => bookmarkedIds.Contains(post.Id));
+            if (cursorCreatedAt.HasValue && cursorId.HasValue)
+                query = query.Where(post => post.CreatedAt < cursorCreatedAt.Value
+                    || (post.CreatedAt == cursorCreatedAt.Value && post.Id.CompareTo(cursorId.Value) < 0));
+            return Task.FromResult<IReadOnlyList<SocialPostRow>>(query
+                .OrderByDescending(post => post.CreatedAt).ThenByDescending(post => post.Id).Take(limit).ToList());
         }
 
         public Task<SocialPostRow?> GetPostByIdAsync(Guid postId, CancellationToken ct)
@@ -267,6 +280,24 @@ public class SocialServiceTests
         for (var i = 0; i < 200; i++) store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
         var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(null, FeedScope.Public, null, 1000, CancellationToken.None);
         page.Items.Should().HaveCount(100); // MaxLimit
+    }
+
+    [Fact]
+    public async Task ListBookmarkedPosts_ReturnsOnlySavedPostsAndMarksThemSaved()
+    {
+        var store = new InMemorySocialStore();
+        var viewer = Guid.NewGuid();
+        var saved = NewPost(Guid.NewGuid(), PostVisibility.Public, "saved");
+        var notSaved = NewPost(Guid.NewGuid(), PostVisibility.Public, "not saved");
+        store.Posts.AddRange([saved, notSaved]);
+        store.Bookmarks.Add((saved.Id, viewer));
+
+        var page = await NewService(store, new InMemoryCertificateStore())
+            .ListBookmarkedPostsAsync(viewer, null, 20, CancellationToken.None);
+
+        page.Items.Should().ContainSingle();
+        page.Items[0].Id.Should().Be(saved.Id);
+        page.Items[0].SavedByViewer.Should().BeTrue();
     }
 
     [Fact]
