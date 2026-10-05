@@ -36,6 +36,7 @@ using Fitmate.Application.Email;
 using Fitmate.Application.Email.Handlers;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 
 Fitmate.Api.DotEnvLoader.Load();
@@ -666,7 +667,12 @@ builder.Services.AddRateLimiter(options =>
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
     {
         var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? httpContext.User.FindFirstValue("sub");
+        var partitionKey = httpContext.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(userId)
+            ? $"user:{userId}"
+            : $"ip:{ip}";
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = rateLimitOpts.PerMinutePerIp,
             Window = TimeSpan.FromMinutes(1),
@@ -677,7 +683,12 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy("GeneralLimiter", httpContext =>
     {
         var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? httpContext.User.FindFirstValue("sub");
+        var partitionKey = httpContext.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(userId)
+            ? $"user:{userId}"
+            : $"ip:{ip}";
+        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = rateLimitOpts.PerMinutePerIp,
             Window = TimeSpan.FromMinutes(1),
@@ -837,11 +848,13 @@ app.Use(async (context, next) =>
 // BE-822: CORS middleware
 app.UseCors("FitmateCorsPolicy");
 
-// BE-822: Rate Limiter middleware
-app.UseRateLimiter();
-
 // BE-030: JWT auth pipeline.
 app.UseAuthentication();
+
+// Authenticated traffic is rate-limited per account; anonymous/auth endpoints
+// remain partitioned by IP so multiple devices on one Wi-Fi do not share one
+// general API budget after login.
+app.UseRateLimiter();
 app.UseAuthorization();
 
 // BE-040: Đảm bảo roles Member/Pt/Admin đã được seed (idempotent) trước khi request đầu tiên đến.
