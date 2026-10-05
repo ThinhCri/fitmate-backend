@@ -2184,6 +2184,12 @@ paths:
             type: string
             enum: [public, friends]
             default: public
+        - in: query
+          name: query
+          description: Tìm theo nội dung, tên tác giả hoặc thẻ. Bắt đầu bằng # để chỉ tìm theo thẻ.
+          schema:
+            type: string
+            maxLength: 100
       responses:
         '200':
           description: OK

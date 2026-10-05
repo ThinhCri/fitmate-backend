@@ -34,6 +34,7 @@ public class SocialService : ISocialService
     private const int MaxDetailsLength = 2000;
     private const int MaxTags = 10;
     private const int MaxTagLength = 32;
+    private const int MaxSearchLength = 100;
 
     public SocialService(
         ISocialStore store,
@@ -55,14 +56,18 @@ public class SocialService : ISocialService
         _logger = logger;
     }
 
-    public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, CancellationToken ct)
+    public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, string? query, CancellationToken ct)
     {
         // Feed không yêu cầu role — chỉ cần user hợp lệ (anonymous cũng xem được public).
         if (limit < 1) limit = DefaultLimit;
         if (limit > MaxLimit) limit = MaxLimit;
+        query = string.IsNullOrWhiteSpace(query) ? null : query.Trim();
+        if (query?.Length > MaxSearchLength)
+            throw new ValidationException(ErrorCodes.Validation.TooLong, "Search query is too long.",
+                new Dictionary<string, string[]> { ["query"] = new[] { $"Maximum length is {MaxSearchLength}." } });
 
         var (createdAt, id) = ParseCursor(cursor);
-        var (rows, _) = await _store.ListPostsAsync(viewerId, scope, createdAt, id, limit + 1, ct);
+        var (rows, _) = await _store.ListPostsAsync(viewerId, scope, createdAt, id, limit + 1, query, ct);
 
         var hasMore = rows.Count > limit;
         var page = hasMore ? rows.Take(limit).ToList() : rows;

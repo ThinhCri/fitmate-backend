@@ -47,13 +47,22 @@ public class SocialServiceTests
         public HashSet<(Guid PostId, Guid UserId)> Bookmarks { get; } = new();
 
         public Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
-            Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
+            Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, string? query, CancellationToken ct)
         {
             IEnumerable<SocialPostRow> q = Posts;
             if (scope == FeedScope.Public)
                 q = q.Where(p => p.Visibility == PostVisibility.Public);
             else
                 q = q.Where(p => p.Visibility == PostVisibility.Public || (viewerId.HasValue && p.AuthorId == viewerId.Value));
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                var hashtagOnly = query.StartsWith('#');
+                var term = (hashtagOnly ? query.TrimStart('#') : query).Trim();
+                q = q.Where(post =>
+                    post.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase))
+                    || (!hashtagOnly && (post.Content.Contains(term, StringComparison.OrdinalIgnoreCase)
+                        || (Authors.GetValueOrDefault(post.AuthorId)?.DisplayName.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false))));
+            }
             if (cursorCreatedAt.HasValue && cursorId.HasValue)
                 q = q.Where(p => p.CreatedAt < cursorCreatedAt.Value
                               || (p.CreatedAt == cursorCreatedAt.Value && p.Id.CompareTo(cursorId.Value) < 0));
@@ -254,7 +263,7 @@ public class SocialServiceTests
         var store = new InMemorySocialStore();
         store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
         store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Private));
-        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(viewerId: null, FeedScope.Public, cursor: null, limit: 10, CancellationToken.None);
+        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(viewerId: null, FeedScope.Public, cursor: null, limit: 10, query: null, ct: CancellationToken.None);
         page.Items.Should().HaveCount(1);
     }
 
@@ -268,7 +277,7 @@ public class SocialServiceTests
         store.Posts.Add(NewPost(other, PostVisibility.Friends));
         store.Posts.Add(NewPost(other, PostVisibility.Public));
 
-        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(viewer, FeedScope.Friends, null, 10, CancellationToken.None);
+        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(viewer, FeedScope.Friends, null, 10, null, CancellationToken.None);
         // Viewer thấy: chính mình friends + other's public = 2
         page.Items.Should().HaveCount(2);
     }
@@ -278,8 +287,47 @@ public class SocialServiceTests
     {
         var store = new InMemorySocialStore();
         for (var i = 0; i < 200; i++) store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
-        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(null, FeedScope.Public, null, 1000, CancellationToken.None);
+        var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(null, FeedScope.Public, null, 1000, null, CancellationToken.None);
         page.Items.Should().HaveCount(100); // MaxLimit
+    }
+
+    [Fact]
+    public async Task ListPosts_Query_SearchesContentAuthorAndTags()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        store.Authors[author] = new SocialAuthorRow(author, "Nguyễn Minh Anh", null);
+        store.Posts.Add(NewPost(author, PostVisibility.Public, "Lịch tập toàn thân") with { Tags = new[] { "calisthenics" } });
+        store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public, "Bữa sáng") with { Tags = new[] { "dinh dưỡng" } });
+        var service = NewService(store, new InMemoryCertificateStore());
+
+        (await service.ListPostsAsync(null, FeedScope.Public, null, 20, "toàn thân", CancellationToken.None)).Items.Should().HaveCount(1);
+        (await service.ListPostsAsync(null, FeedScope.Public, null, 20, "Minh Anh", CancellationToken.None)).Items.Should().HaveCount(1);
+        (await service.ListPostsAsync(null, FeedScope.Public, null, 20, "calis", CancellationToken.None)).Items.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task ListPosts_HashtagQuery_SearchesOnlyTags()
+    {
+        var store = new InMemorySocialStore();
+        store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public, "Nội dung có chữ gym") with { Tags = new[] { "strength" } });
+        store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public, "Bài khác") with { Tags = new[] { "gym" } });
+
+        var page = await NewService(store, new InMemoryCertificateStore())
+            .ListPostsAsync(null, FeedScope.Public, null, 20, "#gym", CancellationToken.None);
+
+        page.Items.Should().ContainSingle();
+        page.Items[0].Tags.Should().Contain("gym");
+    }
+
+    [Fact]
+    public async Task ListPosts_RejectsQueryLongerThanOneHundredCharacters()
+    {
+        var service = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
+        var act = () => service.ListPostsAsync(null, FeedScope.Public, null, 20, new string('x', 101), CancellationToken.None);
+
+        await act.Should().ThrowAsync<ValidationException>()
+            .Where(error => error.Code == ErrorCodes.Validation.TooLong);
     }
 
     [Fact]

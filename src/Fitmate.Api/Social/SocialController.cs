@@ -24,6 +24,7 @@ public class SocialController : ControllerBase
         [FromQuery] string? cursor,
         [FromQuery] int limit = 20,
         [FromQuery] string scope = "public",
+        [FromQuery] string? query = null,
         CancellationToken ct = default)
     {
         var viewerId = TryGetUserId();
@@ -34,7 +35,7 @@ public class SocialController : ControllerBase
             _ => throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "scope invalid.",
                 new Dictionary<string, string[]> { ["scope"] = new[] { "public|friends" } })
         };
-        var page = await _svc.ListPostsAsync(viewerId, feedScope, cursor, limit, ct);
+        var page = await _svc.ListPostsAsync(viewerId, feedScope, cursor, limit, query, ct);
         return Ok(new { items = page.Items, nextCursor = page.NextCursor });
     }
 

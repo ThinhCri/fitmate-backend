@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 using Fitmate.Domain.Booking;
+using Fitmate.Domain.Common;
+using Fitmate.Domain.Social;
 using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
 using Fitmate.IntegrationTests.Infrastructure;
@@ -38,6 +40,34 @@ public sealed class MobileWireContractIntegrationTests : IClassFixture<FitmateTe
         await AssertObjectKeys(pt, "/api/v1/me/revenue", "range", "total_gross_vnd",
             "platform_fee_vnd", "net_earnings_vnd", "pending_payout_vnd",
             "completed_payout_vnd", "completed_sessions_count", "chart");
+    }
+
+    [Fact]
+    public async Task SocialFeed_SearchesContentAuthorAndHashtag_OnPostgres()
+    {
+        var authorId = Guid.NewGuid();
+        var client = _factory.CreateAuthenticatedClient("Member", authorId);
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+        var contentToken = $"search-content-{suffix}";
+        var authorToken = $"Search Author {suffix}";
+        var tagToken = $"searchtag{suffix}";
+        Guid postId;
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var user = await db.Users.FindAsync(authorId);
+            user.Should().NotBeNull();
+            user!.FullName = authorToken;
+            var post = Post.Create(authorId, contentToken, null, null, [tagToken], PostVisibility.Public, false);
+            postId = post.Id;
+            db.Posts.Add(post);
+            await db.SaveChangesAsync();
+        }
+
+        await AssertFeedContains(client, $"/api/v1/social/posts?query={Uri.EscapeDataString(contentToken)}", postId);
+        await AssertFeedContains(client, $"/api/v1/social/posts?query={Uri.EscapeDataString(authorToken)}", postId);
+        await AssertFeedContains(client, $"/api/v1/social/posts?query={Uri.EscapeDataString($"#{tagToken}")}", postId);
     }
 
     [Fact]
@@ -108,5 +138,15 @@ public sealed class MobileWireContractIntegrationTests : IClassFixture<FitmateTe
         response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         json.RootElement.ValueKind.Should().Be(expectedKind);
+    }
+
+    private static async Task AssertFeedContains(HttpClient client, string path, Guid postId)
+    {
+        using var response = await client.GetAsync(path);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, path);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("items").EnumerateArray()
+            .Select(item => item.GetProperty("id").GetGuid())
+            .Should().Contain(postId);
     }
 }

@@ -29,7 +29,7 @@ public class EfSocialStore : ISocialStore
     }
 
     public async Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
-        Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct)
+        Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, string? query, CancellationToken ct)
     {
         // Scope: Public => chỉ Visibility=Public; Friends => Public + (Friends của viewer) + author = viewer.
         IQueryable<Post> q = _db.Posts.Where(p => p.DeletedAt == null);
@@ -65,6 +65,25 @@ public class EfSocialStore : ISocialStore
                 .Where(b => b.BlockerId == v || b.BlockedId == v)
                 .Select(b => b.BlockerId == v ? b.BlockedId : b.BlockerId);
             q = q.Where(p => !blockedUserIds.Contains(p.AuthorId));
+        }
+
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var hashtagOnly = query.StartsWith('#');
+            var term = hashtagOnly ? query.TrimStart('#').Trim() : query;
+            if (term.Length > 0)
+            {
+                var escaped = term.Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
+                var pattern = $"%{escaped}%";
+                var tagMatch = q.Where(post => post.Tags.Any(tag => EF.Functions.ILike(tag, pattern, "\\")));
+                q = hashtagOnly
+                    ? tagMatch
+                    : q.Where(post =>
+                        EF.Functions.ILike(post.Content, pattern, "\\")
+                        || post.Tags.Any(tag => EF.Functions.ILike(tag, pattern, "\\"))
+                        || _db.Users.Any(user => user.Id == post.AuthorId
+                            && EF.Functions.ILike(user.FullName ?? string.Empty, pattern, "\\")));
+            }
         }
 
         if (cursorCreatedAt.HasValue && cursorId.HasValue)

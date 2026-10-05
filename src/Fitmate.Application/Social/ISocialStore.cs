@@ -7,7 +7,7 @@ namespace Fitmate.Application.Social;
 public interface ISocialStore
 {
     Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
-        Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct);
+        Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, string? query, CancellationToken ct);
     Task<IReadOnlyList<SocialPostRow>> ListBookmarkedPostsAsync(
         Guid viewerId, DateTime? cursorCreatedAt, Guid? cursorId, int limit, CancellationToken ct);
 

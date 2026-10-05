@@ -1720,3 +1720,9 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - PT completion now enters `AwaitingMemberConfirmation`. Member can confirm or dispute; no dispute for 24 hours is auto-confirmed by the booking sweep. Financial recognition is created only after final `Completed`.
 - Added migration `20261003010000_PracticalBookingLifecycle`, OpenAPI endpoints `confirm-completion` and `dispute`, plus matching Mobile/Admin states.
 - Verification in this session: backend build passed; unit tests 884/884 passed after contract updates. Mobile booking/type contract changes type-check; full Mobile suite still contains unrelated pre-existing failures recorded in the session output. Admin Web typecheck and 122/122 tests pass.
+# Session update — 2026-10-05 (community post search)
+
+- `GET /api/v1/social/posts` accepts optional `query` up to 100 characters without changing the existing default feed behavior.
+- Plain queries search visible post content, author display name and tags. Queries beginning with `#` search tags only after removing the leading hash.
+- Search remains behind the existing visibility, friendship and block filters and keeps cursor ordering/pagination.
+- OpenAPI documents the additive query parameter. Social unit tests pass 38/38 and the targeted PostgreSQL integration test verifies content, author and hashtag translation.
