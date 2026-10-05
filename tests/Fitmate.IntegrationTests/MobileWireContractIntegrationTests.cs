@@ -71,6 +71,49 @@ public sealed class MobileWireContractIntegrationTests : IClassFixture<FitmateTe
     }
 
     [Fact]
+    public async Task UserSearch_AndSuggestions_ReturnEligibleOtherAccounts()
+    {
+        var viewerId = Guid.NewGuid();
+        var candidateId = Guid.NewGuid();
+        var existingFriendId = Guid.NewGuid();
+        var pendingRequestId = Guid.NewGuid();
+        var blockedUserId = Guid.NewGuid();
+        var viewer = _factory.CreateAuthenticatedClient("Member", viewerId);
+        _factory.CreateAuthenticatedClient("Member", candidateId).Dispose();
+        _factory.CreateAuthenticatedClient("Member", existingFriendId).Dispose();
+        _factory.CreateAuthenticatedClient("Member", pendingRequestId).Dispose();
+        _factory.CreateAuthenticatedClient("Member", blockedUserId).Dispose();
+        var suffix = Guid.NewGuid().ToString("N")[..10];
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var candidate = await db.Users.FindAsync(candidateId);
+            candidate.Should().NotBeNull();
+            candidate!.FullName = $"Suggested Friend {suffix}";
+            db.Friendships.Add(Friendship.Create(viewerId, existingFriendId));
+            db.FriendRequests.Add(FriendRequest.Create(viewerId, pendingRequestId));
+            db.BlockedUsers.Add(BlockedUser.Create(blockedUserId, viewerId));
+            await db.SaveChangesAsync();
+        }
+
+        using var searchResponse = await viewer.GetAsync($"/api/v1/users/search?q={suffix}");
+        searchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var searchJson = JsonDocument.Parse(await searchResponse.Content.ReadAsStringAsync());
+        searchJson.RootElement.EnumerateArray().Select(item => item.GetProperty("id").GetGuid())
+            .Should().Contain(candidateId).And.NotContain(viewerId);
+
+        using var suggestionsResponse = await viewer.GetAsync("/api/v1/users/suggestions?limit=50");
+        suggestionsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var suggestionsJson = JsonDocument.Parse(await suggestionsResponse.Content.ReadAsStringAsync());
+        var suggestedIds = suggestionsJson.RootElement.EnumerateArray()
+            .Select(item => item.GetProperty("id").GetGuid())
+            .ToArray();
+        suggestedIds.Should().Contain(candidateId);
+        suggestedIds.Should().NotContain(new[] { viewerId, existingFriendId, pendingRequestId, blockedUserId });
+    }
+
+    [Fact]
     public async Task AppointmentDetail_UsesCanonicalWireShape_AndOwnerBoundary()
     {
         var memberId = Guid.NewGuid();

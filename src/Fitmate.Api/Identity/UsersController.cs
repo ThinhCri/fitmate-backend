@@ -63,8 +63,19 @@ public class UsersController : ControllerBase
         if (string.IsNullOrWhiteSpace(q))
             return Ok(Array.Empty<PublicUserProfileDto>());
 
-        var results = await _profileService.SearchUsersAsync(q, limit, ct);
+        var userId = ResolveUserId();
+        if (userId is null) return Unauthorized();
+        var results = await _profileService.SearchUsersAsync(userId.Value, q, limit, ct);
         return Ok(results);
+    }
+
+    [HttpGet("suggestions")]
+    [Authorize]
+    public async Task<IActionResult> ListSuggestedUsers([FromQuery] int limit = 20, CancellationToken ct = default)
+    {
+        var userId = ResolveUserId();
+        if (userId is null) return Unauthorized();
+        return Ok(await _profileService.ListSuggestedUsersAsync(userId.Value, limit, ct));
     }
 
     private Guid? ResolveUserId()

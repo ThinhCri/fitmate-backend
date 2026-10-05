@@ -137,22 +137,33 @@ public class UserProfileService : IUserProfileService
             CreatedAtUtc: user.CreatedAt);
     }
 
-    public async Task<IReadOnlyList<PublicUserProfileDto>> SearchUsersAsync(string query, int limit, CancellationToken ct)
+    public async Task<IReadOnlyList<PublicUserProfileDto>> SearchUsersAsync(Guid viewerId, string query, int limit, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(query))
             return Array.Empty<PublicUserProfileDto>();
 
         var clampedLimit = Math.Clamp(limit, 1, 50);
-        var results = await _store.SearchUsersAsync(query.Trim(), clampedLimit, ct);
+        var results = await _store.SearchUsersAsync(viewerId, query.Trim(), clampedLimit, ct);
 
-        return results.Select(r => new PublicUserProfileDto(
+        return MapPublicProfiles(results);
+    }
+
+    public async Task<IReadOnlyList<PublicUserProfileDto>> ListSuggestedUsersAsync(Guid viewerId, int limit, CancellationToken ct)
+    {
+        var clampedLimit = Math.Clamp(limit, 1, 50);
+        var results = await _store.ListSuggestedUsersAsync(viewerId, clampedLimit, ct);
+        return MapPublicProfiles(results);
+    }
+
+    private IReadOnlyList<PublicUserProfileDto> MapPublicProfiles(
+        IReadOnlyList<(ApplicationUser User, UserProfile? Profile, string Role)> results)
+        => results.Select(r => new PublicUserProfileDto(
             Id: r.User.Id,
             FullName: r.User.FullName,
             AvatarUrl: ResolveAvatarUrl(r.User),
             Role: r.Role.ToLowerInvariant(),
             FitnessGoal: r.Profile?.FitnessGoal,
             CreatedAtUtc: r.User.CreatedAt)).ToList();
-    }
 
     private static void ValidateUpdateRequest(UserProfileUpdateRequest req)
     {

@@ -182,7 +182,7 @@ public class UserProfileServiceTests
         store.Roles[user2.Id] = "member";
 
         var svc = new UserProfileService(store);
-        var results = await svc.SearchUsersAsync("Alice", 10, CancellationToken.None);
+        var results = await svc.SearchUsersAsync(Guid.NewGuid(), "Alice", 10, CancellationToken.None);
 
         results.Should().HaveCount(1);
         results[0].FullName.Should().Be("Trainer Alice");
@@ -255,7 +255,7 @@ internal class InMemoryUserProfileStore : IUserProfileStore
         return Task.FromResult(Roles.TryGetValue(userId, out var r) ? r : null);
     }
 
-    public Task<IReadOnlyList<(ApplicationUser User, UserProfile? Profile, string Role)>> SearchUsersAsync(string query, int limit, CancellationToken ct)
+    public Task<IReadOnlyList<(ApplicationUser User, UserProfile? Profile, string Role)>> SearchUsersAsync(Guid viewerId, string query, int limit, CancellationToken ct)
     {
         var matches = Users.Values
             .Where(u => !u.IsDeleted && u.Status != UserStatus.Locked && u.FullName.Contains(query, StringComparison.OrdinalIgnoreCase))
@@ -268,6 +268,9 @@ internal class InMemoryUserProfileStore : IUserProfileStore
 
         return Task.FromResult<IReadOnlyList<(ApplicationUser User, UserProfile? Profile, string Role)>>(matches);
     }
+
+    public Task<IReadOnlyList<(ApplicationUser User, UserProfile? Profile, string Role)>> ListSuggestedUsersAsync(Guid viewerId, int limit, CancellationToken ct)
+        => SearchUsersAsync(viewerId, string.Empty, limit, ct);
 
     public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
 }
