@@ -78,5 +78,48 @@ public class NutritionAndAiContractTests : IClassFixture<FitmateTestAppFactory>
         meals.Should().NotBeNull();
         meals.Should().ContainSingle(m => m.Id == created.Id && m.FoodName == "Cơm tấm sườn nướng");
     }
+
+    [Fact]
+    public async Task Weekly_plan_create_consume_and_replay_creates_one_meal_log()
+    {
+        var userId = Guid.NewGuid();
+        var client = _factory.CreateAuthenticatedClient(role: "Member", userId: userId);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var monday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
+        var request = new UpsertWeeklyMealPlanItemRequest
+        {
+            DayOfWeek = 0,
+            MealSlot = MealSlot.Breakfast,
+            FoodName = "Yến mạch",
+            ServingQuantity = 1,
+            ServingUnit = "tô",
+            Calories = 320,
+            ProteinG = 12,
+            CarbsG = 50,
+            FatG = 8
+        };
+
+        var create = await client.PostAsJsonAsync(
+            $"/api/v1/me/nutrition/weekly-plan?week_start={monday:yyyy-MM-dd}", request);
+        create.StatusCode.Should().Be(HttpStatusCode.Created);
+        var item = await create.Content.ReadFromJsonAsync<WeeklyMealPlanItemView>();
+        item.Should().NotBeNull();
+
+        var first = await client.PostAsJsonAsync(
+            $"/api/v1/me/nutrition/weekly-plan/{item!.Id}/consume",
+            new ConsumeWeeklyMealPlanItemRequest { Date = monday });
+        var replay = await client.PostAsJsonAsync(
+            $"/api/v1/me/nutrition/weekly-plan/{item.Id}/consume",
+            new ConsumeWeeklyMealPlanItemRequest { Date = monday });
+        first.StatusCode.Should().Be(HttpStatusCode.OK);
+        replay.StatusCode.Should().Be(HttpStatusCode.OK);
+        var firstMeal = await first.Content.ReadFromJsonAsync<MealLogView>();
+        var replayMeal = await replay.Content.ReadFromJsonAsync<MealLogView>();
+        replayMeal!.Id.Should().Be(firstMeal!.Id);
+
+        var plan = await client.GetFromJsonAsync<List<WeeklyMealPlanItemView>>(
+            $"/api/v1/me/nutrition/weekly-plan?week_start={monday:yyyy-MM-dd}");
+        plan.Should().ContainSingle(x => x.Id == item.Id && x.IsConsumed && x.MealLogId == firstMeal.Id);
+    }
 }
 

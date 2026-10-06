@@ -2102,6 +2102,21 @@ paths:
                 $ref: '#/components/schemas/MealLog'
 
   /me/nutrition/meals/{id}:
+    get:
+      tags: [Nutrition]
+      summary: Chi tiết meal log của chính người dùng
+      operationId: getMeal
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+        '404':
+          $ref: '#/components/responses/NotFound'
     patch:
       tags: [Nutrition]
       summary: Sửa / xác nhận meal log
@@ -2189,6 +2204,105 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
+
+  /me/nutrition/weekly-plan:
+    get:
+      tags: [Nutrition]
+      summary: Kế hoạch ăn lặp theo tuần kèm trạng thái đã ăn của tuần được chọn
+      operationId: listWeeklyMealPlan
+      parameters:
+        - $ref: '#/components/parameters/WeekStartQuery'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WeeklyMealPlanItem'
+    post:
+      tags: [Nutrition]
+      summary: Thêm món vào kế hoạch tuần
+      operationId: createWeeklyMealPlanItem
+      parameters:
+        - $ref: '#/components/parameters/WeekStartQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeeklyMealPlanItemInput'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyMealPlanItem'
+
+  /me/nutrition/weekly-plan/{id}:
+    patch:
+      tags: [Nutrition]
+      summary: Sửa hoặc thay món trong kế hoạch tuần
+      operationId: updateWeeklyMealPlanItem
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - $ref: '#/components/parameters/WeekStartQuery'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WeeklyMealPlanItemInput'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeeklyMealPlanItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Nutrition]
+      summary: Xóa món khỏi kế hoạch tuần, không xóa nhật ký đã ăn
+      operationId: deleteWeeklyMealPlanItem
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /me/nutrition/weekly-plan/{id}/consume:
+    post:
+      tags: [Nutrition]
+      summary: Đánh dấu đã ăn và tạo một meal log thực tế, idempotent theo món và ngày
+      operationId: consumeWeeklyMealPlanItem
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date]
+              properties:
+                date:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Meal log vừa tạo hoặc kết quả cũ khi gọi lại
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealLog'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /social/posts:
     get:
@@ -4519,6 +4633,14 @@ components:
       required: true
       schema:
         type: string
+    WeekStartQuery:
+      in: query
+      name: week_start
+      required: false
+      description: Ngày thứ Hai mở đầu tuần, mặc định là tuần UTC hiện tại
+      schema:
+        type: string
+        format: date
     IdempotencyKey:
       in: header
       name: Idempotency-Key
@@ -4956,6 +5078,26 @@ components:
           type: boolean
         biometric_login_enabled:
           type: boolean
+        target_calories:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 10000
+        target_protein_g:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000
+        target_carbs_g:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000
+        target_fat_g:
+          type: integer
+          nullable: true
+          minimum: 0
+          maximum: 1000
         updated_at:
           type: string
           format: date-time
@@ -4979,6 +5121,10 @@ components:
           type: boolean
         biometric_login_enabled:
           type: boolean
+        target_calories: { type: integer, nullable: true, minimum: 1, maximum: 10000 }
+        target_protein_g: { type: integer, nullable: true, minimum: 0, maximum: 1000 }
+        target_carbs_g: { type: integer, nullable: true, minimum: 0, maximum: 1000 }
+        target_fat_g: { type: integer, nullable: true, minimum: 0, maximum: 1000 }
 
     AccountDeletionRequest:
       type: object
@@ -5502,6 +5648,9 @@ components:
             carbs_g: { type: integer }
             fat_g: { type: integer }
             target_calories: { type: integer, nullable: true }
+            target_protein_g: { type: integer, nullable: true }
+            target_carbs_g: { type: integer, nullable: true }
+            target_fat_g: { type: integer, nullable: true }
         workout:
           type: object
           properties:
@@ -5531,6 +5680,26 @@ components:
             slot_start_utc: { type: string, format: date-time }
             duration_minutes: { type: integer }
             status: { type: string }
+        today_workout:
+          type: object
+          nullable: true
+          properties:
+            id: { type: string, format: uuid }
+            resource_type: { type: string, enum: [plan, session] }
+            title: { type: string }
+            duration_minutes: { type: integer }
+            exercise_count: { type: integer }
+            status: { type: string }
+        today_meals:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              food_name: { type: string }
+              meal_slot: { type: string, enum: [breakfast, lunch, dinner, snack] }
+              calories: { type: integer }
+              logged_at: { type: string, format: date-time }
 
     TrainerRevenueHistoryPage:
       type: object
@@ -6251,6 +6420,21 @@ components:
         portion_size:
           type: number
           nullable: true
+        meal_slot:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        serving_quantity:
+          type: number
+          nullable: true
+        serving_unit:
+          type: string
+          nullable: true
+        grams:
+          type: number
+          nullable: true
+        notes:
+          type: string
+          nullable: true
         source:
           type: string
           enum: [manual, dataset, ai_estimate]
@@ -6288,6 +6472,19 @@ components:
           minimum: 0
         portion_size:
           type: number
+        meal_slot:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        serving_quantity:
+          type: number
+        serving_unit:
+          type: string
+          maxLength: 50
+        grams:
+          type: number
+        notes:
+          type: string
+          maxLength: 1000
         source:
           type: string
           enum: [manual, dataset, ai_estimate]
@@ -6314,6 +6511,19 @@ components:
           type: integer
         portion_size:
           type: number
+        meal_slot:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        serving_quantity:
+          type: number
+        serving_unit:
+          type: string
+          maxLength: 50
+        grams:
+          type: number
+        notes:
+          type: string
+          maxLength: 1000
         confirmed:
           type: boolean
 
@@ -6336,9 +6546,61 @@ components:
           type: string
           nullable: true
 
+    WeeklyMealPlanItemInput:
+      type: object
+      required: [day_of_week, meal_slot, food_name, calories]
+      properties:
+        day_of_week:
+          type: integer
+          minimum: 0
+          maximum: 6
+          description: 0=Monday, 6=Sunday
+        meal_slot:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        food_name:
+          type: string
+          maxLength: 200
+        serving_quantity:
+          type: number
+          nullable: true
+        serving_unit:
+          type: string
+          maxLength: 50
+          nullable: true
+        grams:
+          type: number
+          nullable: true
+        calories: {type: integer, minimum: 0, maximum: 10000}
+        protein_g: {type: integer, minimum: 0, maximum: 1000}
+        carbs_g: {type: integer, minimum: 0, maximum: 1000}
+        fat_g: {type: integer, minimum: 0, maximum: 1000}
+        notes:
+          type: string
+          maxLength: 1000
+          nullable: true
+
+    WeeklyMealPlanItem:
+      allOf:
+        - $ref: '#/components/schemas/WeeklyMealPlanItemInput'
+        - type: object
+          required: [id, week_start, is_consumed]
+          properties:
+            id: {type: string, format: uuid}
+            week_start: {type: string, format: date}
+            is_consumed: {type: boolean}
+            consumed_date: {type: string, format: date, nullable: true}
+            meal_log_id: {type: string, format: uuid, nullable: true}
+
     NutritionScanResult:
       type: object
       properties:
+        ingredients:
+          type: array
+          description: Danh sách đầy đủ nguyên liệu do model nhận diện; không rút gọn bằng dấu cộng.
+          maxItems: 20
+          items:
+            type: string
         items:
           type: array
           items:

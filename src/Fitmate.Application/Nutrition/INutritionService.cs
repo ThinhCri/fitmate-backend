@@ -21,6 +21,8 @@ public interface INutritionService
         DateTime? to,
         CancellationToken ct = default);
 
+    Task<MealLogView?> GetMealAsync(Guid userId, Guid mealId, CancellationToken ct = default);
+
     /// <summary>
     /// Log a new meal entry.
     /// </summary>
@@ -61,6 +63,16 @@ public interface INutritionService
         Guid userId,
         UpsertScheduleRequest request,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<WeeklyMealPlanItemView>> ListWeeklyPlanAsync(
+        Guid userId, DateOnly weekStart, CancellationToken ct = default);
+    Task<WeeklyMealPlanItemView> CreateWeeklyPlanItemAsync(
+        Guid userId, UpsertWeeklyMealPlanItemRequest request, DateOnly weekStart, CancellationToken ct = default);
+    Task<WeeklyMealPlanItemView?> UpdateWeeklyPlanItemAsync(
+        Guid userId, Guid itemId, UpsertWeeklyMealPlanItemRequest request, DateOnly weekStart, CancellationToken ct = default);
+    Task DeleteWeeklyPlanItemAsync(Guid userId, Guid itemId, CancellationToken ct = default);
+    Task<MealLogView?> ConsumeWeeklyPlanItemAsync(
+        Guid userId, Guid itemId, DateOnly date, CancellationToken ct = default);
 
     /// <summary>
     /// Scan a meal image and estimate nutrition via AI. Per DEC-016, this returns

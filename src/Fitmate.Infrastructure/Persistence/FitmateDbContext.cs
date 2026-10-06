@@ -93,6 +93,8 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     // Nutrition
     public DbSet<MealLog> MealLogs => Set<MealLog>();
     public DbSet<MealSchedule> MealSchedules => Set<MealSchedule>();
+    public DbSet<WeeklyMealPlanItem> WeeklyMealPlanItems => Set<WeeklyMealPlanItem>();
+    public DbSet<WeeklyMealPlanConsumption> WeeklyMealPlanConsumptions => Set<WeeklyMealPlanConsumption>();
 
     // Notifications
     public DbSet<Notification> Notifications => Set<Notification>();

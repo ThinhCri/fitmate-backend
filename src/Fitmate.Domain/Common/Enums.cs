@@ -135,6 +135,14 @@ public enum MealSource
     AiEstimate = 2
 }
 
+public enum MealSlot
+{
+    Breakfast = 0,
+    Lunch = 1,
+    Dinner = 2,
+    Snack = 3
+}
+
 public enum NotificationType
 {
     FriendRequest = 0,

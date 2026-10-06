@@ -397,7 +397,11 @@ public class DtoSerializationContractTests
             "push_notifications",
             "health_data_sharing_consent",
             "biometric_login_enabled",
-            "updated_at"
+            "updated_at",
+            "target_calories",
+            "target_protein_g",
+            "target_carbs_g",
+            "target_fat_g"
         });
     }
 
@@ -452,13 +456,14 @@ public class DtoSerializationContractTests
         keys.Should().BeEquivalentTo(new[]
         {
             "date", "nutrition", "workout", "net_calories", "streak",
-            "latest_weight", "upcoming_appointment"
+            "latest_weight", "upcoming_appointment", "today_workout", "today_meals"
         });
 
         var nutritionKeys = GetPropertyNames(element.GetProperty("nutrition"));
         nutritionKeys.Should().BeEquivalentTo(new[]
         {
-            "total_calories", "protein_g", "carbs_g", "fat_g", "target_calories"
+            "total_calories", "protein_g", "carbs_g", "fat_g", "target_calories",
+            "target_protein_g", "target_carbs_g", "target_fat_g"
         });
 
         var workoutKeys = GetPropertyNames(element.GetProperty("workout"));

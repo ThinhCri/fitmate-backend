@@ -26,6 +26,7 @@ public class UserPreferenceService : IUserPreferenceService
 
     public async Task<UserPreferenceDto> UpdateAsync(Guid userId, UpdateUserPreferenceRequest request, CancellationToken ct)
     {
+        ValidateNutritionTargets(request);
         var pref = await _store.FindByUserIdAsync(userId, ct);
         if (pref is null)
         {
@@ -41,7 +42,11 @@ public class UserPreferenceService : IUserPreferenceService
             request.EmailNotifications,
             request.PushNotifications,
             request.HealthDataSharingConsent,
-            request.BiometricLoginEnabled);
+            request.BiometricLoginEnabled,
+            request.TargetCalories,
+            request.TargetProteinG,
+            request.TargetCarbsG,
+            request.TargetFatG);
 
         await _store.SaveChangesAsync(ct);
         return MapToDto(pref);
@@ -57,6 +62,23 @@ public class UserPreferenceService : IUserPreferenceService
         p.PushNotifications,
         p.HealthDataSharingConsent,
         p.BiometricLoginEnabled,
-        p.UpdatedAt);
+        p.UpdatedAt,
+        p.TargetCalories,
+        p.TargetProteinG,
+        p.TargetCarbsG,
+        p.TargetFatG);
+
+    private static void ValidateNutritionTargets(UpdateUserPreferenceRequest request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (request.TargetCalories is <= 0 or > 10000) errors["target_calories"] = new[] { "must be > 0 and <= 10000" };
+        if (request.TargetProteinG is < 0 or > 1000) errors["target_protein_g"] = new[] { "must be 0..1000" };
+        if (request.TargetCarbsG is < 0 or > 1000) errors["target_carbs_g"] = new[] { "must be 0..1000" };
+        if (request.TargetFatG is < 0 or > 1000) errors["target_fat_g"] = new[] { "must be 0..1000" };
+        if (errors.Count > 0)
+            throw new Fitmate.Domain.Common.ValidationException(
+                Fitmate.Domain.Common.ErrorCodes.Validation.FieldInvalid,
+                "Invalid nutrition targets.", errors);
+    }
 }
 

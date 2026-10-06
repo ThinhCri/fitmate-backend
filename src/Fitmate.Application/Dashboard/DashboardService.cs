@@ -22,13 +22,17 @@ public class DashboardService : IDashboardService
         int totalProtein = meals.Sum(m => m.ProteinG);
         int totalCarbs = meals.Sum(m => m.CarbsG);
         int totalFat = meals.Sum(m => m.FatG);
+        var preference = await _store.GetUserPreferenceAsync(userId, ct);
 
         var nutritionSummary = new NutritionSummaryView(
             TotalCalories: totalCaloriesIn,
             ProteinG: totalProtein,
             CarbsG: totalCarbs,
             FatG: totalFat,
-            TargetCalories: null);
+            TargetCalories: preference?.TargetCalories,
+            TargetProteinG: preference?.TargetProteinG,
+            TargetCarbsG: preference?.TargetCarbsG,
+            TargetFatG: preference?.TargetFatG);
 
         // 2. Workouts for date
         var sessions = await _store.GetSessionsForDateAsync(userId, targetDate, ct);
@@ -40,6 +44,19 @@ public class DashboardService : IDashboardService
             TotalCaloriesBurned: totalCaloriesBurned,
             DurationMinutes: totalDurationMin,
             CompletedSessionsCount: completedSessions.Count);
+
+        var todayPlan = await _store.GetWorkoutPlanForDayAsync(userId, MapDay(targetDate), ct);
+        TodayWorkoutSummaryView? todayWorkout = todayPlan is not null
+            ? new TodayWorkoutSummaryView(
+                todayPlan.Id, "plan", todayPlan.WorkoutName,
+                todayPlan.DurationMinutes, 0, todayPlan.IsCompleted ? "Completed" : "Planned")
+            : null;
+
+        var todayMeals = meals
+            .OrderByDescending(m => m.LoggedAt)
+            .Select(m => new TodayMealSummaryView(
+                m.Id, m.FoodName, m.MealSlot.ToString().ToLowerInvariant(), m.Calories, m.LoggedAt))
+            .ToList();
 
         // 3. Net calories
         int netCalories = totalCaloriesIn - totalCaloriesBurned;
@@ -77,7 +94,9 @@ public class DashboardService : IDashboardService
             NetCalories: netCalories,
             Streak: streakView,
             LatestWeight: latestWeightView,
-            UpcomingAppointment: upcomingApptView);
+            UpcomingAppointment: upcomingApptView,
+            TodayWorkout: todayWorkout,
+            TodayMeals: todayMeals);
     }
 
     public static (int CurrentStreak, int LongestStreak) ComputeStreaks(
@@ -128,5 +147,16 @@ public class DashboardService : IDashboardService
 
         return (currentStreak, Math.Max(longestStreak, currentStreak));
     }
+
+    private static string MapDay(DateOnly date) => date.DayOfWeek switch
+    {
+        DayOfWeek.Monday => "Mon",
+        DayOfWeek.Tuesday => "Tue",
+        DayOfWeek.Wednesday => "Wed",
+        DayOfWeek.Thursday => "Thu",
+        DayOfWeek.Friday => "Fri",
+        DayOfWeek.Saturday => "Sat",
+        _ => "Sun"
+    };
 }
 

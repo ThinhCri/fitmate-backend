@@ -893,6 +893,22 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("push_notifications");
 
+                    b.Property<int?>("TargetCalories")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_calories");
+
+                    b.Property<int?>("TargetCarbsG")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_carbs_g");
+
+                    b.Property<int?>("TargetFatG")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_fat_g");
+
+                    b.Property<int?>("TargetProteinG")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_protein_g");
+
                     b.Property<string>("Theme")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1402,6 +1418,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<decimal?>("Grams")
+                        .HasColumnType("numeric(10,2)");
+
                     b.Property<string>("ImageStorageKey")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)");
@@ -1409,11 +1428,25 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("LoggedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("MealSlot")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
                     b.Property<decimal?>("PortionSize")
                         .HasColumnType("numeric");
 
                     b.Property<int>("ProteinG")
                         .HasColumnType("integer");
+
+                    b.Property<decimal?>("ServingQuantity")
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<string>("ServingUnit")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.Property<int>("Source")
                         .HasColumnType("integer");
@@ -1468,6 +1501,110 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .IsUnique();
 
                     b.ToTable("meal_schedules", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Nutrition.WeeklyMealPlanConsumption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ConsumedDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MealLogId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PlanItemId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MealLogId");
+
+                    b.HasIndex("PlanItemId", "ConsumedDate")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ConsumedDate");
+
+                    b.ToTable("weekly_meal_plan_consumptions", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Nutrition.WeeklyMealPlanItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Calories")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("CarbsG")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DayOfWeek")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("FatG")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FoodName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<decimal?>("Grams")
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<int>("MealSlot")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<int>("ProteinG")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("ServingQuantity")
+                        .HasColumnType("numeric(10,2)");
+
+                    b.Property<string>("ServingUnit")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("WeekStart")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "WeekStart", "DayOfWeek", "MealSlot");
+
+                    b.ToTable("weekly_meal_plan_items", (string)null);
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Outbox.IdempotencyRecord", b =>
@@ -2893,6 +3030,21 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .WithMany()
                         .HasForeignKey("SettlementId")
                         .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Nutrition.WeeklyMealPlanConsumption", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Nutrition.MealLog", null)
+                        .WithMany()
+                        .HasForeignKey("MealLogId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitmate.Domain.Nutrition.WeeklyMealPlanItem", null)
+                        .WithMany()
+                        .HasForeignKey("PlanItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Payment.ManualPtSettlement", b =>

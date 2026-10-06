@@ -20,15 +20,17 @@ public sealed class PythonAiNutritionAdapterTests
             var body = await request.Content!.ReadAsStringAsync();
             body.Should().Contain("name=file");
             return Json(HttpStatusCode.OK,
-                """{"items":[{"name":"Cơm gà","calories":520,"protein_g":32,"carbs_g":65,"fat_g":14}],"total_calories":520,"confidence":0.87,"source":"ai_estimate","note":"estimate"}""");
+                """{"ingredients":["cơm","gà"],"portion_estimate_g":350,"calories_kcal":520,"protein_g":32,"carbs_g":65,"fat_g":14}""");
         });
         var adapter = CreateAdapter(handler);
         using var image = new MemoryStream(new byte[] { 1, 2, 3 });
 
         var result = await adapter.EstimateFromImageAsync(image, "image/jpeg", CancellationToken.None);
 
-        result.Items.Should().ContainSingle().Which.Name.Should().Be("Cơm gà");
-        captured!.RequestUri.Should().Be("http://ai.test/v1/nutrition/analyze");
+        result.Items.Should().ContainSingle().Which.Name.Should().Be("Bữa ăn đã nhận diện");
+        result.Ingredients.Should().Equal("cơm", "gà");
+        result.Confidence.Should().BeNull();
+        captured!.RequestUri.Should().Be("http://ai.test/predict");
         captured.Headers.Authorization!.Scheme.Should().Be("Bearer");
         captured.Headers.Authorization.Parameter.Should().Be("test-token");
     }
@@ -49,7 +51,7 @@ public sealed class PythonAiNutritionAdapterTests
     public async Task EstimateFromImageAsync_RejectsInvalidProviderOutput()
     {
         var adapter = CreateAdapter(new StubHandler(_ => Task.FromResult(Json(HttpStatusCode.OK,
-            """{"items":[],"total_calories":-1,"confidence":2,"source":"unknown","note":null}"""))));
+            """{"ingredients":[],"portion_estimate_g":0,"calories_kcal":-1,"protein_g":0,"carbs_g":0,"fat_g":0}"""))));
         using var image = new MemoryStream(new byte[] { 1 });
 
         var act = () => adapter.EstimateFromImageAsync(image, "image/webp", CancellationToken.None);
@@ -58,15 +60,30 @@ public sealed class PythonAiNutritionAdapterTests
     }
 
     [Fact]
-    public async Task EstimateFromImageAsync_AcceptsUnavailableConfidence()
+    public async Task EstimateFromImageAsync_RoundsProviderNumbersHalfUp()
     {
         var adapter = CreateAdapter(new StubHandler(_ => Task.FromResult(Json(HttpStatusCode.OK,
-            """{"items":[{"name":"Cơm gà","calories":520,"protein_g":32,"carbs_g":65,"fat_g":14}],"total_calories":520,"confidence":null,"source":"ai_estimate","note":"AI estimate"}"""))));
+            """{"ingredients":["rice"],"portion_estimate_g":350.5,"calories_kcal":520.5,"protein_g":32.5,"carbs_g":65.5,"fat_g":14.5}"""))));
         using var image = new MemoryStream(new byte[] { 1 });
 
         var result = await adapter.EstimateFromImageAsync(image, "image/jpeg", CancellationToken.None);
 
-        result.Confidence.Should().BeNull();
+        result.TotalCalories.Should().Be(521);
+        result.Items.Single().ProteinG.Should().Be(33);
+    }
+
+    [Fact]
+    public async Task EstimateFromImageAsync_ReturnsEveryUniqueIngredientWithoutAbbreviation()
+    {
+        var adapter = CreateAdapter(new StubHandler(_ => Task.FromResult(Json(HttpStatusCode.OK,
+            """{"ingredients":["egg","lettuce","tomato","cucumber","egg"],"portion_estimate_g":300,"calories_kcal":280,"protein_g":18,"carbs_g":14,"fat_g":16}"""))));
+        using var image = new MemoryStream(new byte[] { 1 });
+
+        var result = await adapter.EstimateFromImageAsync(image, "image/jpeg", CancellationToken.None);
+
+        result.Ingredients.Should().Equal("egg", "lettuce", "tomato", "cucumber");
+        result.Items.Single().Name.Should().NotContain("+");
+        result.Items.Single().Name.Should().NotContain("nguyên liệu");
     }
 
     [Fact]

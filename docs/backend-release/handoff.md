@@ -1,5 +1,10 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-03 — Bổ sung tài liệu luồng nghiệp vụ xuyên ba repository
+- Thêm `docs/backend-release/business-flows.md` mô tả bằng tiếng Việt các luồng đăng ký Member/PT, duyệt PT, dịch vụ/slot, hold và PayOS, state machine booking, hủy trước 24 giờ, xác nhận/khiếu nại, doanh thu, refund và payout thủ công.
+- Tài liệu giải thích trách nhiệm riêng của Backend, Mobile App và Admin Web, đồng thời liệt kê các trường hợp UAT quan trọng để tránh frontend tự suy đoán trạng thái hoặc tiền.
+- Đây là thay đổi tài liệu; không sửa runtime code và chưa tự commit.
+
 ## 2026-10-03 — Hoàn thiện luồng booking thực tế và đồng bộ ba repository
 - Hold booking là 10 phút; thanh toán được PayOS xác minh sẽ tự chuyển booking sang `Confirmed` vì slot PT đã công bố được xem là chấp thuận trước.
 - Hội viên chỉ được tự hủy khi còn ít nhất 24 giờ trước giờ bắt đầu; dưới 24 giờ API trả conflict và yêu cầu liên hệ hỗ trợ.
@@ -1726,3 +1731,61 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Plain queries search visible post content, author display name and tags. Queries beginning with `#` search tags only after removing the leading hash.
 - Search remains behind the existing visibility, friendship and block filters and keeps cursor ordering/pagination.
 - OpenAPI documents the additive query parameter. Social unit tests pass 38/38 and the targeted PostgreSQL integration test verifies content, author and hashtag translation.
+
+# Session update — 2026-10-05 (user discovery and search)
+
+- Fixed `GET /api/v1/users/search` PostgreSQL execution by removing the query against the unmapped `ApplicationUser.IsDeleted` property; the global soft-delete filter remains authoritative.
+- Search excludes the caller and accounts blocked in either direction. Added authenticated `GET /api/v1/users/suggestions`, excluding the caller, Admin accounts, existing friends, pending friend requests and blocked accounts.
+- Verification passed: `UserProfileServiceTests` 8/8, `RouteOpenApiParityTests` 11/11, and the targeted PostgreSQL user-search/suggestion integration test 1/1.
+
+# Session update — 2026-10-05 (friend notification copy)
+
+- Friend-request and friend-request-accepted in-app notification titles/summaries are now written in Vietnamese for the Android user experience.
+- Existing dispatcher behavior remains unchanged: the in-app notification is persisted even when no native push provider/device token is configured.
+- Verification passed: `FriendServiceTests` 18/18.
+
+# Session update — 2026-10-05 (authenticated rate-limit partition)
+
+- General API requests now authenticate before rate limiting and use the authenticated user ID as the partition key; anonymous/auth traffic remains partitioned by IP.
+- This prevents two signed-in phones on the same Wi-Fi from consuming one shared 60-request-per-minute budget while preserving an IP limit for unauthenticated traffic.
+- API project build passed with 0 warnings and 0 errors.
+
+# Session update — 2026-10-05 (friend chat media and reactions)
+
+- Friend messages now accept text, up to five private uploaded images, or both; storage ownership is enforced from the authenticated sender and responses contain temporary signed URLs.
+- Participants can toggle one of five supported reactions per message. Repeating the same reaction removes it; choosing another replaces the previous reaction.
+- Added separate image and reaction migrations plus OpenAPI/runtime contract coverage. Backend build passed, chat/contract tests passed 44/44, and route/OpenAPI parity passed 11/11.
+
+# Session update — 2026-10-05 (authenticated realtime delivery)
+
+- Added the authenticated `/hubs/realtime` SignalR hub with explicit JWT query-token handling and a `sub`-aware user ID provider.
+- Chat message/reaction changes and friend request lifecycle changes now notify only the affected authenticated users; notification badges receive their own realtime invalidation event.
+- Realtime delivery is non-authoritative and cannot roll back an already committed business mutation. REST remains the source of truth and clients retain a fifteen-second foreground-only reconciliation poll.
+- General rate-limit rejections now include `Retry-After` when the limiter exposes it.
+# Weekly nutrition plan completion — 2026-10-06
+
+- Replaced the legacy four-string schedule as the mobile weekly-plan source with additive owner-only APIs under `/api/v1/me/nutrition/weekly-plan`; the legacy `/schedule` contract remains for compatibility.
+- A plan item is scoped to a concrete Monday `week_start`, day `0..6`, meal slot, serving, calories/macros and notes. Editing the current week therefore cannot rewrite prior weeks.
+- `POST /weekly-plan/{id}/consume` creates a confirmed real `MealLog`; repeated or concurrent requests for the same plan item/date resolve to the same durable consumption through a unique database constraint.
+- Deleting a planned item is soft-delete only and never removes historical meal logs.
+- Added migration `CompleteWeeklyMealPlan`, applied it to the local Docker PostgreSQL database, rebuilt/recreated the local API container, and updated OpenAPI plus unit/integration test sources.
+- Verification after restoring the damaged local test package cache: `dotnet build Fitmate.slnx --no-restore` PASS (0 warnings/errors); focused nutrition/contract/route-parity unit tests PASS (30/30); `NutritionAndAiContractTests` integration tests PASS (3/3) against PostgreSQL. Mobile runtime verification remains operator-owned per the mobile repository rule.
+# Full AI ingredient contract — 2026-10-06
+
+- Nutrition scan no longer concatenates the first three model ingredients into `name` or emits `+ N nguyên liệu`; the public response now exposes every unique model ingredient in `ingredients` (max 20) and keeps one whole-meal nutrition summary because the current model only provides whole-meal macros.
+- Updated OpenAPI and adapter/contract tests. Focused tests PASS 11/11. Local Docker API was rebuilt/recreated so the new response contract is active.
+# Nutrition targets — 2026-10-06
+
+- Added nullable per-user daily targets for calories, protein, carbohydrates and fat to `UserPreference`, including EF migration `AddNutritionTargets`.
+- `GET/PUT /api/v1/users/me/preferences` now reads and updates the four targets with server validation.
+- Dashboard nutrition projection now returns the stored targets instead of always returning a null calorie target; macro targets were added additively.
+- OpenAPI and DTO serialization tests were updated with the additive fields.
+- Targets remain unset by default; the clients must show an explicit setup state rather than fabricated recommendations.
+
+# Dashboard actionable projections — 2026-10-06
+
+- Dashboard now returns `today_meals` from the same meal logs used for nutrition totals.
+- Dashboard now returns the user's matching weekday workout plan as `today_workout` with an explicit `resource_type` for safe client routing.
+- Existing upcoming appointment projection remains the source for the home appointment card and contextual quick action.
+- No hydration values were invented; clients should omit hydration UI until a real persistence contract exists.
+- OpenAPI and focused dashboard/serialization tests were updated.

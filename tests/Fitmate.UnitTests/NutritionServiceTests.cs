@@ -15,6 +15,8 @@ public class NutritionServiceTests
     {
         public List<MealLog> Meals { get; } = new();
         public MealSchedule? Schedule { get; set; }
+        public List<WeeklyMealPlanItem> PlanItems { get; } = new();
+        public List<WeeklyMealPlanConsumption> Consumptions { get; } = new();
 
         public Task AddMealAsync(MealLog meal, CancellationToken ct)
         {
@@ -49,6 +51,51 @@ public class NutritionServiceTests
 
         public Task<MealSchedule?> FindScheduleByUserAsync(Guid userId, CancellationToken ct)
             => Task.FromResult(Schedule != null && !Schedule.IsDeleted && Schedule.UserId == userId ? Schedule : null);
+
+        public Task<IReadOnlyList<WeeklyMealPlanItem>> ListWeeklyPlanItemsAsync(
+            Guid userId, DateOnly weekStart, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<WeeklyMealPlanItem>>(PlanItems
+                .Where(x => x.UserId == userId && x.WeekStart == weekStart && !x.IsDeleted).ToList());
+
+        public Task<WeeklyMealPlanItem?> FindWeeklyPlanItemAsync(Guid itemId, CancellationToken ct)
+            => Task.FromResult(PlanItems.FirstOrDefault(x => x.Id == itemId && !x.IsDeleted));
+
+        public Task AddWeeklyPlanItemAsync(WeeklyMealPlanItem item, CancellationToken ct)
+        {
+            PlanItems.Add(item);
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteWeeklyPlanItemAsync(WeeklyMealPlanItem item, CancellationToken ct)
+        {
+            item.SoftDelete();
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<WeeklyMealPlanConsumption>> ListWeeklyPlanConsumptionsAsync(
+            Guid userId, DateOnly from, DateOnly toExclusive, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<WeeklyMealPlanConsumption>>(Consumptions
+                .Where(x => x.UserId == userId && x.ConsumedDate >= from && x.ConsumedDate < toExclusive && !x.IsDeleted).ToList());
+
+        public Task<WeeklyMealPlanConsumption?> FindWeeklyPlanConsumptionAsync(
+            Guid planItemId, DateOnly date, CancellationToken ct)
+            => Task.FromResult(Consumptions.FirstOrDefault(x => x.PlanItemId == planItemId && x.ConsumedDate == date && !x.IsDeleted));
+
+        public Task AddWeeklyPlanConsumptionAsync(WeeklyMealPlanConsumption consumption, CancellationToken ct)
+        {
+            Consumptions.Add(consumption);
+            return Task.CompletedTask;
+        }
+
+        public Task<bool> TryAddMealConsumptionAsync(
+            MealLog meal, WeeklyMealPlanConsumption consumption, CancellationToken ct)
+        {
+            if (Consumptions.Any(x => x.PlanItemId == consumption.PlanItemId && x.ConsumedDate == consumption.ConsumedDate))
+                return Task.FromResult(false);
+            Meals.Add(meal);
+            Consumptions.Add(consumption);
+            return Task.FromResult(true);
+        }
 
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
@@ -137,7 +184,7 @@ public class NutritionServiceTests
         result.FoodName.Should().Be("Oatmeal");
         result.Calories.Should().Be(250);
         result.ProteinG.Should().Be(8);
-        result.Confirmed.Should().BeFalse();
+        result.Confirmed.Should().BeTrue();
         store.Meals.Should().HaveCount(1);
         outbox.Messages.Should().ContainSingle(m => m.Type == "nutrition.meal_logged");
     }
@@ -239,6 +286,56 @@ public class NutritionServiceTests
         updated.Breakfast.Should().Be("Oatmeal");
         updated.Dinner.Should().Be("Fish");
         updated.Lunch.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Weekly_plan_crud_and_consume_creates_one_real_meal()
+    {
+        var store = new InMemoryNutritionStore();
+        var monday = new DateOnly(2026, 10, 5);
+        var request = new UpsertWeeklyMealPlanItemRequest
+        {
+            DayOfWeek = 0,
+            MealSlot = MealSlot.Breakfast,
+            FoodName = "Yến mạch",
+            ServingQuantity = 1,
+            ServingUnit = "tô",
+            Calories = 320,
+            ProteinG = 12,
+            CarbsG = 50,
+            FatG = 8
+        };
+
+        var created = await Sut(store).CreateWeeklyPlanItemAsync(UserId, request, monday);
+        created.IsConsumed.Should().BeFalse();
+
+        var consumed = await Sut(store).ConsumeWeeklyPlanItemAsync(UserId, created.Id, monday);
+        var replay = await Sut(store).ConsumeWeeklyPlanItemAsync(UserId, created.Id, monday);
+
+        consumed.Should().NotBeNull();
+        replay!.Id.Should().Be(consumed!.Id);
+        store.Meals.Should().ContainSingle();
+        store.Consumptions.Should().ContainSingle();
+        var weekly = await Sut(store).ListWeeklyPlanAsync(UserId, monday);
+        weekly.Should().ContainSingle(x => x.IsConsumed && x.MealLogId == consumed.Id);
+    }
+
+    [Fact]
+    public async Task Consume_weekly_plan_rejects_a_date_for_another_weekday()
+    {
+        var store = new InMemoryNutritionStore();
+        var monday = new DateOnly(2026, 10, 5);
+        var created = await Sut(store).CreateWeeklyPlanItemAsync(UserId,
+            new UpsertWeeklyMealPlanItemRequest
+            {
+                DayOfWeek = 0,
+                MealSlot = MealSlot.Lunch,
+                FoodName = "Cơm gà",
+                Calories = 500
+            }, monday);
+
+        var act = () => Sut(store).ConsumeWeeklyPlanItemAsync(UserId, created.Id, monday.AddDays(1));
+        await act.Should().ThrowAsync<ValidationException>();
     }
 
     [Fact]

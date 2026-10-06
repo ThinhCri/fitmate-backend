@@ -3,6 +3,7 @@ using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Nutrition;
 using Fitmate.Domain.Workout;
+using Fitmate.Domain.Identity;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -64,5 +65,14 @@ public class EfDashboardStore : IDashboardStore
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         return user?.FullName ?? user?.UserName;
     }
+
+    public Task<UserPreference?> GetUserPreferenceAsync(Guid userId, CancellationToken ct) =>
+        _db.UserPreferences.AsNoTracking().FirstOrDefaultAsync(x => x.UserId == userId, ct);
+
+    public Task<WorkoutPlan?> GetWorkoutPlanForDayAsync(Guid userId, string dayOfWeek, CancellationToken ct) =>
+        _db.WorkoutPlans.AsNoTracking()
+            .Where(x => x.UserId == userId && x.DeletedAt == null && x.DayOfWeek == dayOfWeek)
+            .OrderBy(x => x.CreatedAt)
+            .FirstOrDefaultAsync(ct);
 }
 

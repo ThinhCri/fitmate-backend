@@ -10,6 +10,11 @@ public sealed class MealSourceJsonConverter : JsonStringEnumConverter<MealSource
     public MealSourceJsonConverter() : base(JsonNamingPolicy.SnakeCaseLower, allowIntegerValues: true) { }
 }
 
+public sealed class MealSlotJsonConverter : JsonStringEnumConverter<MealSlot>
+{
+    public MealSlotJsonConverter() : base(JsonNamingPolicy.SnakeCaseLower, allowIntegerValues: false) { }
+}
+
 // ─── Query ─────────────────────────────────────────────────────────────────
 
 public sealed record MealLogView(
@@ -21,6 +26,12 @@ public sealed record MealLogView(
     [property: JsonPropertyName("carbs_g")] int CarbsG,
     [property: JsonPropertyName("fat_g")] int FatG,
     [property: JsonPropertyName("portion_size")] decimal? PortionSize,
+    [property: JsonPropertyName("meal_slot")]
+    [property: JsonConverter(typeof(MealSlotJsonConverter))] MealSlot MealSlot,
+    [property: JsonPropertyName("serving_quantity")] decimal? ServingQuantity,
+    [property: JsonPropertyName("serving_unit")] string? ServingUnit,
+    [property: JsonPropertyName("grams")] decimal? Grams,
+    [property: JsonPropertyName("notes")] string? Notes,
     [property: JsonPropertyName("source")]
     [property: JsonConverter(typeof(MealSourceJsonConverter))] MealSource Source,
     [property: JsonPropertyName("ai_confidence")] decimal? AiConfidence,
@@ -35,12 +46,35 @@ public sealed record MealScheduleView(
     [property: JsonPropertyName("dinner")] string? Dinner,
     [property: JsonPropertyName("snack")] string? Snack);
 
+public sealed record WeeklyMealPlanItemView(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("week_start")] DateOnly WeekStart,
+    [property: JsonPropertyName("day_of_week")] int DayOfWeek,
+    [property: JsonPropertyName("meal_slot")]
+    [property: JsonConverter(typeof(MealSlotJsonConverter))] MealSlot MealSlot,
+    [property: JsonPropertyName("food_name")] string FoodName,
+    [property: JsonPropertyName("serving_quantity")] decimal? ServingQuantity,
+    [property: JsonPropertyName("serving_unit")] string? ServingUnit,
+    [property: JsonPropertyName("grams")] decimal? Grams,
+    [property: JsonPropertyName("calories")] int Calories,
+    [property: JsonPropertyName("protein_g")] int ProteinG,
+    [property: JsonPropertyName("carbs_g")] int CarbsG,
+    [property: JsonPropertyName("fat_g")] int FatG,
+    [property: JsonPropertyName("notes")] string? Notes,
+    [property: JsonPropertyName("is_consumed")] bool IsConsumed,
+    [property: JsonPropertyName("consumed_date")] DateOnly? ConsumedDate,
+    [property: JsonPropertyName("meal_log_id")] Guid? MealLogId);
+
 public sealed record NutritionScanResultView(
     [property: JsonPropertyName("items")] IReadOnlyList<NutritionScanItemView> Items,
     [property: JsonPropertyName("total_calories")] int TotalCalories,
     [property: JsonPropertyName("confidence")] decimal? Confidence,
     [property: JsonPropertyName("source")] string Source,
-    [property: JsonPropertyName("note")] string? Note);
+    [property: JsonPropertyName("note")] string? Note)
+{
+    [JsonPropertyName("ingredients")]
+    public IReadOnlyList<string> Ingredients { get; init; } = Array.Empty<string>();
+}
 
 public sealed record NutritionScanItemView(
     [property: JsonPropertyName("name")] string Name,
@@ -74,6 +108,25 @@ public sealed record LogMealRequest
     [JsonPropertyName("portion_size")]
     public decimal? PortionSize { get; init; }
 
+    [JsonPropertyName("meal_slot")]
+    [JsonConverter(typeof(MealSlotJsonConverter))]
+    public MealSlot MealSlot { get; init; } = MealSlot.Lunch;
+
+    [JsonPropertyName("serving_quantity")]
+    public decimal? ServingQuantity { get; init; }
+
+    [JsonPropertyName("serving_unit")]
+    public string? ServingUnit { get; init; }
+
+    [JsonPropertyName("grams")]
+    public decimal? Grams { get; init; }
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; init; }
+
+    [JsonPropertyName("confirmed")]
+    public bool Confirmed { get; init; } = true;
+
     [JsonPropertyName("source")]
     [JsonConverter(typeof(MealSourceJsonConverter))]
     public required MealSource Source { get; init; }
@@ -105,6 +158,22 @@ public sealed record UpdateMealRequest
     [JsonPropertyName("portion_size")]
     public decimal? PortionSize { get; init; }
 
+    [JsonPropertyName("meal_slot")]
+    [JsonConverter(typeof(MealSlotJsonConverter))]
+    public MealSlot? MealSlot { get; init; }
+
+    [JsonPropertyName("serving_quantity")]
+    public decimal? ServingQuantity { get; init; }
+
+    [JsonPropertyName("serving_unit")]
+    public string? ServingUnit { get; init; }
+
+    [JsonPropertyName("grams")]
+    public decimal? Grams { get; init; }
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; init; }
+
     [JsonPropertyName("confirmed")]
     public bool? Confirmed { get; init; }
 }
@@ -122,4 +191,47 @@ public sealed record UpsertScheduleRequest
 
     [JsonPropertyName("snack")]
     public string? Snack { get; init; }
+}
+
+public sealed record UpsertWeeklyMealPlanItemRequest
+{
+    [JsonPropertyName("day_of_week")]
+    public required int DayOfWeek { get; init; }
+
+    [JsonPropertyName("meal_slot")]
+    [JsonConverter(typeof(MealSlotJsonConverter))]
+    public required MealSlot MealSlot { get; init; }
+
+    [JsonPropertyName("food_name")]
+    public required string FoodName { get; init; }
+
+    [JsonPropertyName("serving_quantity")]
+    public decimal? ServingQuantity { get; init; }
+
+    [JsonPropertyName("serving_unit")]
+    public string? ServingUnit { get; init; }
+
+    [JsonPropertyName("grams")]
+    public decimal? Grams { get; init; }
+
+    [JsonPropertyName("calories")]
+    public required int Calories { get; init; }
+
+    [JsonPropertyName("protein_g")]
+    public int ProteinG { get; init; }
+
+    [JsonPropertyName("carbs_g")]
+    public int CarbsG { get; init; }
+
+    [JsonPropertyName("fat_g")]
+    public int FatG { get; init; }
+
+    [JsonPropertyName("notes")]
+    public string? Notes { get; init; }
+}
+
+public sealed record ConsumeWeeklyMealPlanItemRequest
+{
+    [JsonPropertyName("date")]
+    public required DateOnly Date { get; init; }
 }

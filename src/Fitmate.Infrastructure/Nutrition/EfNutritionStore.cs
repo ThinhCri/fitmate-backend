@@ -43,6 +43,56 @@ public class EfNutritionStore : INutritionStore
     public Task AddScheduleAsync(MealSchedule schedule, CancellationToken ct) =>
         Task.FromResult(_db.MealSchedules.Add(schedule));
 
+    public async Task<IReadOnlyList<WeeklyMealPlanItem>> ListWeeklyPlanItemsAsync(
+        Guid userId, DateOnly weekStart, CancellationToken ct) => await _db.WeeklyMealPlanItems
+        .Where(x => x.UserId == userId && x.WeekStart == weekStart && x.DeletedAt == null)
+        .OrderBy(x => x.DayOfWeek).ThenBy(x => x.MealSlot).ThenBy(x => x.CreatedAt)
+        .ToListAsync(ct);
+
+    public Task<WeeklyMealPlanItem?> FindWeeklyPlanItemAsync(Guid itemId, CancellationToken ct) =>
+        _db.WeeklyMealPlanItems.FirstOrDefaultAsync(x => x.Id == itemId && x.DeletedAt == null, ct);
+
+    public Task AddWeeklyPlanItemAsync(WeeklyMealPlanItem item, CancellationToken ct) =>
+        Task.FromResult(_db.WeeklyMealPlanItems.Add(item));
+
+    public Task DeleteWeeklyPlanItemAsync(WeeklyMealPlanItem item, CancellationToken ct)
+    {
+        item.SoftDelete();
+        return Task.CompletedTask;
+    }
+
+    public async Task<IReadOnlyList<WeeklyMealPlanConsumption>> ListWeeklyPlanConsumptionsAsync(
+        Guid userId, DateOnly from, DateOnly toExclusive, CancellationToken ct) =>
+        await _db.WeeklyMealPlanConsumptions
+            .Where(x => x.UserId == userId && x.ConsumedDate >= from && x.ConsumedDate < toExclusive && x.DeletedAt == null)
+            .ToListAsync(ct);
+
+    public Task<WeeklyMealPlanConsumption?> FindWeeklyPlanConsumptionAsync(
+        Guid planItemId, DateOnly date, CancellationToken ct) =>
+        _db.WeeklyMealPlanConsumptions.FirstOrDefaultAsync(
+            x => x.PlanItemId == planItemId && x.ConsumedDate == date && x.DeletedAt == null, ct);
+
+    public Task AddWeeklyPlanConsumptionAsync(WeeklyMealPlanConsumption consumption, CancellationToken ct) =>
+        Task.FromResult(_db.WeeklyMealPlanConsumptions.Add(consumption));
+
+    public async Task<bool> TryAddMealConsumptionAsync(
+        MealLog meal, WeeklyMealPlanConsumption consumption, CancellationToken ct)
+    {
+        _db.MealLogs.Add(meal);
+        _db.WeeklyMealPlanConsumptions.Add(consumption);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return true;
+        }
+        catch (DbUpdateException)
+        {
+            _db.Entry(meal).State = EntityState.Detached;
+            _db.Entry(consumption).State = EntityState.Detached;
+            return false;
+        }
+    }
+
     public Task SaveChangesAsync(CancellationToken ct) =>
         _db.SaveChangesAsync(ct);
 }

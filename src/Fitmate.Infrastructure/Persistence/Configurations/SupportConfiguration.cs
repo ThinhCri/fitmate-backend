@@ -69,6 +69,10 @@ public class UserPreferenceConfiguration : IEntityTypeConfiguration<UserPreferen
         e.Property(x => x.PushNotifications).HasColumnName("push_notifications").IsRequired();
         e.Property(x => x.HealthDataSharingConsent).HasColumnName("health_data_sharing_consent").IsRequired();
         e.Property(x => x.BiometricLoginEnabled).HasColumnName("biometric_login_enabled").IsRequired();
+        e.Property(x => x.TargetCalories).HasColumnName("target_calories");
+        e.Property(x => x.TargetProteinG).HasColumnName("target_protein_g");
+        e.Property(x => x.TargetCarbsG).HasColumnName("target_carbs_g");
+        e.Property(x => x.TargetFatG).HasColumnName("target_fat_g");
         e.Property(x => x.CreatedAt).HasColumnName("created_at").IsRequired();
         e.Property(x => x.UpdatedAt).HasColumnName("updated_at").IsRequired();
 

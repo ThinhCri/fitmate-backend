@@ -48,6 +48,16 @@ public class NutritionController : ControllerBase
         return CreatedAtAction(nameof(ListMeals), meal);
     }
 
+    [HttpGet("meals/{id:guid}")]
+    public async Task<IActionResult> GetMeal(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        CancellationToken ct)
+    {
+        var meal = await _nutrition.GetMealAsync(current.GetUserIdOrThrow(), id, ct);
+        return meal is null ? NotFound() : Ok(meal);
+    }
+
     [HttpPatch("meals/{id:guid}")]
     public async Task<IActionResult> UpdateMeal(
         [FromServices] ICurrentUserAccessor current,
@@ -95,6 +105,63 @@ public class NutritionController : ControllerBase
         return Ok(schedule);
     }
 
+    [HttpGet("weekly-plan")]
+    public async Task<IActionResult> GetWeeklyPlan(
+        [FromServices] ICurrentUserAccessor current,
+        [FromQuery(Name = "week_start")] DateOnly? weekStart,
+        CancellationToken ct)
+    {
+        var monday = weekStart ?? StartOfWeek(DateOnly.FromDateTime(DateTime.UtcNow));
+        return Ok(await _nutrition.ListWeeklyPlanAsync(current.GetUserIdOrThrow(), monday, ct));
+    }
+
+    [HttpPost("weekly-plan")]
+    public async Task<IActionResult> CreateWeeklyPlanItem(
+        [FromServices] ICurrentUserAccessor current,
+        [FromQuery(Name = "week_start")] DateOnly? weekStart,
+        [FromBody] UpsertWeeklyMealPlanItemRequest body,
+        CancellationToken ct)
+    {
+        var monday = weekStart ?? StartOfWeek(DateOnly.FromDateTime(DateTime.UtcNow));
+        var item = await _nutrition.CreateWeeklyPlanItemAsync(
+            current.GetUserIdOrThrow(), body, monday, ct);
+        return CreatedAtAction(nameof(GetWeeklyPlan), new { week_start = monday }, item);
+    }
+
+    [HttpPatch("weekly-plan/{id:guid}")]
+    public async Task<IActionResult> UpdateWeeklyPlanItem(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        [FromQuery(Name = "week_start")] DateOnly? weekStart,
+        [FromBody] UpsertWeeklyMealPlanItemRequest body,
+        CancellationToken ct)
+    {
+        var monday = weekStart ?? StartOfWeek(DateOnly.FromDateTime(DateTime.UtcNow));
+        var item = await _nutrition.UpdateWeeklyPlanItemAsync(
+            current.GetUserIdOrThrow(), id, body, monday, ct);
+        return item is null ? NotFound() : Ok(item);
+    }
+
+    [HttpDelete("weekly-plan/{id:guid}")]
+    public async Task<IActionResult> DeleteWeeklyPlanItem(
+        [FromServices] ICurrentUserAccessor current, Guid id, CancellationToken ct)
+    {
+        await _nutrition.DeleteWeeklyPlanItemAsync(current.GetUserIdOrThrow(), id, ct);
+        return NoContent();
+    }
+
+    [HttpPost("weekly-plan/{id:guid}/consume")]
+    public async Task<IActionResult> ConsumeWeeklyPlanItem(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        [FromBody] ConsumeWeeklyMealPlanItemRequest body,
+        CancellationToken ct)
+    {
+        var meal = await _nutrition.ConsumeWeeklyPlanItemAsync(
+            current.GetUserIdOrThrow(), id, body.Date, ct);
+        return meal is null ? NotFound() : Ok(meal);
+    }
+
     [HttpPost("scan")]
     [RequestSizeLimit(10 * 1024 * 1024)]
     public async Task<IActionResult> ScanMeal(
@@ -106,5 +173,11 @@ public class NutritionController : ControllerBase
         var result = await _nutrition.ScanMealAsync(
             current.GetUserIdOrThrow(), stream, file.ContentType, ct);
         return Ok(result);
+    }
+
+    private static DateOnly StartOfWeek(DateOnly date)
+    {
+        var daysSinceMonday = ((int)date.DayOfWeek + 6) % 7;
+        return date.AddDays(-daysSinceMonday);
     }
 }

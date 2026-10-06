@@ -24,6 +24,11 @@ public class NutritionContractTests
             CarbsG: 15,
             FatG: 12,
             PortionSize: 300m,
+            MealSlot: MealSlot.Lunch,
+            ServingQuantity: 1m,
+            ServingUnit: "đĩa",
+            Grams: 300m,
+            Notes: "Không sốt",
             Source: MealSource.AiEstimate,
             AiConfidence: 0.95m,
             Confirmed: true,
@@ -45,6 +50,11 @@ public class NutritionContractTests
             "carbs_g",
             "fat_g",
             "portion_size",
+            "meal_slot",
+            "serving_quantity",
+            "serving_unit",
+            "grams",
+            "notes",
             "source",
             "ai_confidence",
             "confirmed",
@@ -94,7 +104,7 @@ public class NutritionContractTests
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        var expectedKeys = new HashSet<string> { "items", "total_calories", "confidence", "source", "note" };
+        var expectedKeys = new HashSet<string> { "items", "total_calories", "confidence", "source", "note", "ingredients" };
         root.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(expectedKeys);
         var item = root.GetProperty("items")[0];
         item.GetProperty("protein_g").GetInt32().Should().Be(25);
@@ -146,6 +156,11 @@ public class NutritionContractTests
             "carbs_g",
             "fat_g",
             "portion_size",
+            "meal_slot",
+            "serving_quantity",
+            "serving_unit",
+            "grams",
+            "notes",
             "source",
             "ai_confidence",
             "confirmed",
@@ -165,5 +180,9 @@ public class NutritionContractTests
             "snack"
         };
         scheduleSchema.Properties.Keys.Should().BeEquivalentTo(expectedScheduleProperties);
+
+        doc.Components.Schemas.Should().ContainKey("WeeklyMealPlanItem");
+        doc.Paths.Should().ContainKey("/me/nutrition/weekly-plan");
+        doc.Paths.Should().ContainKey("/me/nutrition/weekly-plan/{id}/consume");
     }
 }

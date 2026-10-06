@@ -63,7 +63,11 @@ public class UserPreferenceServiceTests
             EmailNotifications: false,
             PushNotifications: true,
             HealthDataSharingConsent: true,
-            BiometricLoginEnabled: true);
+            BiometricLoginEnabled: true,
+            TargetCalories: 2100,
+            TargetProteinG: 130,
+            TargetCarbsG: 250,
+            TargetFatG: 70);
 
         var updated = await svc.UpdateAsync(userId, updateReq, CancellationToken.None);
 
@@ -73,6 +77,10 @@ public class UserPreferenceServiceTests
         updated.EmailNotifications.Should().BeFalse();
         updated.HealthDataSharingConsent.Should().BeTrue();
         updated.BiometricLoginEnabled.Should().BeTrue();
+        updated.TargetCalories.Should().Be(2100);
+        updated.TargetProteinG.Should().Be(130);
+        updated.TargetCarbsG.Should().Be(250);
+        updated.TargetFatG.Should().Be(70);
 
         // Ensure persistent across next retrieval (simulating relogin)
         var fetchedAgain = await svc.GetByUserIdAsync(userId, CancellationToken.None);

@@ -19,6 +19,7 @@ public class DashboardServiceTests
         public List<WorkoutSession> Sessions { get; } = new();
         public List<WeightLog> WeightLogs { get; } = new();
         public List<Appointment> Appointments { get; } = new();
+        public List<WorkoutPlan> Plans { get; } = new();
         public Dictionary<Guid, string> UserNames { get; } = new();
 
         public Task<IReadOnlyList<MealLog>> GetMealsForDateAsync(Guid userId, DateOnly date, CancellationToken ct)
@@ -75,6 +76,26 @@ public class DashboardServiceTests
             UserNames.TryGetValue(userId, out var name);
             return Task.FromResult(name);
         }
+
+        public Task<WorkoutPlan?> GetWorkoutPlanForDayAsync(Guid userId, string dayOfWeek, CancellationToken ct) =>
+            Task.FromResult(Plans.FirstOrDefault(x => x.UserId == userId && x.DayOfWeek == dayOfWeek));
+    }
+
+    [Fact]
+    public async Task GetSummary_returns_today_plan_and_real_meal_items()
+    {
+        var store = new InMemoryDashboardStore();
+        var monday = new DateOnly(2026, 10, 5);
+        store.Plans.Add(WorkoutPlan.Create(UserId, "Mon", "Thân trên", 45, 300));
+        store.Meals.Add(MealLog.Create(UserId, "Cơm gà", null, 620, 40, 75, 14, null,
+            MealSource.Manual, null, true, monday.ToDateTime(new TimeOnly(12, 30), DateTimeKind.Utc)));
+
+        var result = await new DashboardService(store).GetSummaryAsync(UserId, monday);
+
+        result.TodayWorkout.Should().NotBeNull();
+        result.TodayWorkout!.ResourceType.Should().Be("plan");
+        result.TodayWorkout.Title.Should().Be("Thân trên");
+        result.TodayMeals.Should().ContainSingle(x => x.FoodName == "Cơm gà" && x.Calories == 620);
     }
 
     [Fact]
@@ -129,6 +150,8 @@ public class DashboardServiceTests
         result.Workout.DurationMinutes.Should().Be(45);
         result.Workout.CompletedSessionsCount.Should().Be(1);
         result.NetCalories.Should().Be(550); // 900 - 350
+        result.TodayMeals.Should().HaveCount(2);
+        result.TodayMeals!.Select(x => x.FoodName).Should().BeEquivalentTo("Oatmeal", "Chicken Rice");
     }
 
     [Fact]
