@@ -63,7 +63,8 @@ public class AuthController : ControllerBase
         if (!validation.IsValid)
             return BadRequest(ValidationProblem(validation));
 
-        var existing = await _users.FindByEmailAsync(request.Email);
+        var normalizedEmail = _users.NormalizeEmail(request.Email);
+        var existing = await _users.Users.IgnoreQueryFilters().FirstOrDefaultAsync(u => u.NormalizedEmail == normalizedEmail, ct);
         if (existing is not null)
         {
             var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);

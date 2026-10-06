@@ -53,7 +53,7 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
             throw new AiUnavailableException("AI inference service URL is not configured.");
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "/predict"));
+        using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "/v1/nutrition/analyze"));
         if (!string.IsNullOrWhiteSpace(_options.InternalToken))
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.InternalToken.Trim());
 
@@ -124,13 +124,10 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
     private static void ValidateOutput(QwenFoodPrediction? result)
     {
         var invalid = result is null ||
+            result.Items is null || result.Items.Count == 0 ||
             result.Ingredients is null || result.Ingredients.Count == 0 || result.Ingredients.Count > 20 ||
-            result.Ingredients.Any(value => string.IsNullOrWhiteSpace(value) || value.Length > 200) ||
-            result.PortionEstimateG < 0 || result.PortionEstimateG > 10000 ||
-            result.CaloriesKcal < 0 || result.CaloriesKcal > 10000 ||
-            result.ProteinG < 0 || result.ProteinG > 1000 ||
-            result.CarbsG < 0 || result.CarbsG > 1000 ||
-            result.FatG < 0 || result.FatG > 1000;
+            result.Ingredients.Any(value => string.IsNullOrWhiteSpace(value.Name) || value.Name.Length > 200) ||
+            result.TotalCalories < 0 || result.TotalCalories > 10000;
 
         if (invalid)
             throw new AiInvalidOutputException();
@@ -139,32 +136,43 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
     private static NutritionScanResultView MapPrediction(QwenFoodPrediction result)
     {
         var ingredients = result.Ingredients
-            .Select(value => value.Trim())
+            .Select(value => value.Name.Trim())
             .Where(value => value.Length > 0)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var calories = Round(result.CaloriesKcal);
+        var items = result.Items.Select(i => new NutritionScanItemView(
+            i.Name, i.Calories, i.ProteinG, i.CarbsG, i.FatG)).ToList();
+
         return new NutritionScanResultView(
-            new[] { new NutritionScanItemView("Bữa ăn đã nhận diện", calories, Round(result.ProteinG), Round(result.CarbsG), Round(result.FatG)) },
-            calories,
-            null,
-            "ai_estimate",
-            $"AI ước tính khẩu phần khoảng {Round(result.PortionEstimateG)} g. Hãy kiểm tra trước khi lưu.")
+            items,
+            result.TotalCalories,
+            result.Confidence,
+            result.Source,
+            result.Note)
         {
             Ingredients = ingredients
         };
     }
 
-    private static int Round(decimal value) => checked((int)Math.Round(value, 0, MidpointRounding.AwayFromZero));
-
     private sealed record QwenFoodPrediction(
-        [property: JsonPropertyName("ingredients")] IReadOnlyList<string> Ingredients,
-        [property: JsonPropertyName("portion_estimate_g")] decimal PortionEstimateG,
-        [property: JsonPropertyName("calories_kcal")] decimal CaloriesKcal,
-        [property: JsonPropertyName("protein_g")] decimal ProteinG,
-        [property: JsonPropertyName("carbs_g")] decimal CarbsG,
-        [property: JsonPropertyName("fat_g")] decimal FatG);
+        [property: JsonPropertyName("items")] IReadOnlyList<QwenFoodPredictionItem> Items,
+        [property: JsonPropertyName("ingredients")] IReadOnlyList<QwenFoodIngredient> Ingredients,
+        [property: JsonPropertyName("total_calories")] int TotalCalories,
+        [property: JsonPropertyName("confidence")] decimal Confidence,
+        [property: JsonPropertyName("source")] string Source,
+        [property: JsonPropertyName("note")] string Note);
+
+    private sealed record QwenFoodPredictionItem(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("calories")] int Calories,
+        [property: JsonPropertyName("protein_g")] int ProteinG,
+        [property: JsonPropertyName("carbs_g")] int CarbsG,
+        [property: JsonPropertyName("fat_g")] int FatG);
+
+    private sealed record QwenFoodIngredient(
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("portion_estimate_g")] decimal PortionEstimateG);
 
     private static ValidationException InvalidFile(string message) => new(
         ErrorCodes.Validation.FieldInvalid,
