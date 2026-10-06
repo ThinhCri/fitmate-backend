@@ -56,6 +56,18 @@ public class WeightService : IWeightService
         return Map(log);
     }
 
+    public async Task DeleteAsync(Guid userId, Guid weightLogId, CancellationToken ct = default)
+    {
+        var log = await _store.FindByIdAsync(weightLogId, ct);
+        if (log is null || log.UserId != userId)
+            throw new NotFoundException(
+                WorkoutErrorCodes.WeightNotFound,
+                $"Weight log {weightLogId} not found.");
+
+        await _store.DeleteAsync(log, ct);
+        await _store.SaveChangesAsync(ct);
+    }
+
     private static WeightLogView Map(WeightLog l) =>
         new(l.Id, l.WeightKg, l.RecordedAt);
 }

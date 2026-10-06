@@ -67,7 +67,9 @@ public class UserPreferenceServiceTests
             TargetCalories: 2100,
             TargetProteinG: 130,
             TargetCarbsG: 250,
-            TargetFatG: 70);
+            TargetFatG: 70,
+            TargetWeightKg: 65.5m,
+            MonthlyWorkoutTarget: 12);
 
         var updated = await svc.UpdateAsync(userId, updateReq, CancellationToken.None);
 
@@ -81,6 +83,8 @@ public class UserPreferenceServiceTests
         updated.TargetProteinG.Should().Be(130);
         updated.TargetCarbsG.Should().Be(250);
         updated.TargetFatG.Should().Be(70);
+        updated.TargetWeightKg.Should().Be(65.5m);
+        updated.MonthlyWorkoutTarget.Should().Be(12);
 
         // Ensure persistent across next retrieval (simulating relogin)
         var fetchedAgain = await svc.GetByUserIdAsync(userId, CancellationToken.None);

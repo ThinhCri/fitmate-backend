@@ -16,7 +16,9 @@ public record UserPreferenceDto(
     [property: JsonPropertyName("target_calories")] int? TargetCalories = null,
     [property: JsonPropertyName("target_protein_g")] int? TargetProteinG = null,
     [property: JsonPropertyName("target_carbs_g")] int? TargetCarbsG = null,
-    [property: JsonPropertyName("target_fat_g")] int? TargetFatG = null);
+    [property: JsonPropertyName("target_fat_g")] int? TargetFatG = null,
+    [property: JsonPropertyName("target_weight_kg")] decimal? TargetWeightKg = null,
+    [property: JsonPropertyName("monthly_workout_target")] int? MonthlyWorkoutTarget = null);
 
 public record UpdateUserPreferenceRequest(
     [property: JsonPropertyName("language")] string? Language,
@@ -30,4 +32,6 @@ public record UpdateUserPreferenceRequest(
     [property: JsonPropertyName("target_calories")] int? TargetCalories = null,
     [property: JsonPropertyName("target_protein_g")] int? TargetProteinG = null,
     [property: JsonPropertyName("target_carbs_g")] int? TargetCarbsG = null,
-    [property: JsonPropertyName("target_fat_g")] int? TargetFatG = null);
+    [property: JsonPropertyName("target_fat_g")] int? TargetFatG = null,
+    [property: JsonPropertyName("target_weight_kg")] decimal? TargetWeightKg = null,
+    [property: JsonPropertyName("monthly_workout_target")] int? MonthlyWorkoutTarget = null);

@@ -23,5 +23,11 @@ public class EfWeightStore : IWeightStore
     public async Task AddAsync(WeightLog log, CancellationToken ct) =>
         await _db.WeightLogs.AddAsync(log, ct);
 
+    public Task DeleteAsync(WeightLog log, CancellationToken ct)
+    {
+        log.SoftDelete();
+        return Task.CompletedTask;
+    }
+
     public Task SaveChangesAsync(CancellationToken ct) => _db.SaveChangesAsync(ct);
 }

@@ -22,6 +22,8 @@ public class UserPreference : AuditableEntity
     public int? TargetProteinG { get; private set; }
     public int? TargetCarbsG { get; private set; }
     public int? TargetFatG { get; private set; }
+    public decimal? TargetWeightKg { get; private set; }
+    public int? MonthlyWorkoutTarget { get; private set; }
 
     private UserPreference() { }
 
@@ -53,7 +55,9 @@ public class UserPreference : AuditableEntity
         int? targetCalories = null,
         int? targetProteinG = null,
         int? targetCarbsG = null,
-        int? targetFatG = null)
+        int? targetFatG = null,
+        decimal? targetWeightKg = null,
+        int? monthlyWorkoutTarget = null)
     {
         if (!string.IsNullOrWhiteSpace(language)) Language = language.Trim().ToLowerInvariant();
         if (!string.IsNullOrWhiteSpace(theme)) Theme = theme.Trim().ToLowerInvariant();
@@ -67,6 +71,8 @@ public class UserPreference : AuditableEntity
         if (targetProteinG.HasValue) TargetProteinG = targetProteinG.Value;
         if (targetCarbsG.HasValue) TargetCarbsG = targetCarbsG.Value;
         if (targetFatG.HasValue) TargetFatG = targetFatG.Value;
+        if (targetWeightKg.HasValue) TargetWeightKg = targetWeightKg.Value;
+        if (monthlyWorkoutTarget.HasValue) MonthlyWorkoutTarget = monthlyWorkoutTarget.Value;
 
         Touch();
     }

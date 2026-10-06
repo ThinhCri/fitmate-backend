@@ -56,6 +56,7 @@ if (args.Length > 0 && !args[0].StartsWith("--"))
         "seed-admin" => await SeedAdminCommand.RunAsync(args[1..], config),
         "seed-perf-data" => await SeedPerfDataCommand.RunAsync(args[1..], config),
         "seed-uat-data" => await SeedUatDataCommand.RunAsync(args[1..], config),
+        "import-exercise-media" => await ImportExerciseCatalogMediaCommand.RunAsync(config),
         _ => UnknownCommand(args[0])
     };
     Environment.Exit(exitCode);
@@ -63,7 +64,7 @@ if (args.Length > 0 && !args[0].StartsWith("--"))
 
 static int UnknownCommand(string cmd)
 {
-    Console.Error.WriteLine($"[fitmate-api] Unknown command: '{cmd}'. Supported: seed-admin, seed-perf-data, seed-uat-data");
+    Console.Error.WriteLine($"[fitmate-api] Unknown command: '{cmd}'. Supported: seed-admin, seed-perf-data, seed-uat-data, import-exercise-media");
     return 1;
 }
 
@@ -301,8 +302,10 @@ builder.Services.AddScoped<INotificationAuditLogger, Fitmate.Infrastructure.Noti
 // BE-160: workout session + weight log.
 builder.Services.AddScoped<IWorkoutStore, Fitmate.Infrastructure.Workout.EfWorkoutStore>();
 builder.Services.AddScoped<IWeightStore, Fitmate.Infrastructure.Workout.EfWeightStore>();
+builder.Services.AddScoped<IExerciseCatalogStore, Fitmate.Infrastructure.Workout.EfExerciseCatalogStore>();
 builder.Services.AddScoped<IWorkoutService, Fitmate.Application.Workout.WorkoutService>();
 builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightService>();
+builder.Services.AddScoped<IExerciseCatalogService, Fitmate.Application.Workout.ExerciseCatalogService>();
 // BE-170 & BE-817: AI capability adapters & options. Disabled by default awaiting .pt handoff.
 builder.Services.Configure<Fitmate.Application.Ai.AiOptions>(
     builder.Configuration.GetSection(Fitmate.Application.Ai.AiOptions.SectionName));

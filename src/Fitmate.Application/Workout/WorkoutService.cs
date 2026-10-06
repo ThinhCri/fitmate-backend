@@ -261,6 +261,9 @@ public class WorkoutService : IWorkoutService
             plan = await _store.FindPlanByIdAsync(request.PlanId.Value, ct)
                 ?? throw new NotFoundException(WorkoutErrorCodes.PlanNotFound,
                     $"Workout plan {request.PlanId} not found.");
+            if (plan.UserId != userId)
+                throw new NotFoundException(WorkoutErrorCodes.PlanNotFound,
+                    $"Workout plan {request.PlanId} not found.");
         }
 
         // Idempotency by (userId, clientId) — unique constraint at DB level.
@@ -301,6 +304,9 @@ public class WorkoutService : IWorkoutService
                 if (source is null)
                     throw new NotFoundException(WorkoutErrorCodes.ExerciseNotFound,
                         $"Exercise {item.ExerciseId} not found.");
+                if (!request.PlanId.HasValue || source.WorkoutPlanId != request.PlanId.Value)
+                    throw new NotFoundException(WorkoutErrorCodes.ExerciseNotFound,
+                        $"Exercise {item.ExerciseId} not found in the selected workout plan.");
 
                 var sessionEx = WorkoutSessionExercise.Create(
                     session.Id, source.Name, source.Type, item.OrderIndex,
@@ -319,6 +325,7 @@ public class WorkoutService : IWorkoutService
                             sessionEx.Id, setReq.SetIndex, setReq.Status,
                             setReq.ActualReps, setReq.ActualDurationSec, isBonus);
                         await _store.AddSetAsync(set, ct);
+                        sessionEx.AttachSet(set);
                     }
                     sessionEx.RecomputeCompletedSets();
                 }

@@ -885,6 +885,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("language");
 
+                    b.Property<int?>("MonthlyWorkoutTarget")
+                        .HasColumnType("integer")
+                        .HasColumnName("monthly_workout_target");
+
                     b.Property<bool>("NotificationsEnabled")
                         .HasColumnType("boolean")
                         .HasColumnName("notifications_enabled");
@@ -908,6 +912,11 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int?>("TargetProteinG")
                         .HasColumnType("integer")
                         .HasColumnName("target_protein_g");
+
+                    b.Property<decimal?>("TargetWeightKg")
+                        .HasPrecision(5, 1)
+                        .HasColumnType("numeric(5,1)")
+                        .HasColumnName("target_weight_kg");
 
                     b.Property<string>("Theme")
                         .IsRequired()
@@ -2596,6 +2605,728 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasIndex("WorkoutPlanId");
 
                     b.ToTable("exercises", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Workout.ExerciseCatalogEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Difficulty")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Equipment")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("ImageEndUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("ImageStartUrl")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.PrimitiveCollection<List<string>>("InstructionsVi")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("NameEn")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("NameVi")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.PrimitiveCollection<List<string>>("PrimaryMuscles")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.PrimitiveCollection<List<string>>("SecondaryMuscles")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SourceLicense")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
+
+                    b.Property<string>("SourceUrl")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.HasIndex("IsActive", "NameVi");
+
+                    b.ToTable("exercise_catalog", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000001"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Pushups/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Pushups/0.jpg",
+                            InstructionsVi = new List<string> { "Giữ thân người thành một đường thẳng.", "Hạ ngực có kiểm soát rồi đẩy người lên." },
+                            IsActive = true,
+                            NameEn = "Push-ups",
+                            NameVi = "Hít đất",
+                            PrimaryMuscles = new List<string> { "chest" },
+                            SecondaryMuscles = new List<string> { "triceps", "shoulders" },
+                            Slug = "Pushups",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000002"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Bodyweight_Squat/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Bodyweight_Squat/0.jpg",
+                            InstructionsVi = new List<string> { "Đứng chân rộng bằng vai, mũi chân hơi hướng ra ngoài.", "Đẩy hông ra sau, giữ lưng trung lập và đứng lên bằng cả bàn chân." },
+                            IsActive = true,
+                            NameEn = "Bodyweight Squat",
+                            NameVi = "Squat không tạ",
+                            PrimaryMuscles = new List<string> { "quadriceps" },
+                            SecondaryMuscles = new List<string> { "glutes", "hamstrings" },
+                            Slug = "Bodyweight_Squat",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000003"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Plank/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Plank/0.jpg",
+                            InstructionsVi = new List<string> { "Chống khuỷu tay dưới vai và duỗi thẳng chân.", "Siết bụng, không võng lưng và thở đều." },
+                            IsActive = true,
+                            NameEn = "Plank",
+                            NameVi = "Plank",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string> { "lower back" },
+                            Slug = "Plank",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 1,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000004"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Bodyweight_Walking_Lunge/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Bodyweight_Walking_Lunge/0.jpg",
+                            InstructionsVi = new List<string> { "Bước một chân về trước đủ dài.", "Hạ gối sau gần sàn rồi đẩy người tiến lên." },
+                            IsActive = true,
+                            NameEn = "Bodyweight Walking Lunge",
+                            NameVi = "Chùng chân bước tới",
+                            PrimaryMuscles = new List<string> { "quadriceps" },
+                            SecondaryMuscles = new List<string> { "glutes", "hamstrings" },
+                            Slug = "Bodyweight_Walking_Lunge",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000005"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Mountain_Climbers/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Mountain_Climbers/0.jpg",
+                            InstructionsVi = new List<string> { "Bắt đầu ở tư thế hít đất cao.", "Luân phiên kéo gối về ngực, giữ hông ổn định." },
+                            IsActive = true,
+                            NameEn = "Mountain Climbers",
+                            NameVi = "Leo núi tại chỗ",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string> { "quadriceps", "shoulders" },
+                            Slug = "Mountain_Climbers",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 1,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000006"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Single_Leg_Glute_Bridge/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Single_Leg_Glute_Bridge/0.jpg",
+                            InstructionsVi = new List<string> { "Nằm ngửa, co một gối và duỗi chân còn lại.", "Siết mông nâng hông, giữ khung chậu cân bằng rồi hạ chậm." },
+                            IsActive = true,
+                            NameEn = "Single Leg Glute Bridge",
+                            NameVi = "Nâng hông một chân",
+                            PrimaryMuscles = new List<string> { "glutes" },
+                            SecondaryMuscles = new List<string> { "hamstrings" },
+                            Slug = "Single_Leg_Glute_Bridge",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000007"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Crunches/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Crunches/0.jpg",
+                            InstructionsVi = new List<string> { "Nằm ngửa, co gối và giữ lưng dưới trên sàn.", "Dùng cơ bụng nâng vai, tránh kéo cổ." },
+                            IsActive = true,
+                            NameEn = "Crunches",
+                            NameVi = "Gập bụng",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Crunches",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000008"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "intermediate",
+                            Equipment = "other",
+                            ImageEndUrl = "storage://exercise-catalog/Rope_Jumping/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Rope_Jumping/0.jpg",
+                            InstructionsVi = new List<string> { "Đứng thẳng, giữ tay cầm dây hai bên hông.", "Xoay dây bằng cổ tay và bật nhảy nhẹ bằng mũi chân." },
+                            IsActive = true,
+                            NameEn = "Rope Jumping",
+                            NameVi = "Nhảy dây",
+                            PrimaryMuscles = new List<string> { "quadriceps" },
+                            SecondaryMuscles = new List<string> { "calves", "hamstrings" },
+                            Slug = "Rope_Jumping",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 1,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000009"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "intermediate",
+                            Equipment = "dumbbell",
+                            ImageEndUrl = "storage://exercise-catalog/Dumbbell_Bench_Press/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Dumbbell_Bench_Press/0.jpg",
+                            InstructionsVi = new List<string> { "Nằm chắc trên ghế, giữ tạ hai bên ngực.", "Đẩy tạ lên có kiểm soát và không khóa khuỷu tay quá mức." },
+                            IsActive = true,
+                            NameEn = "Dumbbell Bench Press",
+                            NameVi = "Đẩy ngực với tạ đơn",
+                            PrimaryMuscles = new List<string> { "chest" },
+                            SecondaryMuscles = new List<string> { "triceps", "shoulders" },
+                            Slug = "Dumbbell_Bench_Press",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000010"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "intermediate",
+                            Equipment = "dumbbell",
+                            ImageEndUrl = "storage://exercise-catalog/Bent_Over_Two-Dumbbell_Row/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Bent_Over_Two-Dumbbell_Row/0.jpg",
+                            InstructionsVi = new List<string> { "Gập hông, giữ lưng trung lập và hai tay cầm tạ.", "Kéo khuỷu tay về sau, ép bả vai rồi hạ tạ chậm." },
+                            IsActive = true,
+                            NameEn = "Bent Over Dumbbell Row",
+                            NameVi = "Kéo tạ đơn cúi người",
+                            PrimaryMuscles = new List<string> { "middle back" },
+                            SecondaryMuscles = new List<string> { "biceps", "lats" },
+                            Slug = "Bent_Over_Two-Dumbbell_Row",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000011"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "intermediate",
+                            Equipment = "dumbbell",
+                            ImageEndUrl = "storage://exercise-catalog/Dumbbell_Shoulder_Press/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Dumbbell_Shoulder_Press/0.jpg",
+                            InstructionsVi = new List<string> { "Giữ tạ ngang vai, cổ tay thẳng.", "Đẩy tạ lên trên đầu và hạ về vị trí ban đầu có kiểm soát." },
+                            IsActive = true,
+                            NameEn = "Dumbbell Shoulder Press",
+                            NameVi = "Đẩy vai với tạ đơn",
+                            PrimaryMuscles = new List<string> { "shoulders" },
+                            SecondaryMuscles = new List<string> { "triceps" },
+                            Slug = "Dumbbell_Shoulder_Press",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000012"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "dumbbell",
+                            ImageEndUrl = "storage://exercise-catalog/Dumbbell_Bicep_Curl/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Dumbbell_Bicep_Curl/0.jpg",
+                            InstructionsVi = new List<string> { "Giữ khuỷu tay sát thân người và cổ tay trung lập.", "Cuốn tạ bằng cẳng tay, không dùng đà từ lưng." },
+                            IsActive = true,
+                            NameEn = "Dumbbell Bicep Curl",
+                            NameVi = "Cuốn tạ đơn",
+                            PrimaryMuscles = new List<string> { "biceps" },
+                            SecondaryMuscles = new List<string> { "forearms" },
+                            Slug = "Dumbbell_Bicep_Curl",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000013"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "intermediate",
+                            Equipment = "cable",
+                            ImageEndUrl = "storage://exercise-catalog/Triceps_Pushdown/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Triceps_Pushdown/0.jpg",
+                            InstructionsVi = new List<string> { "Giữ khuỷu tay sát thân và thân người ổn định.", "Duỗi khuỷu tay kéo tay cầm xuống rồi trở lại chậm." },
+                            IsActive = true,
+                            NameEn = "Triceps Pushdown",
+                            NameVi = "Kéo cáp tay sau",
+                            PrimaryMuscles = new List<string> { "triceps" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Triceps_Pushdown",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000014"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "cable",
+                            ImageEndUrl = "storage://exercise-catalog/Wide-Grip_Lat_Pulldown/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Wide-Grip_Lat_Pulldown/0.jpg",
+                            InstructionsVi = new List<string> { "Ngồi chắc, nắm thanh rộng hơn vai.", "Kéo thanh về phần trên ngực bằng cơ lưng, không giật người." },
+                            IsActive = true,
+                            NameEn = "Wide-Grip Lat Pulldown",
+                            NameVi = "Kéo xô tay rộng",
+                            PrimaryMuscles = new List<string> { "lats" },
+                            SecondaryMuscles = new List<string> { "biceps", "middle back", "shoulders" },
+                            Slug = "Wide-Grip_Lat_Pulldown",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000015"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "advanced",
+                            Equipment = "barbell",
+                            ImageEndUrl = "storage://exercise-catalog/Barbell_Deadlift/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Barbell_Deadlift/0.jpg",
+                            InstructionsVi = new List<string> { "Đứng sát thanh đòn, gập hông và giữ cột sống trung lập.", "Đạp sàn để đứng lên, giữ thanh gần thân người." },
+                            IsActive = true,
+                            NameEn = "Barbell Deadlift",
+                            NameVi = "Deadlift với thanh đòn",
+                            PrimaryMuscles = new List<string> { "hamstrings" },
+                            SecondaryMuscles = new List<string> { "glutes", "lower back", "quadriceps" },
+                            Slug = "Barbell_Deadlift",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000016"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "advanced",
+                            Equipment = "barbell",
+                            ImageEndUrl = "storage://exercise-catalog/Barbell_Squat/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Barbell_Squat/0.jpg",
+                            InstructionsVi = new List<string> { "Đặt thanh chắc trên lưng trên và siết thân giữa.", "Hạ người có kiểm soát, đầu gối cùng hướng mũi chân." },
+                            IsActive = true,
+                            NameEn = "Barbell Squat",
+                            NameVi = "Squat với thanh đòn",
+                            PrimaryMuscles = new List<string> { "quadriceps" },
+                            SecondaryMuscles = new List<string> { "glutes", "hamstrings" },
+                            Slug = "Barbell_Squat",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000017"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Push_Up_to_Side_Plank/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Push_Up_to_Side_Plank/0.jpg",
+                            InstructionsVi = new List<string> { "Thực hiện một lần hít đất với thân người ổn định.", "Xoay người mở một tay lên trần, trở về giữa rồi đổi bên." },
+                            IsActive = true,
+                            NameEn = "Push Up to Side Plank",
+                            NameVi = "Hít đất chuyển plank nghiêng",
+                            PrimaryMuscles = new List<string> { "chest" },
+                            SecondaryMuscles = new List<string> { "abdominals", "shoulders", "triceps" },
+                            Slug = "Push_Up_to_Side_Plank",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000018"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Side_Bridge/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Side_Bridge/0.jpg",
+                            InstructionsVi = new List<string> { "Chống một khuỷu tay dưới vai và xếp hai chân.", "Nâng hông, giữ thân người thành đường thẳng và thở đều." },
+                            IsActive = true,
+                            NameEn = "Side Bridge",
+                            NameVi = "Plank nghiêng",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string> { "shoulders" },
+                            Slug = "Side_Bridge",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 1,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000019"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Incline_Push-Up/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Incline_Push-Up/0.jpg",
+                            InstructionsVi = new List<string> { "Chống tay lên bề mặt chắc chắn cao hơn sàn.", "Giữ thân thẳng, hạ ngực rồi đẩy người lên có kiểm soát." },
+                            IsActive = true,
+                            NameEn = "Incline Push-Up",
+                            NameVi = "Hít đất dốc lên",
+                            PrimaryMuscles = new List<string> { "chest" },
+                            SecondaryMuscles = new List<string> { "shoulders", "triceps" },
+                            Slug = "Incline_Push-Up",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000020"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Chin-Up/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Chin-Up/0.jpg",
+                            InstructionsVi = new List<string> { "Nắm xà với lòng bàn tay hướng về người.", "Kéo ngực về phía xà, tránh đung đưa thân người." },
+                            IsActive = true,
+                            NameEn = "Chin-Up",
+                            NameVi = "Hít xà tay ngửa",
+                            PrimaryMuscles = new List<string> { "lats" },
+                            SecondaryMuscles = new List<string> { "biceps", "forearms", "middle back" },
+                            Slug = "Chin-Up",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000021"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "intermediate",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Russian_Twist/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Russian_Twist/0.jpg",
+                            InstructionsVi = new List<string> { "Ngồi hơi ngả thân, giữ cột sống trung lập.", "Xoay thân sang hai bên bằng cơ bụng, không giật vai." },
+                            IsActive = true,
+                            NameEn = "Russian Twist",
+                            NameVi = "Xoay bụng kiểu Nga",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string> { "lower back" },
+                            Slug = "Russian_Twist",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000022"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Flat_Bench_Lying_Leg_Raise/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Flat_Bench_Lying_Leg_Raise/0.jpg",
+                            InstructionsVi = new List<string> { "Nằm chắc trên ghế, hai chân duỗi thẳng.", "Nâng chân bằng cơ bụng rồi hạ chậm, không cong lưng dưới." },
+                            IsActive = true,
+                            NameEn = "Flat Bench Lying Leg Raise",
+                            NameVi = "Nâng chân nằm ghế",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Flat_Bench_Lying_Leg_Raise",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000023"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "intermediate",
+                            Equipment = "barbell",
+                            ImageEndUrl = "storage://exercise-catalog/Barbell_Hip_Thrust/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Barbell_Hip_Thrust/0.jpg",
+                            InstructionsVi = new List<string> { "Tựa lưng trên vào ghế và đặt thanh đòn chắc trên hông.", "Đẩy hông lên bằng cơ mông rồi hạ xuống có kiểm soát." },
+                            IsActive = true,
+                            NameEn = "Barbell Hip Thrust",
+                            NameVi = "Hip thrust với thanh đòn",
+                            PrimaryMuscles = new List<string> { "glutes" },
+                            SecondaryMuscles = new List<string> { "calves", "hamstrings" },
+                            Slug = "Barbell_Hip_Thrust",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000024"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "barbell",
+                            ImageEndUrl = "storage://exercise-catalog/Barbell_Seated_Calf_Raise/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Barbell_Seated_Calf_Raise/0.jpg",
+                            InstructionsVi = new List<string> { "Ngồi chắc, đặt thanh đòn có đệm trên đùi.", "Nhón gót hết biên độ rồi hạ chậm." },
+                            IsActive = true,
+                            NameEn = "Barbell Seated Calf Raise",
+                            NameVi = "Nhón bắp chân ngồi với thanh đòn",
+                            PrimaryMuscles = new List<string> { "calves" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Barbell_Seated_Calf_Raise",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000025"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "bands",
+                            ImageEndUrl = "storage://exercise-catalog/Lateral_Raise_-_With_Bands/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Lateral_Raise_-_With_Bands/0.jpg",
+                            InstructionsVi = new List<string> { "Đứng giữa dây, giữ tay cầm hai bên.", "Dang tay đến ngang vai, giữ khuỷu hơi cong rồi hạ chậm." },
+                            IsActive = true,
+                            NameEn = "Band Lateral Raise",
+                            NameVi = "Dang vai với dây kháng lực",
+                            PrimaryMuscles = new List<string> { "shoulders" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Lateral_Raise_-_With_Bands",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000026"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            ImageEndUrl = "storage://exercise-catalog/Scapular_Pull-Up/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Scapular_Pull-Up/0.jpg",
+                            InstructionsVi = new List<string> { "Treo người trên xà với tay duỗi.", "Hạ và kéo bả vai để nâng thân nhẹ mà không gập khuỷu tay." },
+                            IsActive = true,
+                            NameEn = "Scapular Pull-Up",
+                            NameVi = "Kéo xà bằng bả vai",
+                            PrimaryMuscles = new List<string> { "traps" },
+                            SecondaryMuscles = new List<string> { "lats", "middle back" },
+                            Slug = "Scapular_Pull-Up",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000027"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "cable",
+                            ImageEndUrl = "storage://exercise-catalog/Cable_Russian_Twists/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Cable_Russian_Twists/0.jpg",
+                            InstructionsVi = new List<string> { "Đứng ngang máy cáp và giữ tay cầm bằng hai tay.", "Xoay thân khỏi máy bằng cơ bụng, giữ hông ổn định." },
+                            IsActive = true,
+                            NameEn = "Cable Russian Twists",
+                            NameVi = "Xoay bụng với cáp",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Cable_Russian_Twists",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000028"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "machine",
+                            ImageEndUrl = "storage://exercise-catalog/Seated_Calf_Raise/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Seated_Calf_Raise/0.jpg",
+                            InstructionsVi = new List<string> { "Điều chỉnh đệm máy nằm chắc trên đùi.", "Nhón gót hết biên độ, dừng ngắn rồi hạ có kiểm soát." },
+                            IsActive = true,
+                            NameEn = "Seated Calf Raise",
+                            NameVi = "Nhón bắp chân với máy ngồi",
+                            PrimaryMuscles = new List<string> { "calves" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Seated_Calf_Raise",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000029"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "beginner",
+                            Equipment = "other",
+                            ImageEndUrl = "storage://exercise-catalog/Band_Assisted_Pull-Up/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Band_Assisted_Pull-Up/0.jpg",
+                            InstructionsVi = new List<string> { "Cố định dây hỗ trợ vào xà và đặt chân hoặc gối vào dây.", "Kéo ngực lên xà, giữ thân ổn định rồi hạ chậm." },
+                            IsActive = true,
+                            NameEn = "Band Assisted Pull-Up",
+                            NameVi = "Hít xà có dây hỗ trợ",
+                            PrimaryMuscles = new List<string> { "lats" },
+                            SecondaryMuscles = new List<string> { "abdominals", "forearms", "middle back" },
+                            Slug = "Band_Assisted_Pull-Up",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        },
+                        new
+                        {
+                            Id = new Guid("00000000-0000-4000-8000-000000000030"),
+                            CreatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc),
+                            Difficulty = "advanced",
+                            Equipment = "body only",
+                            ImageEndUrl = "storage://exercise-catalog/Hanging_Leg_Raise/1.jpg",
+                            ImageStartUrl = "storage://exercise-catalog/Hanging_Leg_Raise/0.jpg",
+                            InstructionsVi = new List<string> { "Treo người chắc trên xà, siết vai và thân giữa.", "Nâng chân bằng cơ bụng, tránh đung đưa và hạ chậm." },
+                            IsActive = true,
+                            NameEn = "Hanging Leg Raise",
+                            NameVi = "Nâng chân treo xà",
+                            PrimaryMuscles = new List<string> { "abdominals" },
+                            SecondaryMuscles = new List<string>(),
+                            Slug = "Hanging_Leg_Raise",
+                            Source = "free-exercise-db",
+                            SourceLicense = "Unlicense",
+                            SourceUrl = "https://github.com/yuhonas/free-exercise-db",
+                            Type = 0,
+                            UpdatedAt = new DateTime(2026, 10, 6, 0, 0, 0, 0, DateTimeKind.Utc)
+                        });
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Workout.WeightLog", b =>

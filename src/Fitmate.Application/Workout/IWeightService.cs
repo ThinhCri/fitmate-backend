@@ -25,4 +25,9 @@ public interface IWeightService
         Guid userId,
         LogWeightRequest request,
         CancellationToken ct = default);
+
+    Task DeleteAsync(
+        Guid userId,
+        Guid weightLogId,
+        CancellationToken ct = default);
 }

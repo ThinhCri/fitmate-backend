@@ -73,5 +73,12 @@ public class WorkoutSessionExercise : AuditableEntity
         Touch();
     }
 
-    internal void AttachSet(WorkoutSessionExerciseSet set) => _setResults.Add(set);
+    public void AttachSet(WorkoutSessionExerciseSet set)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        if (set.WorkoutSessionExerciseId != Id)
+            throw new ArgumentException("Set result does not belong to this session exercise.", nameof(set));
+
+        _setResults.Add(set);
+    }
 }

@@ -1865,6 +1865,66 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrainerRevenueHistoryPage'
 
+  /exercises:
+    get:
+      tags: [Workout]
+      summary: Danh mục bài tập đã biên tập và kiểm tra giấy phép
+      operationId: listExerciseCatalog
+      parameters:
+        - in: query
+          name: query
+          schema:
+            type: string
+        - in: query
+          name: muscle
+          schema:
+            type: string
+        - in: query
+          name: equipment
+          schema:
+            type: string
+        - in: query
+          name: difficulty
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseCatalogPage'
+
+  /exercises/{id}:
+    get:
+      tags: [Workout]
+      summary: Chi tiết một bài tập trong danh mục
+      operationId: getExerciseCatalogItem
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExerciseCatalogItem'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /me/workout/plans:
     get:
       tags: [Workout]
@@ -2057,6 +2117,19 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/WeightLog'
+
+  /me/weight/{id}:
+    delete:
+      tags: [Workout]
+      summary: Xóa mềm một bản ghi cân nặng của chính người dùng
+      operationId: deleteMyWeightLog
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '204':
+          description: No Content
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /me/nutrition/meals:
     get:
@@ -5098,6 +5171,16 @@ components:
           nullable: true
           minimum: 0
           maximum: 1000
+        target_weight_kg:
+          type: number
+          nullable: true
+          minimum: 20
+          maximum: 400
+        monthly_workout_target:
+          type: integer
+          nullable: true
+          minimum: 1
+          maximum: 62
         updated_at:
           type: string
           format: date-time
@@ -5125,6 +5208,8 @@ components:
         target_protein_g: { type: integer, nullable: true, minimum: 0, maximum: 1000 }
         target_carbs_g: { type: integer, nullable: true, minimum: 0, maximum: 1000 }
         target_fat_g: { type: integer, nullable: true, minimum: 0, maximum: 1000 }
+        target_weight_kg: { type: number, nullable: true, minimum: 20, maximum: 400 }
+        monthly_workout_target: { type: integer, nullable: true, minimum: 1, maximum: 62 }
 
     AccountDeletionRequest:
       type: object
@@ -5991,6 +6076,82 @@ components:
           type: string
           format: date-time
 
+    ExerciseCatalogPage:
+      type: object
+      required: [items, page, page_size, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExerciseCatalogItem'
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total:
+          type: integer
+
+    ExerciseCatalogItem:
+      type: object
+      required:
+        - id
+        - slug
+        - name_vi
+        - name_en
+        - type
+        - difficulty
+        - primary_muscles
+        - secondary_muscles
+        - instructions_vi
+        - source
+        - source_url
+        - source_license
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name_vi:
+          type: string
+        name_en:
+          type: string
+        type:
+          type: string
+          enum: [reps, time]
+        difficulty:
+          type: string
+        equipment:
+          type: string
+          nullable: true
+        primary_muscles:
+          type: array
+          items:
+            type: string
+        secondary_muscles:
+          type: array
+          items:
+            type: string
+        instructions_vi:
+          type: array
+          items:
+            type: string
+        image_start_url:
+          type: string
+          format: uri
+          nullable: true
+        image_end_url:
+          type: string
+          format: uri
+          nullable: true
+        source:
+          type: string
+        source_url:
+          type: string
+          format: uri
+        source_license:
+          type: string
+
     WorkoutPlan:
       type: object
       required:
@@ -6123,7 +6284,7 @@ components:
           nullable: true
         media_type:
           type: string
-          enum: [video, audio]
+          enum: [image, video, audio]
           nullable: true
         media_source:
           type: string
@@ -6163,7 +6324,7 @@ components:
           type: string
         media_type:
           type: string
-          enum: [video, audio]
+          enum: [image, video, audio]
         media_source:
           type: string
         tags:

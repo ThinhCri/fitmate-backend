@@ -84,6 +84,7 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     // Workout
     public DbSet<WorkoutPlan> WorkoutPlans => Set<WorkoutPlan>();
     public DbSet<Exercise> Exercises => Set<Exercise>();
+    public DbSet<ExerciseCatalogEntry> ExerciseCatalog => Set<ExerciseCatalogEntry>();
     public DbSet<WorkoutSession> WorkoutSessions => Set<WorkoutSession>();
     public DbSet<WeightLog> WeightLogs => Set<WeightLog>();
     // BE-160: per-session exercise + set breakdown.

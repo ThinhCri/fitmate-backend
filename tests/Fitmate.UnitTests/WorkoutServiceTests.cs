@@ -369,6 +369,71 @@ public class WorkoutServiceTests
     }
 
     [Fact]
+    public async Task LogSessionAsync_rejects_foreign_plan_as_not_found()
+    {
+        var store = new InMemoryWorkoutStore
+        {
+            Plan = CreateTestPlan(PlanId, Guid.NewGuid())
+        };
+        var request = new LogWorkoutSessionRequest
+        {
+            ClientId = "c-foreign-plan",
+            PlanId = PlanId,
+            Date = new DateOnly(2026, 10, 6),
+            DurationMin = 20,
+            CaloriesBurned = 100,
+            Exercises = 1,
+            Status = WorkoutSessionStatus.Completed
+        };
+
+        var act = () => SUT(store).LogSessionAsync(UserId, request, "idem-foreign", CancellationToken.None);
+
+        await act.Should().ThrowAsync<NotFoundException>();
+        store.Sessions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LogSessionAsync_persists_set_results_and_recomputes_completed_sets()
+    {
+        var store = new InMemoryWorkoutStore
+        {
+            Plan = CreateTestPlan(PlanId, UserId),
+            CatalogExercise = CreateTestExercise(ExerciseId, PlanId)
+        };
+        var request = new LogWorkoutSessionRequest
+        {
+            ClientId = "c-sets",
+            PlanId = PlanId,
+            Date = new DateOnly(2026, 10, 6),
+            DurationMin = 20,
+            CaloriesBurned = 100,
+            Exercises = 1,
+            CompletedSets = 2,
+            PlannedSets = 3,
+            Status = WorkoutSessionStatus.EndedEarly,
+            ExerciseItems = new List<LogExerciseRequest>
+            {
+                new()
+                {
+                    ExerciseId = ExerciseId,
+                    OrderIndex = 0,
+                    Sets = new List<LogSetRequest>
+                    {
+                        new() { SetIndex = 1, Status = WorkoutSetStatus.Completed, ActualReps = 10 },
+                        new() { SetIndex = 2, Status = WorkoutSetStatus.Completed, ActualReps = 9 },
+                        new() { SetIndex = 3, Status = WorkoutSetStatus.Skipped }
+                    }
+                }
+            }
+        };
+
+        await SUT(store).LogSessionAsync(UserId, request, "idem-sets", CancellationToken.None);
+
+        store.Sets.Should().HaveCount(3);
+        store.Exercises.Should().ContainSingle().Which.CompletedSets.Should().Be(2);
+    }
+
+    [Fact]
     public async Task LogSessionAsync_idempotent_by_client_id_returns_existing_when_same_payload()
     {
         var store = new InMemoryWorkoutStore();

@@ -26,6 +26,12 @@ public class WeightServiceTests
             return Task.CompletedTask;
         }
 
+        public Task DeleteAsync(WeightLog log, CancellationToken ct)
+        {
+            log.SoftDelete();
+            return Task.CompletedTask;
+        }
+
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
@@ -102,6 +108,32 @@ public class WeightServiceTests
 
         var act = () => SUT().LogAsync(UserId, request);
         await act.Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_soft_deletes_owned_weight_entry()
+    {
+        var store = new InMemoryWeightStore();
+        var log = WeightLog.Create(UserId, 70m, DateTime.UtcNow);
+        store.Logs.Add(log);
+
+        await SUT(store).DeleteAsync(UserId, log.Id);
+
+        log.IsDeleted.Should().BeTrue();
+        (await SUT(store).ListAsync(UserId)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_hides_foreign_weight_entry_as_not_found()
+    {
+        var store = new InMemoryWeightStore();
+        var log = WeightLog.Create(Guid.NewGuid(), 70m, DateTime.UtcNow);
+        store.Logs.Add(log);
+
+        var act = () => SUT(store).DeleteAsync(UserId, log.Id);
+
+        await act.Should().ThrowAsync<NotFoundException>();
+        log.IsDeleted.Should().BeFalse();
     }
 }
 

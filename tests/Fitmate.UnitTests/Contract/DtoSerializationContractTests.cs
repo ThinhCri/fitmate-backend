@@ -401,7 +401,9 @@ public class DtoSerializationContractTests
             "target_calories",
             "target_protein_g",
             "target_carbs_g",
-            "target_fat_g"
+            "target_fat_g",
+            "target_weight_kg",
+            "monthly_workout_target"
         });
     }
 

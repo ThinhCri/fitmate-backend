@@ -143,4 +143,15 @@ public class WorkoutsController : ControllerBase
         var view = await _weight.LogAsync(current.GetUserIdOrThrow(), body, ct);
         return Created($"/api/v1/me/weight/{view.Id}", view);
     }
+
+    /// <summary>Soft-delete an owned weight entry.</summary>
+    [HttpDelete("weight/{id:guid}")]
+    public async Task<IActionResult> DeleteWeight(
+        [FromServices] ICurrentUserAccessor current,
+        Guid id,
+        CancellationToken ct)
+    {
+        await _weight.DeleteAsync(current.GetUserIdOrThrow(), id, ct);
+        return NoContent();
+    }
 }

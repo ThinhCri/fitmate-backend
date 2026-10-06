@@ -73,6 +73,8 @@ public class UserPreferenceConfiguration : IEntityTypeConfiguration<UserPreferen
         e.Property(x => x.TargetProteinG).HasColumnName("target_protein_g");
         e.Property(x => x.TargetCarbsG).HasColumnName("target_carbs_g");
         e.Property(x => x.TargetFatG).HasColumnName("target_fat_g");
+        e.Property(x => x.TargetWeightKg).HasColumnName("target_weight_kg").HasPrecision(5, 1);
+        e.Property(x => x.MonthlyWorkoutTarget).HasColumnName("monthly_workout_target");
         e.Property(x => x.CreatedAt).HasColumnName("created_at").IsRequired();
         e.Property(x => x.UpdatedAt).HasColumnName("updated_at").IsRequired();
 

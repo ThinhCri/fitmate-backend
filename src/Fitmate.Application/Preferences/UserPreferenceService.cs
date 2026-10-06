@@ -46,7 +46,9 @@ public class UserPreferenceService : IUserPreferenceService
             request.TargetCalories,
             request.TargetProteinG,
             request.TargetCarbsG,
-            request.TargetFatG);
+            request.TargetFatG,
+            request.TargetWeightKg,
+            request.MonthlyWorkoutTarget);
 
         await _store.SaveChangesAsync(ct);
         return MapToDto(pref);
@@ -66,7 +68,9 @@ public class UserPreferenceService : IUserPreferenceService
         p.TargetCalories,
         p.TargetProteinG,
         p.TargetCarbsG,
-        p.TargetFatG);
+        p.TargetFatG,
+        p.TargetWeightKg,
+        p.MonthlyWorkoutTarget);
 
     private static void ValidateNutritionTargets(UpdateUserPreferenceRequest request)
     {
@@ -75,6 +79,8 @@ public class UserPreferenceService : IUserPreferenceService
         if (request.TargetProteinG is < 0 or > 1000) errors["target_protein_g"] = new[] { "must be 0..1000" };
         if (request.TargetCarbsG is < 0 or > 1000) errors["target_carbs_g"] = new[] { "must be 0..1000" };
         if (request.TargetFatG is < 0 or > 1000) errors["target_fat_g"] = new[] { "must be 0..1000" };
+        if (request.TargetWeightKg is < 20 or > 400) errors["target_weight_kg"] = new[] { "must be 20..400" };
+        if (request.MonthlyWorkoutTarget is < 1 or > 62) errors["monthly_workout_target"] = new[] { "must be 1..62" };
         if (errors.Count > 0)
             throw new Fitmate.Domain.Common.ValidationException(
                 Fitmate.Domain.Common.ErrorCodes.Validation.FieldInvalid,

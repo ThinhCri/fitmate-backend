@@ -1789,3 +1789,22 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Existing upcoming appointment projection remains the source for the home appointment card and contextual quick action.
 - No hydration values were invented; clients should omit hydration UI until a real persistence contract exists.
 - OpenAPI and focused dashboard/serialization tests were updated.
+
+# Workout execution and goals completion — 2026-10-06
+
+- Added an authenticated, paginated `/api/v1/exercises` catalog with 18 Vietnamese-curated exercises sourced from the Unlicensed `yuhonas/free-exercise-db`; source and license metadata remain in every projection.
+- Workout-session logging now hides foreign plans, rejects exercises outside the selected owned plan, persists every set result, and updates the exercise aggregate's completed-set count from those results.
+- Added owner-only soft deletion for `/api/v1/me/weight/{id}`.
+- Added nullable `target_weight_kg` and `monthly_workout_target` to user preferences with server validation and migration `AddWorkoutGoals`; unset values remain an explicit setup state.
+- Updated OpenAPI for the catalog, weight deletion, workout goals, and image exercise media.
+- Verification in this session: API build PASS (0 warnings/errors); full unit/contract suite PASS 924/924. Database migrations were scaffolded but not applied to an operator database in this session.
+- Mobile implementation is `IMPLEMENTED_UNVERIFIED` under its manual execution policy: the operator still needs to run migration, API/device tests, and verify create-plan → active session recovery → summary/history → weight/goals on Android.
+
+# Exercise catalog expansion and R2 media — 2026-10-06
+
+- Expanded the curated exercise catalog from 18 to 30 active exercises while preserving the upstream `yuhonas/free-exercise-db` source and Unlicense attribution in API projections.
+- Copied both reference images for every exercise to the configured Cloudflare R2 bucket (`60/60` objects). Database seed data now stores stable `storage://exercise-catalog/...` keys rather than depending on GitHub raw URLs.
+- Catalog responses resolve private object keys to temporary signed R2 URLs; bucket public access is not required.
+- Added the repeatable `import-exercise-media` CLI for controlled media import. It validates downloads, limits individual image size, uploads only below the exercise-catalog prefix, and does not print credentials.
+- Applied migrations `InsertExpandedExerciseCatalog` and `NormalizeExerciseCatalogMediaKeys` to local Docker PostgreSQL. Local verification found 30 active catalog entries and 30 entries with both media keys normalized.
+- Verification: migration bundle build PASS (0 warnings/errors); full unit/contract suite PASS (924/924); local API image rebuilt and container recreated successfully. Runtime reached `Application started` on port 5116 (this API does not expose `/health`, so that probe correctly returns 404).

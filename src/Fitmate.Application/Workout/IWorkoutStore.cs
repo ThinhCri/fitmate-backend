@@ -31,5 +31,6 @@ public interface IWeightStore
     Task<IReadOnlyList<WeightLog>> ListAsync(Guid userId, CancellationToken ct);
     Task<WeightLog?> FindByIdAsync(Guid weightLogId, CancellationToken ct);
     Task AddAsync(WeightLog log, CancellationToken ct);
+    Task DeleteAsync(WeightLog log, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
 }
