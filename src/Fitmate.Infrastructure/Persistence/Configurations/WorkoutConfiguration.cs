@@ -30,6 +30,10 @@ public class ExerciseConfiguration : IEntityTypeConfiguration<Exercise>
         e.Property(x => x.Type).HasConversion<int>();
         e.Property(x => x.Tags).HasColumnType("text[]");
         e.HasIndex(x => x.WorkoutPlanId);
+        e.HasOne<WorkoutPlan>()
+            .WithMany()
+            .HasForeignKey(x => x.WorkoutPlanId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 
@@ -77,6 +81,10 @@ public class WorkoutSessionExerciseConfiguration : IEntityTypeConfiguration<Work
         e.Property(x => x.Type).HasConversion<int>();
         e.Property(x => x.Tags).HasColumnType("text[]");
         e.HasIndex(x => x.WorkoutSessionId);
+        e.HasOne<WorkoutSession>()
+            .WithMany()
+            .HasForeignKey(x => x.WorkoutSessionId)
+            .OnDelete(DeleteBehavior.Cascade);
         e.HasMany(x => x.SetResults)
             .WithOne()
             .HasForeignKey(s => s.WorkoutSessionExerciseId)
