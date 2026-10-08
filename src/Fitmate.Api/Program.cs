@@ -192,6 +192,11 @@ if (builder.Environment.IsProduction())
 builder.Services.AddSingleton<IEmailTemplateRenderer, EmailTemplateRenderer>();
 builder.Services.AddSingleton<IEmailTokenProtector, Fitmate.Infrastructure.Email.DataProtectionEmailTokenProtector>();
 builder.Services.AddScoped<IEmailSender, Fitmate.Infrastructure.Email.MailKitEmailSender>();
+builder.Services.AddScoped<ISmsOtpSender, Fitmate.Infrastructure.Auth.UnconfiguredSmsOtpSender>();
+builder.Services.AddSingleton<IPhoneOtpProtector, Fitmate.Infrastructure.Auth.DataProtectionPhoneOtpProtector>();
+builder.Services.AddScoped<IPhoneVerificationGateway, Fitmate.Infrastructure.Auth.IdentityPhoneVerificationGateway>();
+builder.Services.AddScoped<PhoneVerificationService>();
+builder.Services.AddScoped<IOutboxHandler, PhoneOtpOutboxHandler>();
 builder.Services.AddScoped<IOutboxHandler, EmailVerificationOutboxHandler>();
 builder.Services.AddScoped<IOutboxHandler, PasswordResetEmailOutboxHandler>();
 builder.Services.AddScoped<IOutboxHandler, AccountDeletionEmailOutboxHandler>();

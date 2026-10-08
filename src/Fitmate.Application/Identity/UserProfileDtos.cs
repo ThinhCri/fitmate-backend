@@ -20,7 +20,8 @@ public sealed record UserProfileDto(
     [property: JsonPropertyName("role")] string Role,
     [property: JsonPropertyName("bio")] string? Bio = null,
     [property: JsonPropertyName("preferred_time_slots")] List<string>? PreferredTimeSlots = null,
-    [property: JsonPropertyName("health_notes")] string? HealthNotes = null);
+    [property: JsonPropertyName("health_notes")] string? HealthNotes = null,
+    [property: JsonPropertyName("phone_verified")] bool PhoneVerified = false);
 
 public sealed record AttachAvatarRequest(
     [property: JsonPropertyName("storage_key")] string StorageKey);

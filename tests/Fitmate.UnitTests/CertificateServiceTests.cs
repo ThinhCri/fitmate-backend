@@ -1,5 +1,6 @@
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Identity;
 using Fitmate.Domain.Trainers;
 using FluentAssertions;
 
@@ -13,6 +14,7 @@ public class CertificateServiceTests
     private sealed class InMemoryStore : ICertificateStore
     {
         public Dictionary<Guid, Certificate> Items { get; } = new();
+        public Dictionary<Guid, ApplicationUser> Users { get; } = new();
         public int SaveCalls { get; private set; }
 
         public Task<Certificate?> FindByIdentityAsync(Guid ptUserId, string title, string issuedBy, string code, CancellationToken ct)
@@ -28,6 +30,9 @@ public class CertificateServiceTests
 
         public Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct)
             => Task.FromResult(Items.GetValueOrDefault(certId));
+
+        public Task<ApplicationUser?> FindUserAsync(Guid userId, CancellationToken ct)
+            => Task.FromResult(Users.GetValueOrDefault(userId));
 
         public async Task<(IReadOnlyList<Certificate> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct)
         {
@@ -178,6 +183,7 @@ public class CertificateServiceTests
         store.Items[cert.Id] = cert;
 
         var admin = Guid.NewGuid();
+        store.Users[cert.PtUserId] = new ApplicationUser { PhoneNumber = "+84901234567", PhoneNumberConfirmed = true };
         var approved = await NewService(store, audit).ApproveAsync(cert.Id, admin, CancellationToken.None);
 
         approved.Status.Should().Be(CertificateStatus.Approved);
@@ -193,6 +199,7 @@ public class CertificateServiceTests
         var cert = Certificate.Submit(Guid.NewGuid(), "T", "I", "C", new DateOnly(2024, 1, 1), null);
         cert.Approve(Guid.NewGuid());
         store.Items[cert.Id] = cert;
+        store.Users[cert.PtUserId] = new ApplicationUser { PhoneNumber = "+84901234567", PhoneNumberConfirmed = true };
 
         var svc = NewService(store, new CapturingAudit());
         var act = () => svc.ApproveAsync(cert.Id, Guid.NewGuid(), CancellationToken.None);
@@ -206,6 +213,20 @@ public class CertificateServiceTests
         var svc = NewService(new InMemoryStore(), new CapturingAudit());
         var act = () => svc.ApproveAsync(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
         await act.Should().ThrowAsync<NotFoundException>();
+    }
+
+    [Fact]
+    public async Task Approve_UnverifiedPhone_IsRejected()
+    {
+        var store = new InMemoryStore();
+        var cert = Certificate.Submit(Guid.NewGuid(), "T", "I", "C", new DateOnly(2024, 1, 1), null);
+        store.Items[cert.Id] = cert;
+        store.Users[cert.PtUserId] = new ApplicationUser { PhoneNumber = "+84901234567", PhoneNumberConfirmed = false };
+
+        var action = () => NewService(store, new CapturingAudit()).ApproveAsync(cert.Id, Guid.NewGuid(), CancellationToken.None);
+
+        await action.Should().ThrowAsync<ConflictException>().Where(ex => ex.Code == "PT_PHONE_NOT_VERIFIED");
+        cert.Status.Should().Be(CertificateStatus.Pending);
     }
 
     [Fact]

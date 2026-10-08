@@ -29,6 +29,8 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         // Email là định danh (xem domain-rules.md §1).
         e.HasIndex(x => x.Email).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
         e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+        e.HasIndex(x => x.PhoneNumber).IsUnique()
+            .HasFilter("\"PhoneNumberConfirmed\" = TRUE AND \"PhoneNumber\" IS NOT NULL AND \"DeletedAt\" IS NULL");
 
         // Soft-delete global query filter.
         e.HasQueryFilter(u => u.DeletedAt == null);

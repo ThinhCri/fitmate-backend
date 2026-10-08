@@ -73,6 +73,11 @@ public class CertificateService : ICertificateService
         var cert = await _store.FindByIdAsync(certId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Certificate {certId} not found.");
 
+        var user = await _store.FindUserAsync(cert.PtUserId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, "PT user not found.");
+        if (!user.PhoneNumberConfirmed || string.IsNullOrWhiteSpace(user.PhoneNumber))
+            throw new ConflictException("PT_PHONE_NOT_VERIFIED", "PT must verify a phone number before approval.");
+
         cert.Approve(adminUserId); // throws ConflictException nếu không ở Pending
         var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct);
         profile?.Approve(adminUserId);

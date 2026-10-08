@@ -203,7 +203,8 @@ public class UserProfileService : IUserProfileService
             Email: user.Email ?? "",
             FullName: user.FullName,
             AvatarUrl: ResolveAvatarUrl(user),
-            Phone: profile.Phone,
+            Phone: role.Equals("pt", StringComparison.OrdinalIgnoreCase) && user.PhoneNumberConfirmed
+                ? user.PhoneNumber : profile.Phone,
             Gender: profile.Gender?.ToString().ToLowerInvariant(),
             Birthday: profile.Birthday,
             HeightCm: profile.HeightCm,
@@ -216,7 +217,8 @@ public class UserProfileService : IUserProfileService
             Role: role.ToLowerInvariant(),
             Bio: profile.Bio,
             PreferredTimeSlots: profile.PreferredTimeSlots ?? new List<string>(),
-            HealthNotes: profile.HealthNotes);
+            HealthNotes: profile.HealthNotes,
+            PhoneVerified: user.PhoneNumberConfirmed);
     }
 
     private string? ResolveAvatarUrl(ApplicationUser user)
