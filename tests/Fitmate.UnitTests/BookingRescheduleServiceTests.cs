@@ -98,10 +98,29 @@ public class BookingRescheduleServiceTests
         => Options.Create(new RescheduleOptions
         {
             MinLeadTimeBeforeOldSlot = TimeSpan.FromHours(2),
+            MemberMinLeadTimeBeforeOldSlot = TimeSpan.FromHours(2),
             MinLeadTimeForNewSlot = TimeSpan.FromHours(2),
             MaxAdvanceDays = 30,
             DefaultRequestTimeout = TimeSpan.FromHours(24)
         });
+
+    [Fact]
+    public async Task CreateRequest_MemberWithin48Hours_IsRejectedByProductionDefault()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var memberId = Guid.NewGuid();
+        var oldSlot = DateTime.UtcNow.AddHours(47);
+        var appt = Appointment.CreateHold(memberId, Guid.NewGuid(), Guid.NewGuid(), oldSlot, oldSlot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ConfirmByPt();
+        apptStore.Items[appt.Id] = appt;
+        var svc = new BookingRescheduleService(apptStore, new InMemoryRescheduleStore(), new CapturingOutbox(), Options.Create(new RescheduleOptions()));
+
+        var act = () => svc.CreateRequestAsync(memberId, appt.Id, DateTime.UtcNow.AddDays(4), "Bận việc vào ngày tập", CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>()
+            .Where(e => e.Code == "MIN_LEAD_TIME_OLD_SLOT_VIOLATED");
+    }
 
     [Fact]
     public async Task CreateRequest_HappyPath_CreatesPendingRequest_AndEnqueuesOutbox()

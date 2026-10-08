@@ -190,16 +190,31 @@ public class EfBookingRescheduleStore : IBookingRescheduleStore
 public class ServiceBookingLookup : IServiceBookingLookup
 {
     private readonly Fitmate.Application.Trainers.IServiceOfferingStore _store;
+    private readonly FitmateDbContext _db;
 
-    public ServiceBookingLookup(Fitmate.Application.Trainers.IServiceOfferingStore store)
+    public ServiceBookingLookup(Fitmate.Application.Trainers.IServiceOfferingStore store, FitmateDbContext db)
     {
         _store = store;
+        _db = db;
     }
 
-    public async Task<ServiceSnapshot?> FindActiveAsync(Guid serviceId, CancellationToken ct)
+    public async Task<ServiceSnapshot?> FindBookableAsync(Guid serviceId, DateTime slotStartUtc, CancellationToken ct)
     {
         var s = await _store.FindAsync(serviceId, ct);
-        if (s is null || !s.IsActive) return null;
+        if (s is null || !s.IsActive || s.DeliveryMode != Fitmate.Domain.Trainers.ServiceDeliveryMode.InPerson ||
+            string.IsNullOrWhiteSpace(s.Description) || string.IsNullOrWhiteSpace(s.TargetAudience) ||
+            string.IsNullOrWhiteSpace(s.RequiredEquipment) || string.IsNullOrWhiteSpace(s.Deliverable) ||
+            string.IsNullOrWhiteSpace(s.LocationName) || string.IsNullOrWhiteSpace(s.LocationAddress)) return null;
+        var bookable = await _db.PtProfiles.AnyAsync(p => p.UserId == s.PtUserId &&
+            p.VerificationStatus == Fitmate.Domain.Trainers.PtVerificationStatus.Approved, ct) &&
+            await _db.Certificates.AnyAsync(c => c.PtUserId == s.PtUserId &&
+                c.Status == Fitmate.Domain.Common.CertificateStatus.Approved, ct) &&
+            await _db.Users.AnyAsync(u => u.Id == s.PtUserId &&
+                u.Status == Fitmate.Domain.Common.UserStatus.Active &&
+                u.EmailConfirmed && u.PhoneNumberConfirmed, ct);
+        if (!bookable || !await _db.AvailabilitySlots.AnyAsync(a => a.PtUserId == s.PtUserId &&
+            a.SlotStartUtc == slotStartUtc && a.DurationMinutes >= s.DurationMinutes &&
+            a.Status == Fitmate.Domain.Common.AvailabilityStatus.Open, ct)) return null;
         return new ServiceSnapshot(s.Id, s.PtUserId, s.PriceVnd, s.DurationMinutes, s.IsActive);
     }
 }

@@ -66,7 +66,7 @@ public class CapabilitiesAndHealthTests : IClassFixture<FitmateTestAppFactory>
         dto.Ai.StatusReason.Should().Contain("BE-817");
 
         dto.Policies.PlatformFeeBps.Should().Be(1000);
-        dto.Policies.MinCancelHours.Should().Be(24);
+        dto.Policies.MinCancelHours.Should().Be(48);
         dto.Policies.RefundWindowDays.Should().Be(7);
 
         dto.VipPurchase.Should().NotBeNull();

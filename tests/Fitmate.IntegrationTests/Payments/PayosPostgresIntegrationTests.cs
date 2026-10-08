@@ -77,7 +77,7 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         var payment = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
         payment.Status.Should().Be(PaymentStatus.Paid);
         var appt = await db.Appointments.SingleAsync(a => a.Id == payment.AppointmentId);
-        appt.Status.Should().Be(AppointmentStatus.Pending);
+        appt.Status.Should().Be(AppointmentStatus.Confirmed);
         appt.TrainerShareVnd.Should().Be(90000);
         (await db.Set<ManualPtSettlement>().AnyAsync(s => s.AppointmentId == appt.Id)).Should().BeFalse();
         (await db.Refunds.CountAsync(r => r.PaymentId == payment.Id)).Should().Be(0);
@@ -186,6 +186,7 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         using (var scope = _factory.Services.CreateScope())
         {
             var store = scope.ServiceProvider.GetRequiredService<IManualSettlementStore>();
+            await store.ApproveRefundAsync(admin, refundId, default);
             var request = new ConfirmManualRefundRequest("test-refund-" + Guid.NewGuid(), "test:receipt", DateTime.UtcNow);
             await store.ConfirmRefundAsync(admin, refundId, request, default);
             await store.ConfirmRefundAsync(admin, refundId, request, default);

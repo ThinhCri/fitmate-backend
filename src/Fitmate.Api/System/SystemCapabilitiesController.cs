@@ -60,7 +60,7 @@ public class SystemCapabilitiesController : ControllerBase
             StorageProvider: "local",
             Policies: new PlatformPoliciesSummary(
                 PlatformFeeBps: 1000,
-                MinCancelHours: 24,
+                MinCancelHours: 48,
                 RefundWindowDays: 7),
             Contact: new PublicContactInfo(
                 SupportEmail: "support@fitmate.vn",

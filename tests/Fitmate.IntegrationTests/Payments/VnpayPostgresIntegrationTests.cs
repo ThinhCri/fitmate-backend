@@ -130,7 +130,7 @@ public class VnpayPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
 
         var appt = await db.Appointments.FirstOrDefaultAsync(a => a.Id == apptId);
         appt.Should().NotBeNull();
-        appt!.Status.Should().Be(AppointmentStatus.Pending);
+        appt!.Status.Should().Be(AppointmentStatus.Confirmed);
         appt.PaymentId.Should().Be(paymentId);
     }
 

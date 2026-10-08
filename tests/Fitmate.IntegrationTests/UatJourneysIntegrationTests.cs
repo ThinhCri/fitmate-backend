@@ -393,13 +393,13 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
-            var sessionStart = DateTime.UtcNow.AddHours(-2);
+            var sessionStart = DateTime.UtcNow.AddHours(-30);
             var appointment = Appointment.CreateHold(
                 memberId, ptId, serviceId, sessionStart, sessionStart.AddHours(7), 60, 400_000);
             var payment = Payment.CreatePending(appointment.Id, PaymentMethod.Payos, 400_000, null);
             payment.MarkPaid($"PAYOS-UAT-{Guid.NewGuid():N}");
             appointment.AttachPayment(payment.Id, 400_000, 0, 0.10m, 40_000, 360_000, "v1");
-            appointment.ForceStatusForTesting(AppointmentStatus.Completed);
+            appointment.ForceStatusForTesting(AppointmentStatus.Completed, DateTime.UtcNow.AddHours(-25));
             // session started
             // session completed
 
@@ -412,7 +412,7 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
             role: "Admin",
             userId: adminId,
             includeFinanceTotp: true);
-        var confirmedAt = DateTime.UtcNow.AddMinutes(-5);
+        var confirmedAt = DateTime.UtcNow.AddHours(-25);
 
         var approveRequest = new HttpRequestMessage(
             HttpMethod.Post,

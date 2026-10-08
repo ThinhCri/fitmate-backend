@@ -64,8 +64,11 @@ public class BookingRescheduleService : IBookingRescheduleService
         var opts = _options.Value;
         var nowUtc = DateTime.UtcNow;
 
-        if (appt.SlotStartUtc - nowUtc < opts.MinLeadTimeBeforeOldSlot)
-            throw new ConflictException("MIN_LEAD_TIME_OLD_SLOT_VIOLATED", $"Old slot start time must be at least {opts.MinLeadTimeBeforeOldSlot.TotalHours} hours in the future.");
+        var oldSlotLeadTime = requesterUserId == appt.MemberId
+            ? opts.MemberMinLeadTimeBeforeOldSlot
+            : opts.MinLeadTimeBeforeOldSlot;
+        if (appt.SlotStartUtc - nowUtc < oldSlotLeadTime)
+            throw new ConflictException("MIN_LEAD_TIME_OLD_SLOT_VIOLATED", $"Old slot start time must be at least {oldSlotLeadTime.TotalHours} hours in the future.");
 
         if (newSlotStartUtc - nowUtc < opts.MinLeadTimeForNewSlot)
             throw new ConflictException("MIN_LEAD_TIME_NEW_SLOT_VIOLATED", $"New slot start time must be at least {opts.MinLeadTimeForNewSlot.TotalHours} hours in the future.");
@@ -79,7 +82,7 @@ public class BookingRescheduleService : IBookingRescheduleService
                 "New slot start time must differ from current slot.",
                 new Dictionary<string, string[]> { ["new_slot_start_utc"] = new[] { "must differ" } });
 
-        var deadline1 = appt.SlotStartUtc - opts.MinLeadTimeBeforeOldSlot;
+        var deadline1 = appt.SlotStartUtc - oldSlotLeadTime;
         var deadline2 = nowUtc.Add(opts.DefaultRequestTimeout);
         var deadlineUtc = deadline1 < deadline2 ? deadline1 : deadline2;
 

@@ -44,7 +44,7 @@ Client không PATCH status tùy ý; transition đi qua command có guard + audit
 | AwaitingMemberConfirmation → Disputed | Member báo vấn đề trong 24 giờ | Chặn completion/payout và chuyển Admin xử lý ngoại lệ |
 | Held/Pending/Confirmed/InProgress → Cancelled | Participant hoặc Admin | Chưa Completed; lý do; tạo refund nếu đã Paid; audit |
 
-- Chỉ bán slot bắt đầu ít nhất 30 phút sau thời điểm tạo hold; hold 10 phút. Member chỉ được tự hủy khi còn ít nhất 24 giờ trước slot; sát hơn phải mở yêu cầu hỗ trợ. PT hủy tạo hoàn tiền toàn bộ và audit.
+- Chỉ bán slot bắt đầu ít nhất 30 phút sau thời điểm tạo hold; hold 10 phút. Member chỉ được tự hủy khi còn ít nhất 48 giờ trước slot; sát hơn phải mở yêu cầu hỗ trợ. Buổi bắt đầu trong vòng 48 giờ cần cảnh báo rõ trước thanh toán. PT hủy tạo hoàn tiền toàn bộ và audit.
 - IPN và expiry cùng lúc serialize bằng transaction/lock; verify payment đến muộn không chiếm slot đã cấp cho người khác. Ghi tiền đã nhận và tạo case refund/đối soát, không báo booking confirmed.
 - Browser return chỉ là UX hint; client poll payment/booking. /bookings/confirm nếu giữ để tương thích phải idempotent, không tin client nói Paid.
 - Không giữ DB transaction trong lúc gọi payment provider. Outbox/provider attempt có recovery sau crash.

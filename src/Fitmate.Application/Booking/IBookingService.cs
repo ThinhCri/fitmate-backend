@@ -12,7 +12,7 @@ public interface IBookingService
     Task<(BookingHold Hold, Appointment Appointment)> CreateHoldAsync(
         Guid memberId, Guid ptUserId, Guid serviceId, DateTime slotStartUtc, CancellationToken ct);
 
-    /// <summary>Member/PT cancel. Reason bắt buộc ≥ 5 chars; member chỉ tự hủy trước giờ bắt đầu ít nhất 24 giờ.</summary>
+    /// <summary>Member/PT cancel. Reason bắt buộc ≥ 5 chars; member chỉ tự hủy trước giờ bắt đầu ít nhất 48 giờ.</summary>
     Task<Appointment> CancelAsync(Guid actorUserId, Guid appointmentId, string reason, CancellationToken ct);
 
     /// <summary>PT confirm/accept booking (Pending → Confirmed). Domain-rules.md §3.2.</summary>

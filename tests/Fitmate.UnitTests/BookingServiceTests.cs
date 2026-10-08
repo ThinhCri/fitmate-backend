@@ -128,7 +128,7 @@ public class BookingServiceTests
     private sealed class StubServiceLookup : IServiceBookingLookup
     {
         public Dictionary<Guid, ServiceSnapshot> Items { get; } = new();
-        public Task<ServiceSnapshot?> FindActiveAsync(Guid serviceId, CancellationToken ct)
+        public Task<ServiceSnapshot?> FindBookableAsync(Guid serviceId, DateTime slotStartUtc, CancellationToken ct)
             => Task.FromResult(Items.GetValueOrDefault(serviceId));
     }
 
@@ -194,6 +194,24 @@ public class BookingServiceTests
     }
 
     [Fact]
+    public async Task CreateHold_RejectsSelfBookingAndNearTermOrNonUtcSlots()
+    {
+        var pt = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        var lookup = new StubServiceLookup();
+        lookup.Items[serviceId] = Snapshot(pt);
+        var svc = NewService(new InMemoryAppointmentStore(), new InMemoryHoldStore(), lookup, new CapturingOutbox());
+
+        await FluentActions.Invoking(() => svc.CreateHoldAsync(pt, pt, serviceId,
+            DateTime.UtcNow.AddDays(1), CancellationToken.None)).Should().ThrowAsync<ConflictException>();
+        await FluentActions.Invoking(() => svc.CreateHoldAsync(Guid.NewGuid(), pt, serviceId,
+            DateTime.UtcNow.AddMinutes(10), CancellationToken.None)).Should().ThrowAsync<ValidationException>();
+        await FluentActions.Invoking(() => svc.CreateHoldAsync(Guid.NewGuid(), pt, serviceId,
+            DateTime.SpecifyKind(DateTime.UtcNow.AddDays(1), DateTimeKind.Unspecified), CancellationToken.None))
+            .Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
     public async Task CreateHold_SlotAlreadyActive_ThrowsConflict()
     {
         var apptStore = new InMemoryAppointmentStore();
@@ -243,7 +261,7 @@ public class BookingServiceTests
         var apptStore = new InMemoryAppointmentStore();
         var outbox = new CapturingOutbox();
         var member = Guid.NewGuid();
-        var slot = DateTime.UtcNow.AddDays(2);
+        var slot = DateTime.UtcNow.AddDays(3);
         var appt = Appointment.CreateHold(member, Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
         apptStore.Items[appt.Id] = appt;
 
@@ -256,11 +274,11 @@ public class BookingServiceTests
     }
 
     [Fact]
-    public async Task Cancel_ByMemberWithin24Hours_IsRejected()
+    public async Task Cancel_ByMemberWithin48Hours_IsRejected()
     {
         var apptStore = new InMemoryAppointmentStore();
         var member = Guid.NewGuid();
-        var slot = DateTime.UtcNow.AddHours(23);
+        var slot = DateTime.UtcNow.AddHours(47);
         var appt = Appointment.CreateHold(member, Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
         apptStore.Items[appt.Id] = appt;
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());

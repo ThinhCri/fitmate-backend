@@ -22,7 +22,14 @@ public class PtSerializationContractTests
             Description: "Intensive workout session",
             PriceVnd: 500000,
             DurationMinutes: 60,
-            IsActive: true);
+            IsActive: true,
+            ServiceKind: "one_to_one",
+            DeliveryMode: "in_person",
+            TargetAudience: "People new to exercise",
+            RequiredEquipment: "Training shoes",
+            Deliverable: "Technique coaching",
+            LocationName: "Fit Gym",
+            LocationAddress: "1 Nguyen Hue, HCMC");
 
         var json = JsonSerializer.Serialize(response);
 
@@ -32,6 +39,8 @@ public class PtSerializationContractTests
         json.Should().Contain("\"price_vnd\":500000");
         json.Should().Contain("\"duration_minutes\":60");
         json.Should().Contain("\"is_active\":true");
+        json.Should().Contain("\"service_kind\":\"one_to_one\"");
+        json.Should().Contain("\"location_address\":\"1 Nguyen Hue, HCMC\"");
 
         // Must not contain camelCase variants
         json.Should().NotContain("\"priceVnd\":");

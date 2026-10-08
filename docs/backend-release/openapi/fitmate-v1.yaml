@@ -1090,6 +1090,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+  /me/phone/verification:
+    post:
+      tags: [Trainers]
+      summary: PT yêu cầu mã SMS xác minh số điện thoại
+      operationId: startPtPhoneVerification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone_number]
+              properties:
+                phone_number: {type: string, pattern: '^\+84[1-9][0-9]{8}$'}
+      responses:
+        '202':
+          description: Mã đã được đưa vào outbox để gửi; chưa xác minh số điện thoại
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [expires_at_utc, retry_after_seconds]
+                properties:
+                  expires_at_utc: {type: string, format: date-time}
+                  retry_after_seconds: {type: integer}
+        '400': {description: Số điện thoại không hợp lệ}
+        '401': {description: Chưa đăng nhập}
+        '403': {description: Không phải PT hoặc tài khoản không hợp lệ}
+        '409': {description: Số điện thoại đã dùng hoặc đã xác minh}
+        '429': {description: Gửi lại quá nhanh}
+        '503': {description: Chưa cấu hình nhà cung cấp SMS}
+
+  /me/phone/verification/confirm:
+    post:
+      tags: [Trainers]
+      summary: PT xác nhận mã SMS một lần
+      operationId: confirmPtPhoneVerification
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: {type: string, pattern: '^[0-9]{6}$'}
+      responses:
+        '204': {description: Số điện thoại đã xác minh}
+        '400': {description: 'Mã sai, hết hạn hoặc đã dùng'}
+        '401': {description: Chưa đăng nhập}
+        '403': {description: 'Không phải PT hoặc tài khoản không hợp lệ'}
+
   /me/certificates:
     get:
       tags: [Certificates]
@@ -1224,7 +1280,8 @@ paths:
   /bookings/holds:
     post:
       tags: [Bookings]
-      summary: Giữ chỗ tạm thời (TTL 5 phút)
+      summary: Giữ chỗ tạm thời (TTL 10 phút)
+      description: Chỉ giữ giờ PT đã công bố, dịch vụ active và PT đủ điều kiện. Buổi tập phải bắt đầu sau ít nhất 30 phút; PT không tự đặt dịch vụ của mình.
       operationId: createBookingHold
       requestBody:
         required: true
@@ -1250,6 +1307,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateBookingHoldResponse'
+        '400':
+          description: Thời điểm UTC không hợp lệ hoặc quá sát giờ
+        '404':
+          description: Dịch vụ/giờ công bố không còn nhận đặt
         '409':
           description: Slot đã được giữ / book
           content:
@@ -1518,7 +1579,7 @@ paths:
     post:
       tags: [Bookings]
       summary: Member/PT hủy booking
-      description: Hội viên chỉ được tự hủy khi còn ít nhất 24 giờ trước giờ bắt đầu. Trường hợp muộn hơn phải liên hệ hỗ trợ để được xem xét. PT hủy theo chính sách vận hành và mọi khoản hoàn tiền được xử lý riêng.
+      description: Hội viên chỉ được tự hủy khi còn ít nhất 48 giờ trước giờ bắt đầu. Trường hợp muộn hơn phải liên hệ hỗ trợ để được xem xét. PT hủy theo chính sách vận hành và mọi khoản hoàn tiền được xử lý riêng.
       operationId: cancelMyBooking
       parameters:
         - $ref: '#/components/parameters/IdPath'
@@ -1541,7 +1602,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Appointment'
         '409':
-          description: Booking không thể hủy ở trạng thái hiện tại hoặc hội viên hủy khi còn dưới 24 giờ
+          description: Booking không thể hủy ở trạng thái hiện tại hoặc hội viên hủy khi còn dưới 48 giờ
           content:
             application/json:
               schema:
@@ -4666,6 +4727,22 @@ paths:
         '404': {description: Payment not found}
         '409': {description: Refund cap exceeded or wrong payment state/provider}
 
+  /admin/finance/manual-refunds/{refundId}/approve:
+    post:
+      tags: [Admin]
+      operationId: approveManualRefund
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/FinanceTotp'
+        - {in: path, name: refundId, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {$ref: '#/components/responses/ManualRefundResult'}
+        '400': {description: Invalid idempotency key}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {description: Refund not found}
+        '409': {description: Refund no longer pending}
+
   /admin/finance/manual-refunds/{refundId}/record-transfer:
     post:
       tags: [Admin]
@@ -4810,6 +4887,9 @@ components:
         reason: {type: string}
         status: {type: integer, enum: [0, 1, 2], description: "Pending=0, Succeeded=1, Failed=2"}
         createdAt: {type: string, format: date-time}
+        approvedAtUtc: {type: string, format: date-time, nullable: true}
+        transferDueAtUtc: {type: string, format: date-time, nullable: true}
+        isOverdue: {type: boolean}
     ManualSettlement:
       type: object
       properties:
@@ -5008,6 +5088,9 @@ components:
         phone:
           type: string
           nullable: true
+        phone_verified:
+          type: boolean
+          description: True only after successful SMS ownership verification.
         bio:
           type: string
           nullable: true
@@ -5442,15 +5525,34 @@ components:
           type: integer
         is_active:
           type: boolean
+        service_kind:
+          type: string
+          enum: [one_to_one, assessment_and_plan]
+        delivery_mode:
+          type: string
+          enum: [in_person, online]
+        target_audience:
+          type: string
+        required_equipment:
+          type: string
+        deliverable:
+          type: string
+        location_name:
+          type: string
+          nullable: true
+        location_address:
+          type: string
+          nullable: true
 
     ServiceInput:
       type: object
-      required: [name, price_vnd, duration_minutes]
+      required: [name, description, price_vnd, duration_minutes, service_kind, delivery_mode, target_audience, required_equipment, deliverable]
       properties:
         name:
           type: string
         description:
           type: string
+          minLength: 20
         price_vnd:
           type: integer
           minimum: 0
@@ -5458,6 +5560,30 @@ components:
           type: integer
           minimum: 15
           maximum: 240
+        service_kind:
+          type: string
+          enum: [one_to_one, assessment_and_plan]
+        delivery_mode:
+          type: string
+          enum: [in_person, online]
+          description: Online services remain unpublished until Google Meet integration is configured.
+        target_audience:
+          type: string
+          maxLength: 300
+        required_equipment:
+          type: string
+          maxLength: 300
+        deliverable:
+          type: string
+          maxLength: 500
+        location_name:
+          type: string
+          maxLength: 200
+          description: Required for in_person services.
+        location_address:
+          type: string
+          maxLength: 500
+          description: Required for in_person services.
 
     ServiceUpdate:
       type: object
@@ -5473,6 +5599,22 @@ components:
           type: integer
         is_active:
           type: boolean
+        service_kind:
+          type: string
+          enum: [one_to_one, assessment_and_plan]
+        delivery_mode:
+          type: string
+          enum: [in_person, online]
+        target_audience:
+          type: string
+        required_equipment:
+          type: string
+        deliverable:
+          type: string
+        location_name:
+          type: string
+        location_address:
+          type: string
 
     CreateBookingHoldResponse:
       type: object

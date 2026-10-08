@@ -41,7 +41,7 @@ public class BookingAuthzIntegrationTests
 
     private sealed class NoServiceLookup : IServiceBookingLookup
     {
-        public Task<ServiceSnapshot?> FindActiveAsync(Guid id, CancellationToken ct) => Task.FromResult<ServiceSnapshot?>(null);
+        public Task<ServiceSnapshot?> FindBookableAsync(Guid id, DateTime slotStartUtc, CancellationToken ct) => Task.FromResult<ServiceSnapshot?>(null);
     }
 
     private sealed class OutboxStub : IOutboxDispatcher

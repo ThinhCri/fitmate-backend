@@ -1,0 +1,39 @@
+# PT online sessions and package checkout — design note (2026-10-08)
+
+Status: **product design agreed in conversation; not an implemented or verified contract**. This note does not override existing runtime APIs. Booking/payment/package/OpenAPI changes require a separate implementation and cross-repo verification.
+
+## Online via Google Meet
+
+- Online is shown as the delivery mode before checkout. The actual private meeting link is available to the PT and paying member in the confirmed appointment, not publicly on the service listing.
+- PT connects a Google account once through OAuth before publishing an online service. The backend creates one distinct Meet space/link per confirmed session; the PT should be the meeting owner. PT does not paste a link for each session. Keep OAuth credentials server-side and protected; loss of authorization must disable new online sales until reconnected.
+- On 2026-10-08 the owner tested Google Meet API `spaces.create` with their own Gmail using Google's API Explorer: HTTP 200, and a second account successfully joined the returned meeting link. This proves that account can create/join a space via Explorer; it does **not** verify Fitmate's own OAuth client, token lifecycle, automatic creation, or every other PT account.
+- Google API failure must be visible and recoverable. Do not treat a payment redirect as proof of a confirmed appointment or silently leave a paid session without meeting access. Meeting creation timing, retries, and booking/payment compensation need an explicit contract before implementation.
+
+## Multi-session package and payment direction
+
+- Agreed product direction: packages of 4 or 8 one-to-one sessions, initial dates chosen within four weeks before checkout, plus a two-week make-up buffer. Member chooses actual PT-published slots before paying; no annual subscription or auto-renewal.
+- Proposed checkout: one server-priced, idempotent payOS order for the whole package, not 4/8 independent charges. Hold all chosen slots atomically for the checkout window; on verified payment confirm all sessions. A late/failed payment must not consume slots or falsely mark sessions confirmed.
+- The actual paid package amount must be allocated deterministically across sessions in integer VND. The pure domain allocator now splits it equally across four/eight chronological slots, giving any VND remainder to the earliest slots, and uses cumulative half-up fee rounding so the per-session 10% fee deltas sum to the package fee. This allocator is **not yet wired to checkout, webhook, refund, ledger, or payout**; selling a package before those paths use the persisted allocation would double-count money.
+- Cancellation/rescheduling and package-stop rules discussed with the owner are **new policy targets**. The single-booking member self-cancel and self-reschedule cutoff, capabilities response, OpenAPI, mobile copy/guards, and related tests were updated to 48 hours on 2026-10-08. Package-stop/refund allocation, admin operations, and published terms are **not implemented**; do not present the package policy as live.
+- payOS currently covers single-booking checkout code; package checkout, allocation, partial refund, and Meet integration are not evidenced as complete. Live acceptance of the platform collection / PT payout model remains gated by OPS-03 and provider/operator confirmation.
+
+## Service discovery implementation boundary — 2026-10-08
+
+- PT service create/edit now records one-to-one versus assessment/plan, direct versus online, intended audience, equipment, deliverable and a fixed location for direct sessions. The member profile and booking selection show these details. Legacy incomplete services are hidden from discovery and cannot be booked; a PT must edit them first.
+- Online offerings may be saved only as inactive drafts. They are not discoverable or bookable while Google OAuth, private per-session Meet creation, and paid-booking recovery are absent. The mobile UI labels this explicitly.
+- A bookable PT must have an approved profile and certificate, an active email/phone-verified user, and a complete active direct service. A booking hold also requires an exact published open slot long enough for the selected service. Old accounts without verified phones cannot receive new bookings until the SMS provider is connected and verification succeeds.
+- This change introduces nullable service-detail columns; an existing service is **not** silently given a fabricated venue or deliverable. The migration has not been applied to the operator's database in this session.
+
+## PT payout and limited live operation — owner decision 2026-10-08
+
+- The owner plans a small real-user launch (approximately 50–100 users, mostly known personally), with the owner acting as Admin. PT payouts remain **manual bank transfers** after per-session review. Do not implement or enable the payOS Payout API for this launch; payOS is for collecting checkout payments only.
+- Admin approval, actual bank transfer, and recording the transfer receipt/reference are distinct events. Never mark a PT payout paid solely because Admin clicked approve or entered a reference. Require completed/eligible session, verified collection, no unresolved dispute or pending refund, payee verification, MFA/step-up, immutable audit, and reconciliation with the bank statement. Current code implements part of this workflow; live operational verification is still required.
+- A planned shutdown is not permission to abandon outstanding paid packages or balances. Before disabling service: stop new sales, notify members/PTs, finish or refund unused sessions under the published policy, complete PT payouts and customer refunds, reconcile with payOS/bank records, and give users the promised data export/deletion route. The exact shutdown dates, notice and legal retention policy must be set before launch.
+
+## Additional owner decisions — 2026-10-08
+
+- PT phone verification uses automatic SMS OTP. The provider-neutral interface, durable one-active-challenge record, protected outbox payload, five-minute expiry, resend cooldown, five-attempt cap, PT-only endpoints and mobile entry screen are implemented locally. The SMS vendor is **not selected or connected**; the unconfigured adapter returns 503 and verification cannot complete in that state. Do not mark a phone verified merely because an outbox item was queued. Admin approval now requires the verified Identity phone.
+- Approved manual refunds to members must be bank-transferred within **48 consecutive hours** of approval, including weekends and holidays. The separate approve endpoint, due time in API, and Admin list/action are implemented locally; only recording a real bank receipt marks it succeeded. The 24-hour PT contact window for package-stop requests, automated escalation and live bank reconciliation remain **not implemented**.
+- The owner intends real local end-to-end testing before a limited launch, but payOS live credentials and provider approval are not yet available. No fake payment success may be exposed as a live transaction.
+
+References: [payOS/manual settlement runbook](runbooks/payos-manual-settlement.md), [current domain rules](domain-rules.md), [Google Meet spaces.create](https://developers.google.com/workspace/meet/api/reference/rest/v2/spaces/create), [Google Play Payments policy](https://support.google.com/googleplay/android-developer/answer/10281818?hl=en).

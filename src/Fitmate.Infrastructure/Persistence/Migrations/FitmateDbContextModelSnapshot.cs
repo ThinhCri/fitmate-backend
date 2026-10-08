@@ -715,6 +715,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasDatabaseName("UserNameIndex");
 
+                    b.HasIndex("PhoneNumber")
+                        .IsUnique()
+                        .HasFilter("\"PhoneNumberConfirmed\" = TRUE AND \"PhoneNumber\" IS NOT NULL AND \"DeletedAt\" IS NULL");
+
                     b.ToTable("asp_net_users", (string)null);
                 });
 
@@ -1881,6 +1885,14 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("AppointmentId")
                         .HasColumnType("uuid");
 
+                    b.Property<DateTime?>("ApprovedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("approved_at_utc");
+
+                    b.Property<Guid?>("ApprovedByAdminId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("approved_by_admin_id");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2509,6 +2521,15 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("Deliverable")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("deliverable");
+
+                    b.Property<int>("DeliveryMode")
+                        .HasColumnType("integer")
+                        .HasColumnName("delivery_mode");
+
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
@@ -2517,6 +2538,20 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("service_kind");
+
+                    b.Property<string>("LocationAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("location_address");
+
+                    b.Property<string>("LocationName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("location_name");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -2528,6 +2563,16 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("PtUserId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("RequiredEquipment")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("required_equipment");
+
+                    b.Property<string>("TargetAudience")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("target_audience");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -3807,6 +3852,24 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasOne("Fitmate.Domain.Support.SupportTicket", null)
                         .WithMany("Messages")
                         .HasForeignKey("TicketId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Workout.Exercise", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Workout.WorkoutPlan", null)
+                        .WithMany()
+                        .HasForeignKey("WorkoutPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Workout.WorkoutSessionExercise", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Workout.WorkoutSession", null)
+                        .WithMany()
+                        .HasForeignKey("WorkoutSessionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

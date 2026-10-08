@@ -17,7 +17,7 @@ public class ServiceOfferingService : IServiceOfferingService
         _authz = authz;
     }
 
-    public async Task<Domain.Trainers.Service> CreateAsync(Guid ptUserId, string name, string? description, long priceVnd, int durationMinutes, CancellationToken ct)
+    public async Task<Domain.Trainers.Service> CreateAsync(Guid ptUserId, string name, string? description, long priceVnd, int durationMinutes, CancellationToken ct, ServiceOfferingDetails? details = null)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         // Domain.Service.Create đã validate name/price/duration ném ArgumentException;
@@ -26,6 +26,13 @@ public class ServiceOfferingService : IServiceOfferingService
         try
         {
             entity = Domain.Trainers.Service.Create(ptUserId, name, description, priceVnd, durationMinutes);
+            if (details is not null)
+            {
+                if (string.IsNullOrWhiteSpace(description) || description.Trim().Length < 20)
+                    throw new ArgumentException("Describe what the member will do in at least 20 characters.");
+                entity.ConfigureDetails(details.Kind, details.DeliveryMode, details.TargetAudience,
+                    details.RequiredEquipment, details.Deliverable, details.LocationName, details.LocationAddress);
+            }
         }
         catch (ArgumentException ex)
         {
@@ -37,7 +44,7 @@ public class ServiceOfferingService : IServiceOfferingService
         return entity;
     }
 
-    public async Task<Domain.Trainers.Service> UpdateAsync(Guid ptUserId, Guid serviceId, string? name, string? description, long? priceVnd, int? durationMinutes, bool? isActive, CancellationToken ct)
+    public async Task<Domain.Trainers.Service> UpdateAsync(Guid ptUserId, Guid serviceId, string? name, string? description, long? priceVnd, int? durationMinutes, bool? isActive, CancellationToken ct, ServiceOfferingDetails? details = null)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         var service = await _store.FindAsync(serviceId, ct)
@@ -47,7 +54,17 @@ public class ServiceOfferingService : IServiceOfferingService
 
         try
         {
+            if (isActive == true && ((details?.DeliveryMode ?? service.DeliveryMode) == Domain.Trainers.ServiceDeliveryMode.Online ||
+                (details is null && string.IsNullOrWhiteSpace(service.TargetAudience))))
+                throw new ArgumentException("Service cannot be published until delivery details and Google Meet connection are ready.");
             service.Update(name, description, priceVnd, durationMinutes, isActive);
+            if (details is not null)
+            {
+                if (string.IsNullOrWhiteSpace(description ?? service.Description) || (description ?? service.Description)!.Trim().Length < 20)
+                    throw new ArgumentException("Describe what the member will do in at least 20 characters.");
+                service.ConfigureDetails(details.Kind, details.DeliveryMode, details.TargetAudience,
+                    details.RequiredEquipment, details.Deliverable, details.LocationName, details.LocationAddress);
+            }
         }
         catch (ArgumentException ex)
         {

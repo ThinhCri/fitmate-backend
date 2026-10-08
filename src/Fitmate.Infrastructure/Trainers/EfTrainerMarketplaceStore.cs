@@ -26,19 +26,36 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
             .Distinct();
 
         var profiles = await _db.PtProfiles
-            .Where(p => verifiedPtIds.Contains(p.UserId))
+            .Where(p => p.VerificationStatus == PtVerificationStatus.Approved &&
+                verifiedPtIds.Contains(p.UserId) &&
+                _db.Users.Any(u => u.Id == p.UserId && u.Status == UserStatus.Active &&
+                    u.EmailConfirmed && u.PhoneNumberConfirmed) &&
+                _db.Services.Any(s => s.PtUserId == p.UserId && s.IsActive &&
+                    s.DeliveryMode == ServiceDeliveryMode.InPerson && s.TargetAudience != null &&
+                    s.RequiredEquipment != null && s.Deliverable != null &&
+                    s.LocationName != null && s.LocationAddress != null))
             .OrderByDescending(p => p.Rating)
             .ThenBy(p => p.UserId)
             .ToListAsync(ct);
+
+        var profileIds = profiles.Select(p => p.UserId).ToArray();
+        var activePrices = (await _db.Services
+            .Where(s => profileIds.Contains(s.PtUserId) && s.IsActive && s.DeliveryMode == ServiceDeliveryMode.InPerson &&
+                s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
+                s.LocationName != null && s.LocationAddress != null)
+            .Select(s => new { s.PtUserId, s.PriceVnd })
+            .ToListAsync(ct))
+            .GroupBy(s => s.PtUserId)
+            .ToDictionary(g => g.Key, g => g.Min(s => s.PriceVnd));
 
         // Apply filter post-EF (chuyên ngành + price + rating).
         IEnumerable<PtProfile> filtered = profiles;
         if (!string.IsNullOrWhiteSpace(q.Specialty))
             filtered = filtered.Where(p => p.Specialty != null && p.Specialty.Contains(q.Specialty, StringComparison.OrdinalIgnoreCase));
         if (q.MinPriceVnd.HasValue)
-            filtered = filtered.Where(p => p.PricePerSessionVnd.HasValue && p.PricePerSessionVnd.Value >= q.MinPriceVnd.Value);
+            filtered = filtered.Where(p => activePrices.TryGetValue(p.UserId, out var price) && price >= q.MinPriceVnd.Value);
         if (q.MaxPriceVnd.HasValue)
-            filtered = filtered.Where(p => p.PricePerSessionVnd.HasValue && p.PricePerSessionVnd.Value <= q.MaxPriceVnd.Value);
+            filtered = filtered.Where(p => activePrices.TryGetValue(p.UserId, out var price) && price <= q.MaxPriceVnd.Value);
         if (q.MinRating.HasValue)
             filtered = filtered.Where(p => p.Rating >= q.MinRating.Value);
 
@@ -59,17 +76,21 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
             .Select(c => c.PtUserId)
             .ToListAsync(ct);
         var verifiedSet = approvedCerts.ToHashSet();
+        var userDetails = await _db.Users
+            .Where(u => ptIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.FullName, u.AvatarUrl })
+            .ToDictionaryAsync(u => u.Id, ct);
 
         var items = page
             .Where(p => verifiedSet.Contains(p.UserId))
             .Select(p => new TrainerMarketplaceSummary(
                 Id: p.Id,
                 UserId: p.UserId,
-                FullName: null,
-                AvatarUrl: null,
+                FullName: userDetails[p.UserId].FullName,
+                AvatarUrl: userDetails[p.UserId].AvatarUrl,
                 Specialty: p.Specialty,
                 ExperienceYears: p.ExperienceYears,
-                PricePerSessionVnd: p.PricePerSessionVnd,
+                PricePerSessionVnd: activePrices.GetValueOrDefault(p.UserId),
                 Rating: p.Rating,
                 ReviewsCount: p.ReviewsCount,
                 IsVerified: true))
@@ -80,27 +101,35 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
 
     public async Task<TrainerMarketplaceDetail?> FindDetailAsync(Guid ptUserId, CancellationToken ct)
     {
-        // 1+ Approved certificate là điều kiện xuất hiện trên marketplace.
+        // Certificate alone is insufficient: an approved, active PT account is also required.
         var hasApproved = await _db.Certificates
             .AnyAsync(c => c.PtUserId == ptUserId && c.Status == CertificateStatus.Approved, ct);
         if (!hasApproved) return null;
 
         var profile = await _db.PtProfiles.FirstOrDefaultAsync(p => p.UserId == ptUserId, ct);
-        if (profile is null) return null;
+        if (profile is null || profile.VerificationStatus != PtVerificationStatus.Approved ||
+            !await _db.Users.AnyAsync(u => u.Id == ptUserId && u.Status == UserStatus.Active &&
+                u.EmailConfirmed && u.PhoneNumberConfirmed, ct)) return null;
 
         var services = await _db.Services
-            .Where(s => s.PtUserId == ptUserId && s.IsActive)
+            .Where(s => s.PtUserId == ptUserId && s.IsActive &&
+                s.DeliveryMode == ServiceDeliveryMode.InPerson && s.TargetAudience != null &&
+                s.RequiredEquipment != null && s.Deliverable != null &&
+                s.LocationName != null && s.LocationAddress != null)
             .OrderBy(s => s.PriceVnd)
             .ToListAsync(ct);
+        if (services.Count == 0) return null;
 
+        var user = await _db.Users.Where(u => u.Id == ptUserId)
+            .Select(u => new { u.FullName, u.AvatarUrl }).SingleAsync(ct);
         var summary = new TrainerMarketplaceSummary(
             Id: profile.Id,
             UserId: profile.UserId,
-            FullName: null,
-            AvatarUrl: null,
+            FullName: user.FullName,
+            AvatarUrl: user.AvatarUrl,
             Specialty: profile.Specialty,
             ExperienceYears: profile.ExperienceYears,
-            PricePerSessionVnd: profile.PricePerSessionVnd,
+            PricePerSessionVnd: services.Min(s => s.PriceVnd),
             Rating: profile.Rating,
             ReviewsCount: profile.ReviewsCount,
             IsVerified: true);

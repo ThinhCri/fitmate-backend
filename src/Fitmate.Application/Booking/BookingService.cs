@@ -55,13 +55,19 @@ public class BookingService : IBookingService
         Guid memberId, Guid ptUserId, Guid serviceId, DateTime slotStartUtc, CancellationToken ct)
     {
         // 1. Validate service.
-        var svc = await _services.FindActiveAsync(serviceId, ct)
+        var svc = await _services.FindBookableAsync(serviceId, slotStartUtc, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Service {serviceId} not found or inactive.");
         if (svc.PtUserId != ptUserId)
             throw new ValidationException(
                 ErrorCodes.Validation.FieldInvalid,
                 "Service does not belong to PT.",
                 new Dictionary<string, string[]> { ["pt_id"] = new[] { "mismatch" } });
+        if (memberId == ptUserId)
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition, "PT cannot book their own service.");
+        if (slotStartUtc.Kind != DateTimeKind.Utc || slotStartUtc < DateTime.UtcNow.AddMinutes(30))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid,
+                "Buổi tập phải bắt đầu sau ít nhất 30 phút và dùng thời gian UTC.",
+                new Dictionary<string, string[]> { ["slot_start_utc"] = ["at least 30 minutes in the future, UTC"] });
 
         // 2. Concurrency & Overlap: Lock theo PT và kiểm tra interval overlap [S1, E1) và [S2, E2).
         return await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
@@ -99,10 +105,10 @@ public class BookingService : IBookingService
         if (appt.MemberId != actorUserId && appt.PtUserId != actorUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner or PT.");
 
-        if (appt.MemberId == actorUserId && DateTime.UtcNow > appt.SlotStartUtc.AddHours(-24))
+        if (appt.MemberId == actorUserId && DateTime.UtcNow > appt.SlotStartUtc.AddHours(-48))
             throw new ConflictException(
                 ErrorCodes.Booking.CannotTransition,
-                "Bạn chỉ có thể tự hủy lịch trước giờ bắt đầu ít nhất 24 giờ. Vui lòng liên hệ hỗ trợ nếu có tình huống khẩn cấp.");
+                "Bạn chỉ có thể tự hủy lịch trước giờ bắt đầu ít nhất 48 giờ. Vui lòng liên hệ hỗ trợ nếu có tình huống khẩn cấp.");
 
         return await _appointments.ExecuteWithScheduleLockAsync(appt.PtUserId, async () =>
         {

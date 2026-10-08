@@ -43,7 +43,7 @@ public interface IBookingRescheduleStore
 /// <summary>Lookup Service cho Booking (price + duration + trainer timezone).</summary>
 public interface IServiceBookingLookup
 {
-    Task<ServiceSnapshot?> FindActiveAsync(Guid serviceId, CancellationToken ct);
+    Task<ServiceSnapshot?> FindBookableAsync(Guid serviceId, DateTime slotStartUtc, CancellationToken ct);
 }
 
 public sealed record ServiceSnapshot(

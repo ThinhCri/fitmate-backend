@@ -1808,3 +1808,56 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Added the repeatable `import-exercise-media` CLI for controlled media import. It validates downloads, limits individual image size, uploads only below the exercise-catalog prefix, and does not print credentials.
 - Applied migrations `InsertExpandedExerciseCatalog` and `NormalizeExerciseCatalogMediaKeys` to local Docker PostgreSQL. Local verification found 30 active catalog entries and 30 entries with both media keys normalized.
 - Verification: migration bundle build PASS (0 warnings/errors); full unit/contract suite PASS (924/924); local API image rebuilt and container recreated successfully. Runtime reached `Application started` on port 5116 (this API does not expose `/health`, so that probe correctly returns 404).
+
+# Workout plan persistence ordering fix — 2026-10-07
+
+- Fixed workout-plan creation failing with PostgreSQL foreign-key error because EF Core did not know the relationship between `Exercise.WorkoutPlanId` and `WorkoutPlan` and could insert exercises before their parent plan.
+- Added the missing EF relationship with restricted delete behavior. This lets EF order both inserts correctly inside the existing single `SaveChangesAsync` transaction; plan deletion remains the existing soft-delete flow.
+- Added and applied migration `FixWorkoutPlanExerciseRelationship` to align the EF model snapshot and database constraint. API build passed with 0 warnings/errors, unit/contract tests passed 924/924, and the local Docker API reached `Application started` on port 5116.
+
+# Workout session persistence follow-up — 2026-10-07
+
+- Mobile log-session request was missing the mandatory `Idempotency-Key` header; the mobile adapter now sends a stable per-session UUID and preserves the exact payload for retry.
+- Explicitly configured the existing workout-session → session-exercise relationship in EF so the parent insert is ordered before child inserts. The FK already exists in `WorkoutSnapshot`; updated the model snapshot without introducing a duplicate database migration.
+- This follow-up has not been rebuilt or device-tested in this session. Confirm API save and summary/history after rebuilding the API image and reloading the app.
+
+# PT online/package payment design note — 2026-10-08
+
+- Recorded the owner's successful Gmail Meet API Explorer `spaces.create` (HTTP 200) and second-account join test, plus the agreed one-time PT Google connection and automatic per-session link design in `pt-online-package-payment-note.md`.
+- Documented the proposed one-payment 4/8-session package design and the gap from existing single-booking payOS and 24-hour cancellation policy. This is documentation only; no PT/Meet/package runtime implementation or payment verification was performed here.
+- Owner subsequently chose manual bank transfers to PT for the planned small real-user launch (50–100 users); payOS Payout API must stay disabled. The design note records the review/receipt/reconciliation and eventual shutdown obligations. No runtime payment action was taken.
+
+# PT policy implementation slice — 2026-10-08
+
+- Owner clarified that approved manual member refunds must be transferred within 48 consecutive hours, including weekends/holidays. The 48-hour transfer deadline is documented but NOT enforced by the current refund state machine; there is no distinct refund approval timestamp yet.
+- Owner chose automatic SMS OTP for PT phone verification but has not chosen a vendor. Added `ISmsOtpSender` and a fail-closed unconfigured adapter; no send/verify endpoints or provider credentials exist yet, and `PhoneNumberConfirmed` is not set by this slice.
+- Changed the existing single-booking member self-cancellation policy from 24 to 48 hours and member-initiated reschedule old-slot cutoff to 48 hours. PT-initiated reschedule retains its existing 2-hour minimum. Synchronized system capabilities, app copy/guards, pre-checkout short-notice warning, domain/OpenAPI text and tests. This does not implement package credits, partial refunds, PT penalties, Google OAuth/Meet links or package checkout.
+- Verification: full backend unit suite PASS 926/926; mobile type-check PASS; targeted booking mobile tests PASS 13/13. No DB migration, device run, payOS transaction, or real SMS was performed. Existing unrelated dirty workout changes and migration files were preserved. No commit or push.
+- Next: design and implement a durable SMS challenge/outbox with attempt limits and real provider; distinct approved-refund/transfer states and 48-hour due queue; atomic package holds and one-payment allocation; verified webhook handling; PT Google OAuth/Meet; admin/member/PT flows and end-to-end tests. Do not consider PT package launch-ready yet.
+
+# PT onboarding and manual refund follow-up — 2026-10-08
+
+- Added PT-only phone-verification start/confirm endpoints, an Identity-backed durable one-active OTP challenge, five-minute expiry, 60-second resend cooldown, five failed attempts, protected SMS outbox payload, and a unique index for confirmed phone numbers. Mobile has a verification screen linked from the PT certificate screen. Admin cannot approve a PT certificate without a verified Identity phone. The SMS adapter remains fail-closed because no provider has been selected; no real SMS was sent.
+- Added a separate Admin manual-refund approval operation with MFA and idempotency, stored approval timestamp/admin ID and a computed 48-consecutive-hour transfer deadline. Actual bank transfer recording remains the only event that marks the refund succeeded. Admin Web now separates approve and record-transfer buttons and highlights overdue approved refunds. No bank transfer was initiated.
+- Updated OpenAPI and the PT design note. Backend unit/contract tests passed 934/934; Admin typecheck passed and focused manual-finance tests passed 6/6 after finding and fixing an approval-form bug; mobile typecheck passed. PostgreSQL integration tests cannot provision an isolated test database because Docker Desktop's engine is not running; no user data/volume was touched.
+- These are partial vertical slices. Outstanding: selected SMS provider/credentials and delivery verification; Google OAuth/Meet automation; service purpose/mode/location contract; atomic 4/8-session checkout and per-session allocations; package-credit/cancel/stop workflow with 24-hour PT response; attendance dispute/verified PT penalty escalations; live provider approval/keys and isolated end-to-end UAT. Do not enable package sales or claim launch readiness.
+
+# PT booking eligibility correction — 2026-10-08 follow-up
+
+- Marketplace detail/list and the booking service lookup now require an approved PT profile, an approved certificate, an active email- and phone-verified account. Previously an approved certificate alone could expose a PT; any active service could be booked even when PT verification/account status had changed. API build passed with zero warnings/errors. Existing PT accounts without verified Identity phones will not be bookable until SMS verification succeeds; this is deliberate fail-closed behavior, not a backfill.
+- The 4/8-session package cannot reuse the current one-payment/one-appointment finance code safely: payment amount, refund, and payout calculations assume the whole payment belongs to one appointment. An allocation table and callback/ledger/revenue changes must land together before package checkout can be enabled. No package payment endpoint was exposed in this follow-up.
+
+# PT booking and package allocation continuation — 2026-10-08
+
+- Booking hold lookup now also requires an exact PT-published open slot of sufficient duration. The application rejects self-booking, non-UTC start times and starts within 30 minutes. OpenAPI hold summary/status and TTL were corrected. Existing 48-hour cancellation rule remains.
+- Added a tested pure-domain four/eight-session VND allocator: chronological slots receive deterministic remainder; cumulative half-up fee deltas total exactly 10% of actual payment. It is not persisted or connected to payOS/ledger; package checkout stays unavailable until all financial consumers use the allocation.
+- Backend unit/contract suite passed 939/939. PostgreSQL isolation remains unavailable while Docker Desktop is stopped. Marketplace/booking eligibility queries need database integration coverage before release.
+
+# PT service contract and isolated PostgreSQL verification — 2026-10-08
+
+- Added service purpose, delivery mode, target audience, required equipment, deliverable and one fixed location for direct sessions. Create requires complete fields and a meaningful description; online services are saved inactive until Google Meet OAuth/link creation exists. Marketplace and booking hide/reject legacy incomplete services, unapproved PT profiles, unverified phone/email accounts and slots not published by the PT.
+- Added `AddPtServiceDetails` migration (Up/Down add/drop only service columns). It was **not applied to the app database**. The mobile PT editor now captures these fields; trainer detail and booking cards show them, and the fabricated `Fitmate Partner Studio` venue was removed. Booking selection filters slots too short for the service and clears stale selection.
+- The isolated PostgreSQL integration database ran in a disposable container, separate from the Compose app database/volume; the container was stopped after tests. Backend unit tests PASS 941/941, integration PASS 65/65 (including new PT bookability transition coverage), API build PASS. Four legacy integration assertions were updated for the existing paid→Confirmed transition, manual-refund approve-before-transfer step, and payout waiting period. Mobile typecheck PASS and focused PT/booking tests PASS 17/17.
+- `dotnet ef migrations has-pending-model-changes` still reports drift, apparently from the pre-existing list-valued exercise seed diff emitted on every scaffold; inspect and resolve separately before release. The generated service migration's unrelated 30 exercise `UpdateData` blocks were removed, and the owner's workout files were not edited in this follow-up.
+- Public trainer list/detail now uses the OpenAPI/mobile flat snake_case profile shape, the PT **user** ID for navigation/booking, real Identity full name/avatar, and the cheapest active complete direct service price instead of stale profile pricing. An isolated HTTP integration test verifies the actual list/detail payload and booking eligibility; full integration suite still passes 65/65.
+- Remaining launch blockers: real SMS provider credentials/delivery; Google OAuth/Meet and compensation; atomic package holds, persistence and payOS/ledger/refund/payout allocations; package-stop/PT response workflow; attendance dispute and penalty escalation; payOS production credentials/operator approval and device UAT. No package checkout is exposed and no payment/transfer was initiated. No commit or push.

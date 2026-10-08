@@ -125,7 +125,7 @@ public class DtoSerializationContractTests
             "id", "email", "full_name", "avatar_url", "phone", "gender",
             "birthday", "height_cm", "weight_kg", "fitness_goal",
             "training_days", "medical_conditions", "allergies", "timezone", "role",
-            "bio", "preferred_time_slots", "health_notes"
+            "bio", "preferred_time_slots", "health_notes", "phone_verified"
         });
     }
 

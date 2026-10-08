@@ -1,4 +1,5 @@
 using Fitmate.Application.Trainers;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -32,7 +33,7 @@ public class TrainersPublicController : ControllerBase
     {
         var q = new TrainerMarketplaceQuery(specialty, minPriceVnd, maxPriceVnd, minRating, limit, cursor);
         var (items, next) = await _svc.ListAsync(q, ct);
-        return Ok(new { items, nextCursor = next });
+        return Ok(new { items = items.Select(ToPublicProfile).ToList(), nextCursor = next });
     }
 
     [HttpGet("{ptUserId:guid}")]
@@ -41,9 +42,33 @@ public class TrainersPublicController : ControllerBase
         var detail = await _svc.GetDetailAsync(ptUserId, ct);
         return Ok(new
         {
-            profile = detail.Profile,
+            id = detail.Profile.UserId,
+            full_name = detail.Profile.FullName,
+            avatar_url = detail.Profile.AvatarUrl,
+            specialty = detail.Profile.Specialty,
+            experience_years = detail.Profile.ExperienceYears,
+            price_per_session_vnd = detail.Profile.PricePerSessionVnd,
+            rating = detail.Profile.Rating,
+            reviews_count = detail.Profile.ReviewsCount,
+            certificate_status = "verified",
             bio = detail.Bio,
             services = detail.Services.Select(ServicesController.ToResponse).ToList()
         });
     }
+
+    private static PublicTrainerProfileResponse ToPublicProfile(TrainerMarketplaceSummary profile) =>
+        new(profile.UserId, profile.FullName, profile.AvatarUrl, profile.Specialty,
+            profile.ExperienceYears, profile.PricePerSessionVnd, profile.Rating,
+            profile.ReviewsCount, "verified");
 }
+
+public sealed record PublicTrainerProfileResponse(
+    [property: JsonPropertyName("id")] Guid Id,
+    [property: JsonPropertyName("full_name")] string? FullName,
+    [property: JsonPropertyName("avatar_url")] string? AvatarUrl,
+    [property: JsonPropertyName("specialty")] string? Specialty,
+    [property: JsonPropertyName("experience_years")] int? ExperienceYears,
+    [property: JsonPropertyName("price_per_session_vnd")] long? PricePerSessionVnd,
+    [property: JsonPropertyName("rating")] decimal Rating,
+    [property: JsonPropertyName("reviews_count")] int ReviewsCount,
+    [property: JsonPropertyName("certificate_status")] string CertificateStatus);
