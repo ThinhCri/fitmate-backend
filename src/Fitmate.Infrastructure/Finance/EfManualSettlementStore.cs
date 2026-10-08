@@ -42,7 +42,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             var payment = await payments.FindByIdForUpdateAsync(paymentId, ct)
                 ?? throw new NotFoundException("PAYMENT_NOT_FOUND", "Payment not found.");
             var refund = await db.Refunds.SingleAsync(r => r.Id == refundId, ct);
-            if (payment.Method != PaymentMethod.Payos || request.TransferredAt < refund.CreatedAt)
+            if (payment.Method != PaymentMethod.Payos || !refund.ApprovedAtUtc.HasValue || request.TransferredAt < refund.ApprovedAtUtc.Value)
                 throw new ConflictException("REFUND_NOT_ELIGIBLE", "Invalid manual refund confirmation.");
             var bankReference = request.BankReference.Trim();
             if (refund.Status == RefundStatus.Succeeded && refund.ProviderRefundRef == bankReference) return View(refund);
@@ -54,7 +54,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                 throw new ConflictException("TRANSFER_REFERENCE_REUSED", "Transfer reference already used.");
             var refundedSoFarBefore = payment.RefundedSoFarVnd;
             payment.ApplyRefund(refund.AmountVnd);
-            refund.MarkSucceeded(bankReference);
+            refund.MarkManualTransferSucceeded(bankReference, request.TransferredAt);
 
             var appt = await db.Appointments.FindAsync(new object[] { payment.AppointmentId }, ct);
             var platformFeeVnd = appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
@@ -79,14 +79,40 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
         }, ct);
     }
 
+    public async Task<RefundView> ApproveRefundAsync(Guid adminId, Guid refundId, CancellationToken ct)
+    {
+        var paymentId = await db.Refunds.Where(r => r.Id == refundId).Select(r => (Guid?)r.PaymentId).SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException("REFUND_NOT_FOUND", "Refund not found.");
+        return await payments.ExecuteInTransactionAsync(async () =>
+        {
+            var payment = await payments.FindByIdForUpdateAsync(paymentId, ct)
+                ?? throw new NotFoundException("PAYMENT_NOT_FOUND", "Payment not found.");
+            var refund = await db.Refunds.SingleAsync(r => r.Id == refundId, ct);
+            if (payment.Method != PaymentMethod.Payos || refund.Status != RefundStatus.Pending)
+                throw new ConflictException("REFUND_NOT_ELIGIBLE", "Only pending payOS refunds can be approved for manual transfer.");
+            if (refund.ApprovedAtUtc.HasValue) return View(refund);
+            refund.Approve(adminId);
+            db.AuditLogs.Add(AuditLog.Record(adminId, "Admin", "finance.manual_refund_approved", "Refund", refundId));
+            await db.SaveChangesAsync(ct);
+            return View(refund);
+        }, ct);
+    }
+
     public async Task<ManualRefundPage> ListRefundsAsync(int page, int pageSize, CancellationToken ct)
     {
         var query = db.Refunds.AsNoTracking().Where(r => db.Payments.Any(p => p.Id == r.PaymentId && p.Method == PaymentMethod.Payos));
         var total = await query.CountAsync(ct);
-        var items = await query.OrderByDescending(r => r.CreatedAt).ThenBy(r => r.Id).Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+        var now = DateTime.UtcNow;
+        var items = await query
+            .OrderBy(r => r.Status == RefundStatus.Pending && r.ApprovedAtUtc != null && r.ApprovedAtUtc.Value.AddHours(48) < now ? 0 : 1)
+            .ThenBy(r => r.ApprovedAtUtc ?? DateTime.MaxValue)
+            .ThenBy(r => r.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
         return new(items.Select(View).ToList(), total, page, pageSize);
     }
-    private static RefundView View(Refund r) => new(r.Id, r.PaymentId, r.AppointmentId, r.AmountVnd, r.Reason, r.Status, r.CreatedAt);
+    private static RefundView View(Refund r) => new(r.Id, r.PaymentId, r.AppointmentId, r.AmountVnd,
+        r.Reason, r.Status, r.CreatedAt, r.ApprovedAtUtc, r.TransferDueAtUtc,
+        r.Status == RefundStatus.Pending && r.TransferDueAtUtc < DateTime.UtcNow);
 
     public async Task<ManualPtSettlement> UpdateAsync(Guid appointmentId, Guid adminId, string action, Action<SettlementContext> update, CancellationToken ct)
     {

@@ -19,6 +19,7 @@ public interface IManualSettlementStore
     Task<ManualPtSettlement> UpdateAsync(Guid appointmentId, Guid adminId, string action, Action<SettlementContext> update, CancellationToken ct);
     Task<SettlementPage> ListAsync(int page, int pageSize, CancellationToken ct);
     Task<RefundView> CreateRefundAsync(Guid adminId, CreateRefundRequest request, CancellationToken ct);
+    Task<RefundView> ApproveRefundAsync(Guid adminId, Guid refundId, CancellationToken ct);
     Task<RefundView> ConfirmRefundAsync(Guid adminId, Guid refundId, ConfirmManualRefundRequest request, CancellationToken ct);
     Task<ManualRefundPage> ListRefundsAsync(int page, int pageSize, CancellationToken ct);
 }
@@ -49,6 +50,12 @@ public sealed class ManualSettlementService(IManualSettlementStore store, IAutho
             request.TransferredAt.Kind != DateTimeKind.Utc || request.TransferredAt > DateTime.UtcNow)
             throw new DomainException("REFUND_EVIDENCE_REQUIRED", "A bank reference, private evidence reference and valid UTC transfer time are required.", 400);
         return await store.ConfirmRefundAsync(adminId, refundId, request, ct);
+    }
+    public async Task<RefundView> ApproveRefundAsync(Guid adminId, Guid refundId, CancellationToken ct)
+    {
+        await authz.EnsureRoleAsync(adminId, "Admin", ct);
+        await stepUp.EnsureAsync(adminId, ct);
+        return await store.ApproveRefundAsync(adminId, refundId, ct);
     }
     public async Task<ManualRefundPage> ListRefundsAsync(Guid adminId, int page, int pageSize, CancellationToken ct)
     {

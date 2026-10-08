@@ -27,6 +27,13 @@ public sealed class ManualRefundsController(ManualSettlementService service, ICu
         RequireKey();
         return Ok(await service.ConfirmRefundAsync(current.GetUserIdOrThrow(), refundId, request, ct));
     }
+
+    [HttpPost("{refundId:guid}/approve")]
+    public async Task<IActionResult> Approve(Guid refundId, CancellationToken ct)
+    {
+        RequireKey();
+        return Ok(await service.ApproveRefundAsync(current.GetUserIdOrThrow(), refundId, ct));
+    }
     private void RequireKey()
     {
         if (string.IsNullOrWhiteSpace(Request.Headers["Idempotency-Key"]))

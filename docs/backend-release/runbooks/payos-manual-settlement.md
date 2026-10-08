@@ -1,6 +1,6 @@
 # payOS và chi PT sau xác minh thủ công
 
-Cập nhật 2026-09-26 theo yêu cầu chủ dự án. Code đã chuẩn bị, **chưa build/test/migrate hoặc nghiệm thu giao dịch thật**.
+Cập nhật luồng hoàn tiền 2026-10-08. Code đã build và qua unit/contract cùng integration tests PostgreSQL cô lập; **chưa áp migration lên dữ liệu vận hành hoặc nghiệm thu giao dịch thật**.
 
 ## Quyết định và phạm vi
 Chọn payOS cho checkout theo từng booking: tạo link, query, webhook xác thực. payOS công bố luồng xác thực cá nhân bằng CCCD và tài khoản ngân hàng cùng tên. SePay cũng hỗ trợ tài khoản cá nhân; lựa chọn này dựa vào API đơn hàng phù hợp Fitmate, không phải khẳng định SePay không dùng được.
@@ -33,7 +33,8 @@ Tất cả đường dẫn bước 6–9 có prefix `/api/v1`. Mutation yêu c�
 - Route cũ `/admin/finance/refunds` từ chối payOS để tránh đánh dấu hoàn tiền khi chưa chuyển.
 - `POST /admin/finance/manual-refunds`: `{paymentId,amountVnd,reason}` tạo intent Pending, giữ cap lũy kế và chặn chi PT.
 - `GET /admin/finance/manual-refunds?page=1&pageSize=25`: lấy ID và trạng thái để xử lý.
-- Sau chuyển tiền thật cho đúng khách, POST `.../manual-refunds/{refundId}/record-transfer` với `{bankReference,evidenceReference,transferredAt}`; lúc này mới Succeeded và điều chỉnh số tiền.
+- Sau khi xét đủ điều kiện, Admin POST `.../manual-refunds/{refundId}/approve` với Idempotency-Key và X-Finance-Totp. Lúc này mới bắt đầu hạn **48 giờ liên tục** để chuyển khoản; trạng thái vẫn Pending. Danh sách trả `approvedAtUtc`, `transferDueAtUtc`, `isOverdue` để ưu tiên xử lý. Không bấm duyệt nếu chưa thể thực hiện chuyển đúng hạn.
+- Sau chuyển tiền thật cho đúng khách, POST `.../manual-refunds/{refundId}/record-transfer` với `{bankReference,evidenceReference,transferredAt}`; lúc này mới Succeeded và điều chỉnh số tiền. Thời điểm chuyển phải sau thời điểm duyệt và không được ở tương lai.
 - Hủy link thanh toán không hoàn tiền. Không có auto-refund/payout. Refund sau payout không sửa chứng từ chi cũ; revenue thể hiện chênh lệch, operator phải đối soát khoản thu hồi/điều chỉnh trước đợt chi tiếp theo.
 
 ## Cấu hình khi đã được phép

@@ -40,7 +40,10 @@ public sealed record RefundView(
     long AmountVnd,
     string Reason,
     Fitmate.Domain.Common.RefundStatus Status,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    DateTime? ApprovedAtUtc = null,
+    DateTime? TransferDueAtUtc = null,
+    bool IsOverdue = false);
 
 public sealed record DiscrepancyItem(
     Guid PaymentId,

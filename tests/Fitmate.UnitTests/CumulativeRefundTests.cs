@@ -68,7 +68,7 @@ public class CumulativeRefundTests
         var ptId = Guid.NewGuid();
         var serviceId = Guid.NewGuid();
 
-        var appt = Appointment.CreateHold(memberId, ptId, serviceId, DateTime.UtcNow.AddDays(2), DateTime.UtcNow.AddDays(2).AddHours(7), 60, 500_000);
+        var appt = Appointment.CreateHold(memberId, ptId, serviceId, DateTime.UtcNow.AddDays(3), DateTime.UtcNow.AddDays(3).AddHours(7), 60, 500_000);
         var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 500_000, null);
         payment.MarkPaid("TXN-PAID-1");
         appt.AttachPayment(payment.Id, 500_000, 0, 0.10m, 50_000, 450_000, "v1");
@@ -116,7 +116,7 @@ public class CumulativeRefundTests
         var ptId = Guid.NewGuid();
         var serviceId = Guid.NewGuid();
 
-        var appt = Appointment.CreateHold(memberId, ptId, serviceId, DateTime.UtcNow.AddDays(2), DateTime.UtcNow.AddDays(2).AddHours(7), 60, 500_000);
+        var appt = Appointment.CreateHold(memberId, ptId, serviceId, DateTime.UtcNow.AddDays(3), DateTime.UtcNow.AddDays(3).AddHours(7), 60, 500_000);
         var payment = Payment.CreatePending(appt.Id, PaymentMethod.Payos, 500_000, null);
         payment.MarkPaid("TXN-PAID-2");
         payment.ApplyRefund(200_000); // 200k already refunded

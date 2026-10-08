@@ -13,6 +13,9 @@ public class Refund : AuditableEntity
     public Guid RequestedByAdminId { get; private set; }
     public string? ProviderRefundRef { get; private set; }
     public DateTime? SucceededAtUtc { get; private set; }
+    public Guid? ApprovedByAdminId { get; private set; }
+    public DateTime? ApprovedAtUtc { get; private set; }
+    public DateTime? TransferDueAtUtc => ApprovedAtUtc?.AddHours(48);
 
     private Refund() { }
 
@@ -34,12 +37,40 @@ public class Refund : AuditableEntity
     public static Refund CreateSystemRefund(Guid paymentId, Guid appointmentId, long amountVnd, string reason)
         => Create(paymentId, appointmentId, amountVnd, reason, SystemUserId);
 
+    public void Approve(Guid adminId, DateTime? approvedAtUtc = null)
+    {
+        if (Status != RefundStatus.Pending)
+            throw new ConflictException("REFUND_ALREADY_PROCESSED", "Only a pending refund can be approved.");
+        if (ApprovedAtUtc.HasValue)
+            throw new ConflictException("REFUND_ALREADY_APPROVED", "Refund has already been approved.");
+        var now = approvedAtUtc ?? DateTime.UtcNow;
+        if (now.Kind != DateTimeKind.Utc)
+            throw new ArgumentException("Approval time must be UTC.", nameof(approvedAtUtc));
+        ApprovedByAdminId = adminId;
+        ApprovedAtUtc = now;
+        Touch();
+    }
+
     public void MarkSucceeded(string? providerRefundRef, DateTime? succeededAtUtc = null)
     {
+        var transferredAt = succeededAtUtc ?? DateTime.UtcNow;
         Status = RefundStatus.Succeeded;
         ProviderRefundRef = providerRefundRef;
-        SucceededAtUtc = succeededAtUtc ?? DateTime.UtcNow;
+        SucceededAtUtc = transferredAt;
         Touch();
+    }
+
+    public void MarkManualTransferSucceeded(string bankReference, DateTime transferredAtUtc)
+    {
+        if (Status != RefundStatus.Pending)
+            throw new ConflictException("REFUND_ALREADY_PROCESSED", "Only a pending refund can be transferred.");
+        if (!ApprovedAtUtc.HasValue)
+            throw new ConflictException("REFUND_NOT_APPROVED", "Refund must be approved before recording the transfer.");
+        if (string.IsNullOrWhiteSpace(bankReference))
+            throw new ArgumentException("Bank reference is required.", nameof(bankReference));
+        if (transferredAtUtc.Kind != DateTimeKind.Utc || transferredAtUtc < ApprovedAtUtc.Value)
+            throw new ConflictException("REFUND_TRANSFER_TIME_INVALID", "Transfer time must be UTC and after approval.");
+        MarkSucceeded(bankReference, transferredAtUtc);
     }
 
     public void MarkFailed()
