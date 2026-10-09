@@ -36,7 +36,7 @@ public sealed class SessionPackage : AuditableEntity
     public List<SessionPackageSession> Sessions { get; private set; } = [];
 
     public static SessionPackage CreateHold(Guid memberId, Guid ptUserId, Guid serviceId,
-        long pricePerSessionVnd, IReadOnlyList<(Guid AppointmentId, DateTime SlotStartUtc)> slots,
+        long pricePerSessionVnd, IReadOnlyList<(Guid HoldId, Guid AppointmentId, DateTime SlotStartUtc)> slots,
         DateTime nowUtc, TimeSpan holdTtl)
     {
         if (memberId == Guid.Empty || ptUserId == Guid.Empty || serviceId == Guid.Empty || memberId == ptUserId)
@@ -53,14 +53,17 @@ public sealed class SessionPackage : AuditableEntity
         for (var i = 0; i < ordered.Length; i++)
         {
             var slot = ordered[i];
-            if (slot.AppointmentId == Guid.Empty || slot.SlotStartUtc.Kind != DateTimeKind.Utc ||
+            if (slot.HoldId == Guid.Empty || slot.AppointmentId == Guid.Empty || slot.SlotStartUtc.Kind != DateTimeKind.Utc ||
                 slot.SlotStartUtc < nowUtc.AddMinutes(30) || slot.SlotStartUtc > initialDeadline ||
                 (i > 0 && (ordered[i - 1].SlotStartUtc == slot.SlotStartUtc ||
+                           ordered[i - 1].HoldId == slot.HoldId ||
                            ordered[i - 1].AppointmentId == slot.AppointmentId)))
                 throw new ArgumentException("Package sessions need unique appointments and UTC slots within four weeks.");
         }
         if (ordered.Select(s => s.AppointmentId).Distinct().Count() != slots.Count)
             throw new ArgumentException("Appointment IDs must be unique.");
+        if (ordered.Select(s => s.HoldId).Distinct().Count() != slots.Count)
+            throw new ArgumentException("Hold IDs must be unique.");
 
         var total = checked(pricePerSessionVnd * slots.Count);
         var allocations = SessionPackageAllocation.Allocate(total, slots.Count);
@@ -75,7 +78,7 @@ public sealed class SessionPackage : AuditableEntity
             CreatedAt = nowUtc, UpdatedAt = nowUtc
         };
         for (var i = 0; i < ordered.Length; i++)
-            package.Sessions.Add(SessionPackageSession.Create(package.Id, ordered[i].AppointmentId,
+            package.Sessions.Add(SessionPackageSession.Create(package.Id, ordered[i].HoldId, ordered[i].AppointmentId,
                 ordered[i].SlotStartUtc, allocations[i], nowUtc));
         return package;
     }
@@ -115,6 +118,7 @@ public sealed class SessionPackageSession
 
     public Guid Id { get; private set; }
     public Guid PackageId { get; private set; }
+    public Guid HoldId { get; private set; }
     public Guid AppointmentId { get; private set; }
     public int Sequence { get; private set; }
     public DateTime InitialSlotStartUtc { get; private set; }
@@ -123,10 +127,10 @@ public sealed class SessionPackageSession
     public long TrainerShareAllocationVnd { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
 
-    internal static SessionPackageSession Create(Guid packageId, Guid appointmentId,
+    internal static SessionPackageSession Create(Guid packageId, Guid holdId, Guid appointmentId,
         DateTime slotStartUtc, SessionPriceAllocation allocation, DateTime nowUtc) => new()
         {
-            Id = Guid.NewGuid(), PackageId = packageId, AppointmentId = appointmentId,
+            Id = Guid.NewGuid(), PackageId = packageId, HoldId = holdId, AppointmentId = appointmentId,
             Sequence = allocation.Sequence, InitialSlotStartUtc = slotStartUtc,
             PaidAllocationVnd = allocation.PaidVnd,
             PlatformFeeAllocationVnd = allocation.PlatformFeeVnd,

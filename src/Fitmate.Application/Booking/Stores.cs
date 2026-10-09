@@ -32,6 +32,12 @@ public interface IBookingHoldStore
     Task SaveChangesAsync(CancellationToken ct);
 }
 
+/// <summary>Persists a package together with its held appointments in the PT schedule transaction.</summary>
+public interface ISessionPackageStore
+{
+    Task AddAsync(SessionPackage package, CancellationToken ct);
+}
+
 /// <summary>Application abstraction cho BookingRescheduleRequest persistence.</summary>
 public interface IBookingRescheduleStore
 {

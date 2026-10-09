@@ -164,6 +164,12 @@ public class EfBookingHoldStore : IBookingHoldStore
         => _db.SaveChangesAsync(ct);
 }
 
+public sealed class EfSessionPackageStore(FitmateDbContext db) : ISessionPackageStore
+{
+    public async Task AddAsync(SessionPackage package, CancellationToken ct)
+        => await db.SessionPackages.AddAsync(package, ct);
+}
+
 public class EfBookingRescheduleStore : IBookingRescheduleStore
 {
     private readonly FitmateDbContext _db;

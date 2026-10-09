@@ -355,6 +355,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid>("HoldId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("InitialSlotStartUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -376,6 +379,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AppointmentId")
+                        .IsUnique();
+
+                    b.HasIndex("HoldId")
                         .IsUnique();
 
                     b.HasIndex("PackageId", "Sequence")
@@ -3888,6 +3894,12 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasOne("Fitmate.Domain.Booking.Appointment", null)
                         .WithMany()
                         .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitmate.Domain.Booking.BookingHold", null)
+                        .WithMany()
+                        .HasForeignKey("HoldId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 

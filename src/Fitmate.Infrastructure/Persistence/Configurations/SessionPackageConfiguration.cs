@@ -36,7 +36,9 @@ public sealed class SessionPackageSessionConfiguration : IEntityTypeConfiguratio
         });
         e.HasKey(x => x.Id);
         e.HasIndex(x => new { x.PackageId, x.Sequence }).IsUnique();
+        e.HasIndex(x => x.HoldId).IsUnique();
         e.HasIndex(x => x.AppointmentId).IsUnique();
+        e.HasOne<BookingHold>().WithMany().HasForeignKey(x => x.HoldId).OnDelete(DeleteBehavior.Restrict);
         e.HasOne<Appointment>().WithMany().HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Restrict);
     }
 }

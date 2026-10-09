@@ -7,9 +7,9 @@ public sealed class SessionPackageTests
 {
     private static readonly DateTime Now = new(2026, 10, 10, 0, 0, 0, DateTimeKind.Utc);
 
-    private static (Guid AppointmentId, DateTime SlotStartUtc)[] Slots(int count) =>
+    private static (Guid HoldId, Guid AppointmentId, DateTime SlotStartUtc)[] Slots(int count) =>
         Enumerable.Range(0, count)
-            .Select(i => (Guid.NewGuid(), Now.AddDays(2 + i)))
+            .Select(i => (Guid.NewGuid(), Guid.NewGuid(), Now.AddDays(2 + i)))
             .ToArray();
 
     [Theory]
@@ -46,12 +46,17 @@ public sealed class SessionPackageTests
         wrongCount.Should().Throw<ArgumentException>();
         // A copied slot identity must be rejected even when start times differ.
         var repeated = Slots(4);
-        repeated[3] = (repeated[0].AppointmentId, Now.AddDays(7));
+        repeated[3] = (repeated[3].HoldId, repeated[0].AppointmentId, Now.AddDays(7));
         Action duplicate = () => SessionPackage.CreateHold(member, pt, service, 100_000,
             repeated, Now, TimeSpan.FromMinutes(10));
         duplicate.Should().Throw<ArgumentException>();
+        var repeatedHold = Slots(4);
+        repeatedHold[3] = (repeatedHold[0].HoldId, repeatedHold[3].AppointmentId, Now.AddDays(7));
+        Action duplicateHold = () => SessionPackage.CreateHold(member, pt, service, 100_000,
+            repeatedHold, Now, TimeSpan.FromMinutes(10));
+        duplicateHold.Should().Throw<ArgumentException>();
         var late = Slots(4);
-        late[3] = (late[3].AppointmentId, Now.AddDays(29));
+        late[3] = (late[3].HoldId, late[3].AppointmentId, Now.AddDays(29));
         Action tooLate = () => SessionPackage.CreateHold(member, pt, service, 100_000,
             late, Now, TimeSpan.FromMinutes(10));
         tooLate.Should().Throw<ArgumentException>();

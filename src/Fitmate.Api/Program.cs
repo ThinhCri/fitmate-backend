@@ -239,6 +239,8 @@ builder.Services.AddScoped<ITrainerReviewService, Fitmate.Application.Trainers.T
 // BE-060: Booking lifecycle services.
 builder.Services.AddScoped<IAppointmentStore, Fitmate.Infrastructure.Booking.EfAppointmentStore>();
 builder.Services.AddScoped<IBookingHoldStore, Fitmate.Infrastructure.Booking.EfBookingHoldStore>();
+builder.Services.AddScoped<ISessionPackageStore, Fitmate.Infrastructure.Booking.EfSessionPackageStore>();
+builder.Services.AddScoped<SessionPackageHoldService>();
 builder.Services.AddScoped<IServiceBookingLookup, Fitmate.Infrastructure.Booking.ServiceBookingLookup>();
 builder.Services.AddScoped<IBookingService, Fitmate.Application.Booking.BookingService>();
 builder.Services.Configure<Fitmate.Application.Booking.RescheduleOptions>(
