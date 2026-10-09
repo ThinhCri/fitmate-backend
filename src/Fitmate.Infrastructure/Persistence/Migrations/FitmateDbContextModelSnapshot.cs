@@ -1916,7 +1916,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<long>("AmountVnd")
                         .HasColumnType("bigint");
 
-                    b.Property<Guid>("AppointmentId")
+                    b.Property<Guid?>("AppointmentId")
                         .HasColumnType("uuid");
 
                     b.Property<DateTime?>("CompletedAt")
@@ -1930,6 +1930,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("Method")
                         .HasColumnType("integer");
+
+                    b.Property<Guid?>("PackageId")
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ProviderTxnRef")
                         .HasMaxLength(128)
@@ -1952,13 +1955,20 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("AppointmentId");
 
+                    b.HasIndex("PackageId")
+                        .IsUnique()
+                        .HasFilter("\"PackageId\" IS NOT NULL");
+
                     b.HasIndex("ProviderTxnRef");
 
                     b.HasIndex("Method", "ProviderTxnRef")
                         .IsUnique()
                         .HasFilter("\"Method\" = 1 AND \"ProviderTxnRef\" IS NOT NULL");
 
-                    b.ToTable("payments", (string)null);
+                    b.ToTable("payments", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_payment_one_subject", "(\"AppointmentId\" IS NULL) <> (\"PackageId\" IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Payment.PayosOrder", b =>
@@ -3980,6 +3990,14 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasForeignKey("PaymentId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Payment.Payment", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Booking.SessionPackage", null)
+                        .WithMany()
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Payment.PayosOrder", b =>

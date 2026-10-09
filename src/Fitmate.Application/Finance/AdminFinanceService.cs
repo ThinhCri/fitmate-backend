@@ -166,13 +166,13 @@ public class AdminFinanceService : IAdminFinanceService
         var refundedSoFarBefore = payment.RefundedSoFarVnd;
         payment.ApplyRefund(request.AmountVnd);
 
-        var appt = await _store.FindAppointmentByIdAsync(payment.AppointmentId, ct);
+        var appt = await _store.FindAppointmentByIdAsync(payment.RequireAppointmentId(), ct);
         if (appt != null && payment.Status == PaymentStatus.Refunded && appt.Status != AppointmentStatus.Completed && appt.Status != AppointmentStatus.Cancelled)
         {
             appt.Cancel("Payment refunded in full");
         }
 
-        var refund = Refund.Create(payment.Id, payment.AppointmentId, request.AmountVnd, request.Reason, adminUserId);
+        var refund = Refund.Create(payment.Id, payment.RequireAppointmentId(), request.AmountVnd, request.Reason, adminUserId);
         refund.MarkSucceeded(null);
 
         await _store.AddRefundAsync(refund, ct);

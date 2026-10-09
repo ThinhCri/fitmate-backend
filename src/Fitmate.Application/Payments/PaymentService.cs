@@ -113,7 +113,7 @@ public class PaymentService : IPaymentService
         var payment = await _store.FindByIdAsync(paymentId, ct);
         if (payment is null) return null;
 
-        var appt = await _store.FindAppointmentByHoldAsync(payment.AppointmentId, ct);
+        var appt = await _store.FindAppointmentByHoldAsync(payment.RequireAppointmentId(), ct);
         if (appt is null || appt.MemberId != memberId) return null;
 
         return ToView(payment);
@@ -247,7 +247,7 @@ public class PaymentService : IPaymentService
 
             // Payment succeeded at provider side (ResponseCode == "00")
             // Check hold status to detect late settlement race
-            var appt = await _store.FindAppointmentForUpdateAsync(payment.AppointmentId, ct);
+            var appt = await _store.FindAppointmentForUpdateAsync(payment.RequireAppointmentId(), ct);
             var hold = appt != null ? await _store.FindHoldForUpdateAsync(appt.Id, ct) : null;
 
             var isHoldValid = hold != null && hold.IsActive;
@@ -297,7 +297,7 @@ public class PaymentService : IPaymentService
                 payment.MarkPaid(transactionNo);
 
                 var refundReason = "Hold expired or slot released before payment settlement";
-                var refund = Refund.CreateSystemRefund(payment.Id, payment.AppointmentId, payment.AmountVnd, refundReason);
+                var refund = Refund.CreateSystemRefund(payment.Id, payment.RequireAppointmentId(), payment.AmountVnd, refundReason);
                 _store.AddRefund(refund);
 
                 _outbox?.Enqueue("payment.settlement_discrepancy", new
@@ -364,7 +364,7 @@ public class PaymentService : IPaymentService
                     $"Total refund including pending ({p.RefundedSoFarVnd + pendingTotal + amountVnd}) exceeds paid amount ({p.AmountVnd}).");
             }
 
-            var r = Refund.Create(paymentId, p.AppointmentId, amountVnd, reason, adminId);
+            var r = Refund.Create(paymentId, p.RequireAppointmentId(), amountVnd, reason, adminId);
             _store.AddRefund(r);
             await _store.SaveChangesAsync(ct);
             return (r, p);
@@ -415,7 +415,7 @@ public class PaymentService : IPaymentService
     }
 
     private static PaymentView ToView(Payment p) => new(
-        p.Id, p.AppointmentId, p.Method, p.Status,
+        p.Id, p.RequireAppointmentId(), p.Method, p.Status,
         p.AmountVnd, p.RefundedSoFarVnd,
         p.RedirectUrl, p.ProviderTxnRef,
         p.CreatedAt, p.CompletedAt);

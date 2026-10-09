@@ -46,7 +46,8 @@ public sealed class PayosWebhookHandler(FitmateDbContext db, IPaymentStore store
             if (payment.Status is PaymentStatus.Paid or PaymentStatus.PartialRefunded or PaymentStatus.Refunded) return;
             if (payment.Status != PaymentStatus.Pending)
                 throw new ConflictException("PAYMENT_RECONCILIATION_REQUIRED", "Payment requires manual reconciliation.");
-            var appointment = await store.FindAppointmentForUpdateAsync(payment.AppointmentId, ct);
+            var appointmentId = payment.RequireAppointmentId();
+            var appointment = await store.FindAppointmentForUpdateAsync(appointmentId, ct);
             var hold = appointment == null ? null : await store.FindHoldForUpdateAsync(appointment.Id, ct);
             payment.MarkPaid(Text(data, "reference"));
             order.BindLink(linkId!);
@@ -61,7 +62,7 @@ public sealed class PayosWebhookHandler(FitmateDbContext db, IPaymentStore store
             }
             else
             {
-                var refund = Refund.CreateSystemRefund(payment.Id, payment.AppointmentId, amountVnd, "Payment received after booking hold expired.");
+                var refund = Refund.CreateSystemRefund(payment.Id, appointmentId, amountVnd, "Payment received after booking hold expired.");
                 store.AddRefund(refund);
                 outbox.Enqueue("payment.settlement_discrepancy", new { paymentId = payment.Id, appointmentId = payment.AppointmentId, refundId = refund.Id, amountVnd });
             }

@@ -19,12 +19,13 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                 ?? throw new NotFoundException("PAYMENT_NOT_FOUND", "Payment not found.");
             if (payment.Method != PaymentMethod.Payos || payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded))
                 throw new ConflictException("REFUND_NOT_ELIGIBLE", "Use the original provider workflow for this payment.");
+            var appointmentId = payment.RequireAppointmentId();
             var pending = await db.Refunds.Where(r => r.PaymentId == payment.Id && r.Status == RefundStatus.Pending).ToListAsync(ct);
             var existing = pending.FirstOrDefault(r => r.AmountVnd == request.AmountVnd && r.Reason == request.Reason);
             if (existing != null) return View(existing);
             if (request.AmountVnd > payment.AmountVnd - payment.RefundedSoFarVnd - pending.Sum(r => r.AmountVnd))
                 throw new ConflictException("REFUND_CAP_EXCEEDED", "Refund intents exceed the collected amount.");
-            var refund = Refund.Create(payment.Id, payment.AppointmentId, request.AmountVnd, request.Reason, adminId);
+            var refund = Refund.Create(payment.Id, appointmentId, request.AmountVnd, request.Reason, adminId);
             db.Refunds.Add(refund);
             var settlement = await db.Set<ManualPtSettlement>().SingleOrDefaultAsync(s => s.AppointmentId == payment.AppointmentId, ct);
             if (settlement != null && settlement.Status != "paid") settlement.Hold("Refund pending review.");
@@ -44,6 +45,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             var refund = await db.Refunds.SingleAsync(r => r.Id == refundId, ct);
             if (payment.Method != PaymentMethod.Payos || !refund.ApprovedAtUtc.HasValue || request.TransferredAt < refund.ApprovedAtUtc.Value)
                 throw new ConflictException("REFUND_NOT_ELIGIBLE", "Invalid manual refund confirmation.");
+            var appointmentId = payment.RequireAppointmentId();
             var bankReference = request.BankReference.Trim();
             if (refund.Status == RefundStatus.Succeeded && refund.ProviderRefundRef == bankReference) return View(refund);
             if (refund.Status != RefundStatus.Pending)
@@ -56,7 +58,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             payment.ApplyRefund(refund.AmountVnd);
             refund.MarkManualTransferSucceeded(bankReference, request.TransferredAt);
 
-            var appt = await db.Appointments.FindAsync(new object[] { payment.AppointmentId }, ct);
+            var appt = await db.Appointments.FindAsync(new object[] { appointmentId }, ct);
             var platformFeeVnd = appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
             var refundedSoFarAfter = payment.RefundedSoFarVnd;
             var cumFeeBefore = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarBefore / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;

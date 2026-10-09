@@ -83,7 +83,7 @@ public class AdminFinanceServiceTests
                 var pRefunds = succeededRefunds.Where(r => r.PaymentId == p.Id).Sum(r => r.AmountVnd);
                 if (p.RefundedSoFarVnd != pRefunds)
                 {
-                    discrepancies.Add(new DiscrepancyItem(p.Id, p.AppointmentId, "Discrepancy", pRefunds, p.RefundedSoFarVnd));
+                    discrepancies.Add(new DiscrepancyItem(p.Id, p.RequireAppointmentId(), "Discrepancy", pRefunds, p.RefundedSoFarVnd));
                 }
             }
 
@@ -388,7 +388,7 @@ public class AdminFinanceServiceTests
         p1.ApplyRefund(100_000);
         store.Payments[p1.Id] = p1;
 
-        var r1 = Fitmate.Domain.Payment.Refund.Create(p1.Id, p1.AppointmentId, 100_000, "Discrepancy test", Guid.NewGuid());
+        var r1 = Fitmate.Domain.Payment.Refund.Create(p1.Id, p1.RequireAppointmentId(), 100_000, "Discrepancy test", Guid.NewGuid());
         r1.MarkSucceeded("ref_1");
         store.Refunds.Add(r1);
 

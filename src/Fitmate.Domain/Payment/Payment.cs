@@ -5,7 +5,8 @@ namespace Fitmate.Domain.Payment;
 public class Payment : AuditableEntity
 {
     public Guid Id { get; private set; }
-    public Guid AppointmentId { get; private set; }
+    public Guid? AppointmentId { get; private set; }
+    public Guid? PackageId { get; private set; }
     public PaymentMethod Method { get; private set; }
     public PaymentStatus Status { get; private set; }
     public long AmountVnd { get; private set; }
@@ -27,6 +28,26 @@ public class Payment : AuditableEntity
         CreatedAt = DateTime.UtcNow,
         UpdatedAt = DateTime.UtcNow
     };
+
+    public static Payment CreatePendingForPackage(Guid packageId, PaymentMethod method, long amountVnd) =>
+        packageId == Guid.Empty || amountVnd <= 0 || method != PaymentMethod.Payos
+            ? throw new ArgumentException("Package payment requires a package, payOS and positive amount.")
+            : new Payment
+            {
+                Id = Guid.NewGuid(),
+                PackageId = packageId,
+                Method = method,
+                Status = PaymentStatus.Pending,
+                AmountVnd = amountVnd,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+    public Guid RequireAppointmentId() =>
+        PackageId is null && AppointmentId.HasValue
+            ? AppointmentId.Value
+            : throw new ConflictException("PACKAGE_PAYMENT_FLOW_REQUIRED",
+                "This payment belongs to a PT package and needs the package finance workflow.");
 
     public void MarkPaid(string? providerTxnRef)
     {

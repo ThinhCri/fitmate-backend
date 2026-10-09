@@ -432,6 +432,8 @@ else
         new MissingPaymentProvider("Payment provider is not configured. Production requires valid merchant credentials."));
 }
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IPackagePaymentStore, Fitmate.Infrastructure.Payments.EfPackagePaymentStore>();
+builder.Services.AddScoped<PackagePaymentCheckoutService>();
 builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher(
     sp.GetRequiredService<FitmateDbContext>(),
     sp.GetRequiredService<INotificationStore>(),

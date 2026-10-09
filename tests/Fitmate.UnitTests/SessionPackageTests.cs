@@ -1,4 +1,6 @@
 using Fitmate.Domain.Booking;
+using Fitmate.Domain.Common;
+using Fitmate.Domain.Payment;
 using FluentAssertions;
 
 namespace Fitmate.UnitTests;
@@ -79,5 +81,19 @@ public sealed class SessionPackageTests
         package.Status.Should().Be(SessionPackageStatus.Active);
         Action cannotExpirePaid = () => package.Expire(Now.AddMinutes(11));
         cannotExpirePaid.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void PackagePayment_HasExactlyOneSubject_AndRejectsSingleBookingPath()
+    {
+        var packageId = Guid.NewGuid();
+        var payment = Payment.CreatePendingForPackage(packageId, PaymentMethod.Payos, 800_000);
+
+        payment.PackageId.Should().Be(packageId);
+        payment.AppointmentId.Should().BeNull();
+        payment.AmountVnd.Should().Be(800_000);
+        Action singleBookingPath = () => payment.RequireAppointmentId();
+        singleBookingPath.Should().Throw<ConflictException>()
+            .Where(e => e.Code == "PACKAGE_PAYMENT_FLOW_REQUIRED");
     }
 }

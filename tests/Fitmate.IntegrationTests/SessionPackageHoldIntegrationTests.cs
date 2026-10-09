@@ -15,6 +15,27 @@ namespace Fitmate.IntegrationTests;
 
 public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTestAppFactory>
 {
+    private sealed class TestPayosProvider(FitmateDbContext db) : IPaymentProvider, IPaymentReservation
+    {
+        public PaymentMethod Method => PaymentMethod.Payos;
+        public int CreateCalls { get; private set; }
+        public void Reserve(Guid paymentId, DateTime expiresAt) =>
+            db.Set<PayosOrder>().Add(PayosOrder.Create(paymentId, expiresAt));
+        public Task<ProviderCreatePaymentResult> CreatePaymentAsync(
+            ProviderCreatePaymentRequest request, CancellationToken ct)
+        {
+            CreateCalls++;
+            return Task.FromResult(new ProviderCreatePaymentResult(
+                "test-order", "https://pay.payos.vn/web/test-link"));
+        }
+        public Task<ProviderQueryResult> QueryTransactionAsync(
+            ProviderQueryRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
+        public Task<ProviderRefundResult> RefundAsync(
+            ProviderRefundRequest request, CancellationToken ct) =>
+            throw new NotSupportedException();
+    }
+
     private readonly FitmateTestAppFactory _factory;
 
     public SessionPackageHoldIntegrationTests(FitmateTestAppFactory factory)
@@ -116,15 +137,36 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         (await db.Appointments.CountAsync(a => a.PtUserId == ptId)).Should().Be(8);
         (await db.BookingHolds.CountAsync(h => h.PtUserId == ptId)).Should().Be(8);
 
+        var second = await db.SessionPackages.SingleAsync(p => p.PtUserId == ptId && p.Id != first.Id);
+        var testProvider = new TestPayosProvider(db);
+        var checkout = new PackagePaymentCheckoutService(
+            scope.ServiceProvider.GetRequiredService<IPackagePaymentStore>(),
+            scope.ServiceProvider.GetRequiredService<IPaymentStore>(),
+            scope.ServiceProvider.GetRequiredService<IAppointmentStore>(),
+            testProvider);
+        var firstCheckout = await checkout.CreateAsync(second.MemberId, second.Id, CancellationToken.None);
+        var retriedCheckout = await checkout.CreateAsync(second.MemberId, second.Id, CancellationToken.None);
+        firstCheckout.PaymentId.Should().Be(retriedCheckout.PaymentId);
+        firstCheckout.AmountVnd.Should().Be(800_004);
+        firstCheckout.RedirectUrl.Should().Be("https://pay.payos.vn/web/test-link");
+        testProvider.CreateCalls.Should().Be(1);
+        (await db.Payments.CountAsync(p => p.PackageId == second.Id)).Should().Be(1);
+        (await db.Set<PayosOrder>().CountAsync(o => o.PaymentId == firstCheckout.PaymentId)).Should().Be(1);
+        second.Status.Should().Be(SessionPackageStatus.PaymentPending);
+
         var expiration = scope.ServiceProvider.GetRequiredService<SessionPackageExpirationService>();
         (await expiration.ExpireUnpaidAsync(DateTime.UtcNow.AddMinutes(11), CancellationToken.None))
-            .Should().BeGreaterThanOrEqualTo(2);
+            .Should().BeGreaterThanOrEqualTo(1);
         db.ChangeTracker.Clear();
-        (await db.SessionPackages.Where(p => p.PtUserId == ptId).ToListAsync())
-            .Should().OnlyContain(p => p.Status == SessionPackageStatus.Expired);
-        (await db.Appointments.Where(a => a.PtUserId == ptId).ToListAsync())
+        (await db.SessionPackages.SingleAsync(p => p.Id == first.Id)).Status
+            .Should().Be(SessionPackageStatus.Expired);
+        (await db.SessionPackages.SingleAsync(p => p.Id == second.Id)).Status
+            .Should().Be(SessionPackageStatus.PaymentPending);
+        var firstAppointmentIds = first.Sessions.Select(s => s.AppointmentId).ToArray();
+        (await db.Appointments.Where(a => firstAppointmentIds.Contains(a.Id)).ToListAsync())
             .Should().OnlyContain(a => a.Status == AppointmentStatus.Expired);
-        (await db.BookingHolds.Where(h => h.PtUserId == ptId).ToListAsync())
+        var firstHoldIds = first.Sessions.Select(s => s.HoldId).ToArray();
+        (await db.BookingHolds.Where(h => firstHoldIds.Contains(h.Id)).ToListAsync())
             .Should().OnlyContain(h => h.Status == "released");
     }
 }

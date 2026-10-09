@@ -245,7 +245,7 @@ public class EfAdminFinanceStore : IAdminFinanceStore
             {
                 discrepancies.Add(new DiscrepancyItem(
                     PaymentId: p.Id,
-                    AppointmentId: p.AppointmentId,
+                    AppointmentId: p.RequireAppointmentId(),
                     Issue: "Payment.RefundedSoFarVnd differs from sum of succeeded Refunds",
                     ExpectedVnd: pRefunds,
                     ActualVnd: p.RefundedSoFarVnd));

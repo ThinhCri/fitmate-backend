@@ -9,10 +9,14 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
 {
     public void Configure(EntityTypeBuilder<Payment> e)
     {
-        e.ToTable("payments");
         e.HasKey(x => x.Id);
         e.Property(x => x.Id).HasColumnName("id");
-        e.Property(x => x.AppointmentId).IsRequired();
+        e.ToTable("payments", t => t.HasCheckConstraint("chk_payment_one_subject",
+            "(\"AppointmentId\" IS NULL) <> (\"PackageId\" IS NULL)"));
+        e.Property(x => x.AppointmentId).IsRequired(false);
+        e.Property(x => x.PackageId).IsRequired(false);
+        e.HasOne<Fitmate.Domain.Booking.SessionPackage>().WithMany()
+            .HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.Restrict);
         e.Property(x => x.Method).HasConversion<int>();
         e.Property(x => x.Status).HasConversion<int>();
         e.Property(x => x.AmountVnd).IsRequired();
@@ -23,6 +27,7 @@ public class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         e.HasIndex(x => new { x.Method, x.ProviderTxnRef }).IsUnique()
             .HasFilter("\"Method\" = 1 AND \"ProviderTxnRef\" IS NOT NULL");
         e.HasIndex(x => x.AppointmentId);
+        e.HasIndex(x => x.PackageId).IsUnique().HasFilter("\"PackageId\" IS NOT NULL");
     }
 }
 
