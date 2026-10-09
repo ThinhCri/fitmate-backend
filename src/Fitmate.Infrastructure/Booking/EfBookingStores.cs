@@ -192,19 +192,26 @@ public class ServiceBookingLookup : IServiceBookingLookup
     private readonly Fitmate.Application.Trainers.IServiceOfferingStore _store;
     private readonly FitmateDbContext _db;
 
-    public ServiceBookingLookup(Fitmate.Application.Trainers.IServiceOfferingStore store, FitmateDbContext db)
+    private readonly Fitmate.Application.Trainers.IGoogleMeetConnectionService? _meet;
+
+    public ServiceBookingLookup(Fitmate.Application.Trainers.IServiceOfferingStore store, FitmateDbContext db,
+        Fitmate.Application.Trainers.IGoogleMeetConnectionService? meet = null)
     {
         _store = store;
         _db = db;
+        _meet = meet;
     }
 
     public async Task<ServiceSnapshot?> FindBookableAsync(Guid serviceId, DateTime slotStartUtc, CancellationToken ct)
     {
         var s = await _store.FindAsync(serviceId, ct);
-        if (s is null || !s.IsActive || s.DeliveryMode != Fitmate.Domain.Trainers.ServiceDeliveryMode.InPerson ||
+        if (s is null || !s.IsActive ||
             string.IsNullOrWhiteSpace(s.Description) || string.IsNullOrWhiteSpace(s.TargetAudience) ||
             string.IsNullOrWhiteSpace(s.RequiredEquipment) || string.IsNullOrWhiteSpace(s.Deliverable) ||
-            string.IsNullOrWhiteSpace(s.LocationName) || string.IsNullOrWhiteSpace(s.LocationAddress)) return null;
+            (s.DeliveryMode == Fitmate.Domain.Trainers.ServiceDeliveryMode.InPerson &&
+                (string.IsNullOrWhiteSpace(s.LocationName) || string.IsNullOrWhiteSpace(s.LocationAddress)))) return null;
+        if (s.DeliveryMode == Fitmate.Domain.Trainers.ServiceDeliveryMode.Online &&
+            (_meet is null || !(await _meet.GetStatusAsync(s.PtUserId, ct)).Connected)) return null;
         var bookable = await _db.PtProfiles.AnyAsync(p => p.UserId == s.PtUserId &&
             p.VerificationStatus == Fitmate.Domain.Trainers.PtVerificationStatus.Approved, ct) &&
             await _db.Certificates.AnyAsync(c => c.PtUserId == s.PtUserId &&
@@ -215,6 +222,6 @@ public class ServiceBookingLookup : IServiceBookingLookup
         if (!bookable || !await _db.AvailabilitySlots.AnyAsync(a => a.PtUserId == s.PtUserId &&
             a.SlotStartUtc == slotStartUtc && a.DurationMinutes >= s.DurationMinutes &&
             a.Status == Fitmate.Domain.Common.AvailabilityStatus.Open, ct)) return null;
-        return new ServiceSnapshot(s.Id, s.PtUserId, s.PriceVnd, s.DurationMinutes, s.IsActive);
+        return new ServiceSnapshot(s.Id, s.PtUserId, s.PriceVnd, s.DurationMinutes, s.IsActive, s.DeliveryMode);
     }
 }

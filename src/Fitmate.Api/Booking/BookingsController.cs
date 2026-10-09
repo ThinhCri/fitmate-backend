@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using Fitmate.Api.Auth;
 using Fitmate.Application.Booking;
+using Fitmate.Application.Trainers;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
@@ -133,6 +134,16 @@ public class BookingsController : ControllerBase
         var userId = current.GetUserIdOrThrow();
         if (appt.MemberId != userId && appt.PtUserId != userId) return Forbid();
         return Ok(AppointmentResponse.FromDomain(appt));
+    }
+
+    [HttpGet("me/bookings/{id:guid}/meeting")]
+    public async Task<IActionResult> GetPrivateMeeting(
+        [FromServices] ICurrentUserAccessor current,
+        [FromServices] IGoogleMeetConnectionService meet,
+        Guid id, CancellationToken ct)
+    {
+        var uri = await meet.GetMeetingUriForParticipantAsync(current.GetUserIdOrThrow(), id, ct);
+        return uri is null ? NotFound() : Ok(new { meeting_url = uri });
     }
 
     /// <summary>Legacy reschedule route has been retired in favor of two-party reschedule requests (Branch A / BR-05).</summary>

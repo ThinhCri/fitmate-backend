@@ -4,6 +4,7 @@ using Fitmate.Domain.Identity;
 using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using System.Text;
 
 namespace Fitmate.Infrastructure.Trainers;
@@ -15,10 +16,16 @@ namespace Fitmate.Infrastructure.Trainers;
 public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
 {
     private readonly FitmateDbContext _db;
-    public EfTrainerMarketplaceStore(FitmateDbContext db) { _db = db; }
+    private readonly bool _onlineEnabled;
+    public EfTrainerMarketplaceStore(FitmateDbContext db, IOptions<GoogleMeetOptions>? meetOptions = null)
+    {
+        _db = db;
+        _onlineEnabled = meetOptions?.Value.IsConfigured() ?? false;
+    }
 
     public async Task<(IReadOnlyList<TrainerMarketplaceSummary> Items, string? NextCursor)> ListVerifiedAsync(TrainerMarketplaceQuery q, CancellationToken ct)
     {
+        var onlineEnabled = _onlineEnabled;
         // Subquery: distinct PT userIds có ít nhất 1 Certificate Approved.
         var verifiedPtIds = _db.Certificates
             .Where(c => c.Status == CertificateStatus.Approved)
@@ -31,18 +38,25 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
                 _db.Users.Any(u => u.Id == p.UserId && u.Status == UserStatus.Active &&
                     u.EmailConfirmed && u.PhoneNumberConfirmed) &&
                 _db.Services.Any(s => s.PtUserId == p.UserId && s.IsActive &&
-                    s.DeliveryMode == ServiceDeliveryMode.InPerson && s.TargetAudience != null &&
-                    s.RequiredEquipment != null && s.Deliverable != null &&
-                    s.LocationName != null && s.LocationAddress != null))
+                    s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
+                    ((s.DeliveryMode == ServiceDeliveryMode.InPerson && s.LocationName != null && s.LocationAddress != null) ||
+                     (onlineEnabled && s.DeliveryMode == ServiceDeliveryMode.Online &&
+                      _db.UserTokens.Any(t => t.UserId == p.UserId &&
+                          t.LoginProvider == GoogleMeetConnectionService.Provider &&
+                          t.Name == GoogleMeetConnectionService.ConnectionName)))))
             .OrderByDescending(p => p.Rating)
             .ThenBy(p => p.UserId)
             .ToListAsync(ct);
 
         var profileIds = profiles.Select(p => p.UserId).ToArray();
         var activePrices = (await _db.Services
-            .Where(s => profileIds.Contains(s.PtUserId) && s.IsActive && s.DeliveryMode == ServiceDeliveryMode.InPerson &&
+            .Where(s => profileIds.Contains(s.PtUserId) && s.IsActive &&
                 s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
-                s.LocationName != null && s.LocationAddress != null)
+                ((s.DeliveryMode == ServiceDeliveryMode.InPerson && s.LocationName != null && s.LocationAddress != null) ||
+                 (onlineEnabled && s.DeliveryMode == ServiceDeliveryMode.Online &&
+                  _db.UserTokens.Any(t => t.UserId == s.PtUserId &&
+                      t.LoginProvider == GoogleMeetConnectionService.Provider &&
+                      t.Name == GoogleMeetConnectionService.ConnectionName))))
             .Select(s => new { s.PtUserId, s.PriceVnd })
             .ToListAsync(ct))
             .GroupBy(s => s.PtUserId)
@@ -111,11 +125,15 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
             !await _db.Users.AnyAsync(u => u.Id == ptUserId && u.Status == UserStatus.Active &&
                 u.EmailConfirmed && u.PhoneNumberConfirmed, ct)) return null;
 
+        var onlineEnabled = _onlineEnabled;
         var services = await _db.Services
             .Where(s => s.PtUserId == ptUserId && s.IsActive &&
-                s.DeliveryMode == ServiceDeliveryMode.InPerson && s.TargetAudience != null &&
-                s.RequiredEquipment != null && s.Deliverable != null &&
-                s.LocationName != null && s.LocationAddress != null)
+                s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
+                ((s.DeliveryMode == ServiceDeliveryMode.InPerson && s.LocationName != null && s.LocationAddress != null) ||
+                 (onlineEnabled && s.DeliveryMode == ServiceDeliveryMode.Online &&
+                  _db.UserTokens.Any(t => t.UserId == ptUserId &&
+                      t.LoginProvider == GoogleMeetConnectionService.Provider &&
+                      t.Name == GoogleMeetConnectionService.ConnectionName))))
             .OrderBy(s => s.PriceVnd)
             .ToListAsync(ct);
         if (services.Count == 0) return null;

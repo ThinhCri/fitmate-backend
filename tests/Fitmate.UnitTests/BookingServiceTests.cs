@@ -1,7 +1,9 @@
 using Fitmate.Application.Booking;
 using Fitmate.Application.Common;
+using Fitmate.Application.Trainers;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Trainers;
 using FluentAssertions;
 
 namespace Fitmate.UnitTests;
@@ -138,6 +140,25 @@ public class BookingServiceTests
         public void Enqueue(string type, object payload) => Messages.Add((type, payload));
     }
 
+    private sealed class MeetStub(bool fail) : IGoogleMeetConnectionService
+    {
+        public int CreateCalls { get; private set; }
+        public Task<GoogleMeetSpace> CreateForAppointmentAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
+        {
+            CreateCalls++;
+            return fail
+                ? Task.FromException<GoogleMeetSpace>(new DomainException("GOOGLE_MEET_CREATE_FAILED", "Meet unavailable", 503))
+                : Task.FromResult(new GoogleMeetSpace("spaces/test", "https://meet.google.com/abc-defg-hij"));
+        }
+        public Task<GoogleMeetConnectionStatus> GetStatusAsync(Guid ptUserId, CancellationToken ct) => Task.FromResult(new GoogleMeetConnectionStatus(true));
+        public Task<string> CreateAuthorizationUrlAsync(Guid ptUserId, CancellationToken ct) => throw new NotImplementedException();
+        public Task CompleteAuthorizationAsync(string code, string state, CancellationToken ct) => throw new NotImplementedException();
+        public Task DisconnectAsync(Guid ptUserId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<GoogleMeetSpace> CreateSpaceAsync(Guid ptUserId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<string?> GetMeetingUriAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct) => throw new NotImplementedException();
+        public Task<string?> GetMeetingUriForParticipantAsync(Guid actorUserId, Guid appointmentId, CancellationToken ct) => throw new NotImplementedException();
+    }
+
     private static BookingService NewService(InMemoryAppointmentStore apptStore, InMemoryHoldStore holdStore, StubServiceLookup lookup, CapturingOutbox outbox)
         => new(apptStore, holdStore, lookup, outbox, AlwaysAllowAuthz.Instance);
 
@@ -168,6 +189,39 @@ public class BookingServiceTests
         appt.DurationMinutes.Should().Be(60);
         apptStore.SaveCalls.Should().Be(1);
         outbox.Messages.Should().Contain(m => m.Type == "booking.held");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CreateOnlineHold_PreparesMeetBeforeNotification_OrReleasesSlot(bool fail)
+    {
+        var appointments = new InMemoryAppointmentStore();
+        var holds = new InMemoryHoldStore();
+        var lookup = new StubServiceLookup();
+        var outbox = new CapturingOutbox();
+        var meet = new MeetStub(fail);
+        var pt = Guid.NewGuid();
+        var serviceId = Guid.NewGuid();
+        lookup.Items[serviceId] = new ServiceSnapshot(serviceId, pt, 300_000, 60, true, ServiceDeliveryMode.Online);
+        var booking = new BookingService(appointments, holds, lookup, outbox, AlwaysAllowAuthz.Instance, meet: meet);
+
+        if (fail)
+        {
+            await FluentActions.Invoking(() => booking.CreateHoldAsync(Guid.NewGuid(), pt, serviceId,
+                DateTime.UtcNow.AddDays(2), CancellationToken.None)).Should().ThrowAsync<DomainException>();
+            holds.Items.Values.Should().ContainSingle().Which.Status.Should().Be("released");
+            appointments.Items.Values.Should().ContainSingle().Which.Status.Should().Be(AppointmentStatus.Cancelled);
+            outbox.Messages.Should().NotContain(m => m.Type == "booking.held");
+        }
+        else
+        {
+            var result = await booking.CreateHoldAsync(Guid.NewGuid(), pt, serviceId,
+                DateTime.UtcNow.AddDays(2), CancellationToken.None);
+            result.Appointment.Status.Should().Be(AppointmentStatus.Held);
+            outbox.Messages.Should().ContainSingle(m => m.Type == "booking.held");
+        }
+        meet.CreateCalls.Should().Be(1);
     }
 
     [Fact]

@@ -1,13 +1,13 @@
 # PT online sessions and package checkout — design note (2026-10-08)
 
-Status: **product design agreed in conversation; not an implemented or verified contract**. This note does not override existing runtime APIs. Booking/payment/package/OpenAPI changes require a separate implementation and cross-repo verification.
+Status: **partially implemented; not approved for live sales**. Single-session Google Meet integration and SpeedSMS transport now have local code and automated tests, but neither provider has been live-verified with Fitmate credentials. Multi-session package checkout remains unavailable. This note does not override the runtime API/OpenAPI contract.
 
 ## Online via Google Meet
 
 - Online is shown as the delivery mode before checkout. The actual private meeting link is available to the PT and paying member in the confirmed appointment, not publicly on the service listing.
 - PT connects a Google account once through OAuth before publishing an online service. The backend creates one distinct Meet space/link per confirmed session; the PT should be the meeting owner. PT does not paste a link for each session. Keep OAuth credentials server-side and protected; loss of authorization must disable new online sales until reconnected.
 - On 2026-10-08 the owner tested Google Meet API `spaces.create` with their own Gmail using Google's API Explorer: HTTP 200, and a second account successfully joined the returned meeting link. This proves that account can create/join a space via Explorer; it does **not** verify Fitmate's own OAuth client, token lifecycle, automatic creation, or every other PT account.
-- Google API failure must be visible and recoverable. Do not treat a payment redirect as proof of a confirmed appointment or silently leave a paid session without meeting access. Meeting creation timing, retries, and booking/payment compensation need an explicit contract before implementation.
+- Local implementation (2026-10-09): PT connects through Google OAuth to a backend callback; refresh token is protected with the persistent DataProtection key ring. Online services require that connection to publish and appear in discovery. Creating a single-session hold first creates a private appointment-specific Meet space; if Google fails, the unpaid hold/appointment are released/cancelled. The link is available only to booking participants after verified payment and confirmation. These paths have build/unit/isolated-PostgreSQL coverage but **not** a live OAuth/Meet/Android/payOS test. Payment redirect alone remains insufficient proof of payment.
 
 ## Multi-session package and payment direction
 
@@ -20,7 +20,7 @@ Status: **product design agreed in conversation; not an implemented or verified 
 ## Service discovery implementation boundary — 2026-10-08
 
 - PT service create/edit now records one-to-one versus assessment/plan, direct versus online, intended audience, equipment, deliverable and a fixed location for direct sessions. The member profile and booking selection show these details. Legacy incomplete services are hidden from discovery and cannot be booked; a PT must edit them first.
-- Online offerings may be saved only as inactive drafts. They are not discoverable or bookable while Google OAuth, private per-session Meet creation, and paid-booking recovery are absent. The mobile UI labels this explicitly.
+- Online offerings are saved as inactive drafts and can be published only after Google connection. Without a valid connection/configuration, discovery and booking fail closed; the mobile UI provides connect/disconnect and a manual status refresh. Do not enable online sales in production until the operator verifies OAuth redirect, per-hold Meet creation, payment-gated link visibility, cancellation/expiry, and reconnect behavior on two real accounts.
 - A bookable PT must have an approved profile and certificate, an active email/phone-verified user, and a complete active direct service. A booking hold also requires an exact published open slot long enough for the selected service. Old accounts without verified phones cannot receive new bookings until the SMS provider is connected and verification succeeds.
 - This change introduces nullable service-detail columns; an existing service is **not** silently given a fabricated venue or deliverable. The migration has not been applied to the operator's database in this session.
 
@@ -32,7 +32,7 @@ Status: **product design agreed in conversation; not an implemented or verified 
 
 ## Additional owner decisions — 2026-10-08
 
-- PT phone verification uses automatic SMS OTP. The provider-neutral interface, durable one-active-challenge record, protected outbox payload, five-minute expiry, resend cooldown, five-attempt cap, PT-only endpoints and mobile entry screen are implemented locally. The SMS vendor is **not selected or connected**; the unconfigured adapter returns 503 and verification cannot complete in that state. Do not mark a phone verified merely because an outbox item was queued. Admin approval now requires the verified Identity phone.
+- PT phone verification uses automatic SMS OTP. The provider-neutral interface, durable one-active-challenge record, protected outbox payload, five-minute expiry, resend cooldown, five-attempt cap, PT-only endpoints and mobile entry screen are implemented locally. The owner delegated vendor choice, so SpeedSMS is selected for this Vietnam pilot and a server-side HTTP adapter has been added. No access token was supplied and no real SMS was sent; the unconfigured adapter still returns 503. The operator must satisfy any sender/template requirements and verify delivery. Do not mark a phone verified merely because an outbox item was queued. Admin approval requires the verified Identity phone.
 - Approved manual refunds to members must be bank-transferred within **48 consecutive hours** of approval, including weekends and holidays. The separate approve endpoint, due time in API, and Admin list/action are implemented locally; only recording a real bank receipt marks it succeeded. The 24-hour PT contact window for package-stop requests, automated escalation and live bank reconciliation remain **not implemented**.
 - The owner intends real local end-to-end testing before a limited launch, but payOS live credentials and provider approval are not yet available. No fake payment success may be exposed as a live transaction.
 

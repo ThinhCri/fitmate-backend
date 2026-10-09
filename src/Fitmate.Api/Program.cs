@@ -192,7 +192,20 @@ if (builder.Environment.IsProduction())
 builder.Services.AddSingleton<IEmailTemplateRenderer, EmailTemplateRenderer>();
 builder.Services.AddSingleton<IEmailTokenProtector, Fitmate.Infrastructure.Email.DataProtectionEmailTokenProtector>();
 builder.Services.AddScoped<IEmailSender, Fitmate.Infrastructure.Email.MailKitEmailSender>();
-builder.Services.AddScoped<ISmsOtpSender, Fitmate.Infrastructure.Auth.UnconfiguredSmsOtpSender>();
+builder.Services.Configure<Fitmate.Infrastructure.Auth.SpeedSmsOptions>(
+    builder.Configuration.GetSection(Fitmate.Infrastructure.Auth.SpeedSmsOptions.SectionName));
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Auth.SpeedSmsOtpSender>(client =>
+    client.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddScoped<ISmsOtpSender>(sp =>
+    builder.Configuration.GetValue<string>("Sms:Provider")?.Equals("SpeedSms", StringComparison.OrdinalIgnoreCase) == true
+        ? sp.GetRequiredService<Fitmate.Infrastructure.Auth.SpeedSmsOtpSender>()
+        : new Fitmate.Infrastructure.Auth.UnconfiguredSmsOtpSender());
+builder.Services.Configure<Fitmate.Infrastructure.Trainers.GoogleMeetOptions>(
+    builder.Configuration.GetSection(Fitmate.Infrastructure.Trainers.GoogleMeetOptions.SectionName));
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Trainers.GoogleMeetConnectionService>(client =>
+    client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddScoped<IGoogleMeetConnectionService>(sp =>
+    sp.GetRequiredService<Fitmate.Infrastructure.Trainers.GoogleMeetConnectionService>());
 builder.Services.AddSingleton<IPhoneOtpProtector, Fitmate.Infrastructure.Auth.DataProtectionPhoneOtpProtector>();
 builder.Services.AddScoped<IPhoneVerificationGateway, Fitmate.Infrastructure.Auth.IdentityPhoneVerificationGateway>();
 builder.Services.AddScoped<PhoneVerificationService>();

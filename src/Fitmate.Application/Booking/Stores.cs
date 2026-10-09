@@ -1,5 +1,6 @@
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Trainers;
 
 namespace Fitmate.Application.Booking;
 
@@ -51,4 +52,5 @@ public sealed record ServiceSnapshot(
     Guid PtUserId,
     long PriceVnd,
     int DurationMinutes,
-    bool IsActive);
+    bool IsActive,
+    ServiceDeliveryMode DeliveryMode = ServiceDeliveryMode.InPerson);

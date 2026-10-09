@@ -3,10 +3,12 @@ using Fitmate.Application.Common;
 using Fitmate.Application.Finance;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Payments;
+using Fitmate.Application.Trainers;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
+using Fitmate.Domain.Trainers;
 
 namespace Fitmate.Application.Booking;
 
@@ -28,6 +30,7 @@ public class BookingService : IBookingService
     private readonly TimeSpan _holdTtl;
     private readonly IFinancialLedgerStore? _ledger;
     private readonly IPaymentStore? _payments;
+    private readonly IGoogleMeetConnectionService? _meet;
 
     public BookingService(
         IAppointmentStore appointments,
@@ -37,7 +40,8 @@ public class BookingService : IBookingService
         IAuthorizationGuard authz,
         TimeSpan? holdTtl = null,
         IFinancialLedgerStore? ledger = null,
-        IPaymentStore? payments = null)
+        IPaymentStore? payments = null,
+        IGoogleMeetConnectionService? meet = null)
     {
         _appointments = appointments;
         _holds = holds;
@@ -47,6 +51,7 @@ public class BookingService : IBookingService
         _holdTtl = holdTtl ?? TimeSpan.FromMinutes(10);
         _ledger = ledger;
         _payments = payments;
+        _meet = meet;
     }
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, SemaphoreSlim> _slotLocks = new();
@@ -70,7 +75,7 @@ public class BookingService : IBookingService
                 new Dictionary<string, string[]> { ["slot_start_utc"] = ["at least 30 minutes in the future, UTC"] });
 
         // 2. Concurrency & Overlap: Lock theo PT và kiểm tra interval overlap [S1, E1) và [S2, E2).
-        return await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
+        var created = await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
         {
             if (await _appointments.HasOverlappingSlotAsync(ptUserId, slotStartUtc, svc.DurationMinutes, null, ct))
                 throw new ConflictException(ErrorCodes.Booking.SlotTaken,
@@ -87,9 +92,39 @@ public class BookingService : IBookingService
             await _appointments.SaveChangesAsync(ct);
             await _holds.SaveChangesAsync(ct);
 
-            _outbox.Enqueue("booking.held", new { holdId = hold.Id, appointmentId = appt.Id, memberId, ptUserId });
-            return (hold, appt);
+            if (svc.DeliveryMode != ServiceDeliveryMode.Online)
+                _outbox.Enqueue("booking.held", new { holdId = hold.Id, appointmentId = appt.Id, memberId, ptUserId });
+            return (Hold: hold, Appointment: appt);
         }, ct);
+
+        if (svc.DeliveryMode == ServiceDeliveryMode.Online)
+        {
+            try
+            {
+                if (_meet is null)
+                    throw new DomainException("GOOGLE_MEET_NOT_CONFIGURED", "Google Meet chưa được cấu hình.", 503);
+                // Prepare the private, appointment-specific link before the member can pay.
+                // Never call Google while a schedule/database transaction is open.
+                await _meet.CreateForAppointmentAsync(ptUserId, created.Appointment.Id, ct);
+                _outbox.Enqueue("booking.held", new { holdId = created.Hold.Id,
+                    appointmentId = created.Appointment.Id, memberId, ptUserId });
+                await _appointments.SaveChangesAsync(ct);
+            }
+            catch
+            {
+                // Request cancellation must not leave an unpaid slot held after Meet fails.
+                await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
+                {
+                    created.Hold.Release();
+                    created.Appointment.Cancel("Không thể chuẩn bị liên kết Google Meet.");
+                    await _appointments.SaveChangesAsync(CancellationToken.None);
+                    await _holds.SaveChangesAsync(CancellationToken.None);
+                    return true;
+                }, CancellationToken.None);
+                throw;
+            }
+        }
+        return created;
     }
 
     public async Task<Appointment> CancelAsync(Guid actorUserId, Guid appointmentId, string reason, CancellationToken ct)
@@ -192,6 +227,7 @@ public class BookingService : IBookingService
             _outbox.Enqueue("booking.completion_submitted", new { appointmentId, ptUserId, memberId = appt.MemberId, deadlineUtc = appt.MemberConfirmationDeadlineUtc });
             return appt;
         }, ct);
+
     }
 
     public async Task<Appointment> ConfirmCompletionAsync(Guid memberId, Guid appointmentId, CancellationToken ct)

@@ -10,11 +10,14 @@ public class ServiceOfferingService : IServiceOfferingService
 {
     private readonly IServiceOfferingStore _store;
     private readonly IAuthorizationGuard _authz;
+    private readonly IGoogleMeetConnectionService? _meet;
 
-    public ServiceOfferingService(IServiceOfferingStore store, IAuthorizationGuard authz)
+    public ServiceOfferingService(IServiceOfferingStore store, IAuthorizationGuard authz,
+        IGoogleMeetConnectionService? meet = null)
     {
         _store = store;
         _authz = authz;
+        _meet = meet;
     }
 
     public async Task<Domain.Trainers.Service> CreateAsync(Guid ptUserId, string name, string? description, long priceVnd, int durationMinutes, CancellationToken ct, ServiceOfferingDetails? details = null)
@@ -54,10 +57,12 @@ public class ServiceOfferingService : IServiceOfferingService
 
         try
         {
-            if (isActive == true && ((details?.DeliveryMode ?? service.DeliveryMode) == Domain.Trainers.ServiceDeliveryMode.Online ||
-                (details is null && string.IsNullOrWhiteSpace(service.TargetAudience))))
+            var mode = details?.DeliveryMode ?? service.DeliveryMode;
+            if (isActive == true && mode == Domain.Trainers.ServiceDeliveryMode.Online &&
+                (_meet is null || !(await _meet.GetStatusAsync(ptUserId, ct)).Connected))
+                throw new ArgumentException("Connect Google Meet before publishing an online service.");
+            if (isActive == true && details is null && string.IsNullOrWhiteSpace(service.TargetAudience))
                 throw new ArgumentException("Service cannot be published until delivery details and Google Meet connection are ready.");
-            service.Update(name, description, priceVnd, durationMinutes, isActive);
             if (details is not null)
             {
                 if (string.IsNullOrWhiteSpace(description ?? service.Description) || (description ?? service.Description)!.Trim().Length < 20)
@@ -65,6 +70,7 @@ public class ServiceOfferingService : IServiceOfferingService
                 service.ConfigureDetails(details.Kind, details.DeliveryMode, details.TargetAudience,
                     details.RequiredEquipment, details.Deliverable, details.LocationName, details.LocationAddress);
             }
+            service.Update(name, description, priceVnd, durationMinutes, isActive);
         }
         catch (ArgumentException ex)
         {

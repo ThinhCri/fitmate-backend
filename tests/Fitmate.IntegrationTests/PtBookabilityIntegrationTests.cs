@@ -2,9 +2,12 @@ using Fitmate.Application.Booking;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
+using Fitmate.Infrastructure.Trainers;
 using Fitmate.IntegrationTests.Infrastructure;
 using FluentAssertions;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 
 namespace Fitmate.IntegrationTests;
@@ -80,6 +83,49 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
         listJson.RootElement.GetProperty("items").EnumerateArray()
             .Any(item => item.GetProperty("id").GetGuid() == ptId &&
                 item.GetProperty("price_per_session_vnd").GetInt64() == 300_000).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task OnlineService_IsDiscoveredOnlyWithGoogleConnection()
+    {
+        var ptId = Guid.NewGuid();
+        _factory.CreateAuthenticatedClient("PT", ptId).Dispose();
+        var adminId = Guid.NewGuid();
+        var profile = PtProfile.CreateDraft(ptId, "Online coaching", 3, 250_000, "Online fitness guidance");
+        profile.Approve(adminId);
+        var cert = Certificate.Submit(ptId, "Certificate", "Institute", "ONLINE-01",
+            new DateOnly(2025, 1, 1), "online-certificate", ptId);
+        cert.Approve(adminId);
+        var service = Service.Create(ptId, "Online 1–1", "Huấn luyện trực tuyến theo mục tiêu của bạn.", 250_000, 60);
+        service.ConfigureDetails(ServiceKind.OneToOne, ServiceDeliveryMode.Online,
+            "Người mới tập", "Thảm tập", "Hướng dẫn kỹ thuật", null, null);
+        service.Update(null, null, null, null, true);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var user = await db.Users.FindAsync(ptId);
+        user!.PhoneNumber = "+849" + Random.Shared.Next(10_000_000, 100_000_000);
+        user.PhoneNumberConfirmed = true;
+        db.AddRange(profile, cert, service);
+        await db.SaveChangesAsync();
+
+        var configured = Options.Create(new GoogleMeetOptions
+        {
+            ClientId = "test-client", ClientSecret = "test-secret",
+            RedirectUri = "https://example.test/api/v1/integrations/google-meet/callback"
+        });
+        var marketplace = new EfTrainerMarketplaceStore(db, configured);
+        (await marketplace.FindDetailAsync(ptId, default)).Should().BeNull();
+
+        db.UserTokens.Add(new IdentityUserToken<Guid>
+        {
+            UserId = ptId, LoginProvider = GoogleMeetConnectionService.Provider,
+            Name = GoogleMeetConnectionService.ConnectionName, Value = "test-protected-token"
+        });
+        await db.SaveChangesAsync();
+        var detail = await marketplace.FindDetailAsync(ptId, default);
+        detail.Should().NotBeNull();
+        detail!.Services.Should().ContainSingle(s => s.Id == service.Id && s.DeliveryMode == ServiceDeliveryMode.Online);
     }
 
     private async Task AssertBookability(Guid ptId, Guid serviceId, DateTime slotStartUtc, bool expected)
