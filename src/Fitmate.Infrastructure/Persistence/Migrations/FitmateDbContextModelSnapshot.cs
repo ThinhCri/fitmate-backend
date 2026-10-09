@@ -280,6 +280,115 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.ToTable("pt_schedule_locks", (string)null);
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("HoldExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("InitialScheduleDeadlineUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("MakeUpDeadlineUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("MemberId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PtUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("ServiceId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("SessionCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("TotalPriceVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentId")
+                        .IsUnique()
+                        .HasFilter("\"PaymentId\" IS NOT NULL");
+
+                    b.HasIndex("MemberId", "CreatedAt");
+
+                    b.HasIndex("PtUserId", "Status");
+
+                    b.ToTable("session_packages", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_session_package_count", "\"SessionCount\" IN (4, 8)");
+
+                            t.HasCheckConstraint("chk_session_package_price", "\"TotalPriceVnd\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("InitialSlotStartUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("PaidAllocationVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("PlatformFeeAllocationVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("TrainerShareAllocationVnd")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId")
+                        .IsUnique();
+
+                    b.HasIndex("PackageId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("session_package_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_package_session_money", "\"PaidAllocationVnd\" > 0 AND \"PlatformFeeAllocationVnd\" >= 0 AND \"TrainerShareAllocationVnd\" >= 0 AND \"PaidAllocationVnd\" = \"PlatformFeeAllocationVnd\" + \"TrainerShareAllocationVnd\"");
+
+                            t.HasCheckConstraint("chk_package_session_sequence", "\"Sequence\" BETWEEN 1 AND 8");
+                        });
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Chat.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3766,6 +3875,29 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackage", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Payment.Payment", null)
+                        .WithMany()
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Restrict);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageSession", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Booking.Appointment", null)
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitmate.Domain.Booking.SessionPackage", null)
+                        .WithMany("Sessions")
+                        .HasForeignKey("PackageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Chat.ChatMessageReaction", b =>
                 {
                     b.HasOne("Fitmate.Domain.Chat.ChatMessage", null)
@@ -3932,6 +4064,11 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackage", b =>
+                {
+                    b.Navigation("Sessions");
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Chat.ChatMessage", b =>
