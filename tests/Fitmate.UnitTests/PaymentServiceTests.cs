@@ -22,6 +22,7 @@ public class PaymentServiceTests
         public List<Refund> Refunds { get; } = new();
         public BookingHold? Hold { get; set; }
         public Appointment? Appt { get; set; }
+        public bool IsPackageHold { get; set; }
 
         public Task<Payment?> FindByIdAsync(Guid id, CancellationToken ct)
             => Task.FromResult(Payments.FirstOrDefault(p => p.Id == id));
@@ -31,6 +32,9 @@ public class PaymentServiceTests
 
         public Task<BookingHold?> FindHoldAsync(Guid id, CancellationToken ct)
             => Task.FromResult(Hold);
+
+        public Task<bool> IsPackageHoldAsync(Guid holdId, CancellationToken ct)
+            => Task.FromResult(IsPackageHold);
 
         public Task<Appointment?> FindAppointmentByHoldAsync(Guid holdId, CancellationToken ct)
             => Task.FromResult(Appt);
@@ -174,6 +178,20 @@ public class PaymentServiceTests
 
         await act.Should().ThrowAsync<ConflictException>()
             .Where(e => e.Code == PaymentErrorCodes.HoldExpired);
+    }
+
+    [Fact]
+    public async Task CreateAsync_rejects_individual_checkout_of_package_hold()
+    {
+        var (store, holdId, _) = Setup();
+        store.IsPackageHold = true;
+        var request = new CreatePaymentRequest { HoldId = holdId, Method = PaymentMethod.Vnpay };
+
+        var act = () => Sut(store).CreateAsync(MemberId, request, CancellationToken.None);
+
+        await act.Should().ThrowAsync<ConflictException>()
+            .Where(e => e.Code == "PACKAGE_CHECKOUT_REQUIRED");
+        store.Payments.Should().BeEmpty();
     }
 
     [Fact]

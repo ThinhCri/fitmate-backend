@@ -54,6 +54,10 @@ public class BookingRescheduleService : IBookingRescheduleService
         if (appt.MemberId != requesterUserId && appt.PtUserId != requesterUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner or PT.");
 
+        if (await _appointmentStore.IsPackageAppointmentAsync(appointmentId, ct))
+            throw new ConflictException("PACKAGE_ACTION_REQUIRED",
+                "Buổi này thuộc một gói PT; không thể đổi lịch qua luồng lịch lẻ.");
+
         if (appt.Status != AppointmentStatus.Pending && appt.Status != AppointmentStatus.Confirmed)
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot reschedule booking in status {appt.Status}.");
 

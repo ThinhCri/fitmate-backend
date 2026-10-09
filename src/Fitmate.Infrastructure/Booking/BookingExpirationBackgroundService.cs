@@ -43,8 +43,12 @@ public class BookingExpirationBackgroundService : BackgroundService
             try
             {
                 using var scope = _services.CreateScope();
+                var packageExpiry = scope.ServiceProvider.GetRequiredService<SessionPackageExpirationService>();
+                var expiredPackages = await packageExpiry.ExpireUnpaidAsync(DateTime.UtcNow, stoppingToken);
                 var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
                 var expiredCount = await bookingService.ExpireOldHoldsAndPendingAsync(DateTime.UtcNow, stoppingToken);
+                if (expiredPackages > 0)
+                    _logger.LogInformation("Package expiration sweep completed: {Count} packages expired.", expiredPackages);
                 if (expiredCount > 0)
                 {
                     _logger.LogInformation("Booking expiration sweep completed: {Count} appointments expired.", expiredCount);

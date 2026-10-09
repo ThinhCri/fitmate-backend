@@ -1,8 +1,11 @@
 using Fitmate.Application.Booking;
+using Fitmate.Application.Payments;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Payment;
 using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
+using Fitmate.Infrastructure.Booking;
 using Fitmate.IntegrationTests.Infrastructure;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
@@ -62,6 +65,22 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         (await db.SessionPackages.CountAsync(p => p.PtUserId == ptId)).Should().Be(1);
         (await db.SessionPackageSessions.CountAsync(s => s.PackageId == first.Id)).Should().Be(4);
 
+        var firstSession = first.Sessions.Single(s => s.Sequence == 1);
+        var paymentService = new PaymentService(
+            scope.ServiceProvider.GetRequiredService<IPaymentStore>(), new StubPaymentProvider());
+        Func<Task> singleCheckout = () => paymentService.CreateAsync(memberId,
+            new CreatePaymentRequest { HoldId = firstSession.HoldId, Method = PaymentMethod.Vnpay },
+            CancellationToken.None);
+        await singleCheckout.Should().ThrowAsync<ConflictException>()
+            .Where(e => e.Code == "PACKAGE_CHECKOUT_REQUIRED");
+        (await db.Payments.CountAsync(p => p.AppointmentId == firstSession.AppointmentId)).Should().Be(0);
+
+        var bookingService = scope.ServiceProvider.GetRequiredService<IBookingService>();
+        Func<Task> singleCancel = () => bookingService.CancelAsync(memberId,
+            firstSession.AppointmentId, "Changed plans", CancellationToken.None);
+        await singleCancel.Should().ThrowAsync<ConflictException>()
+            .Where(e => e.Code == "PACKAGE_ACTION_REQUIRED");
+
         var secondMember = Guid.NewGuid();
         _factory.CreateAuthenticatedClient("Member", secondMember).Dispose();
         var conflictingSlots = slots.Skip(3).Take(4).Select(s => s.SlotStartUtc).ToArray();
@@ -96,5 +115,16 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         (await db.SessionPackages.CountAsync(p => p.PtUserId == ptId)).Should().Be(2);
         (await db.Appointments.CountAsync(a => a.PtUserId == ptId)).Should().Be(8);
         (await db.BookingHolds.CountAsync(h => h.PtUserId == ptId)).Should().Be(8);
+
+        var expiration = scope.ServiceProvider.GetRequiredService<SessionPackageExpirationService>();
+        (await expiration.ExpireUnpaidAsync(DateTime.UtcNow.AddMinutes(11), CancellationToken.None))
+            .Should().BeGreaterThanOrEqualTo(2);
+        db.ChangeTracker.Clear();
+        (await db.SessionPackages.Where(p => p.PtUserId == ptId).ToListAsync())
+            .Should().OnlyContain(p => p.Status == SessionPackageStatus.Expired);
+        (await db.Appointments.Where(a => a.PtUserId == ptId).ToListAsync())
+            .Should().OnlyContain(a => a.Status == AppointmentStatus.Expired);
+        (await db.BookingHolds.Where(h => h.PtUserId == ptId).ToListAsync())
+            .Should().OnlyContain(h => h.Status == "released");
     }
 }

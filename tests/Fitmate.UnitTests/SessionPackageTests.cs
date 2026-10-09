@@ -71,6 +71,8 @@ public sealed class SessionPackageTests
         Action expiredAttach = () => package.AttachPayment(paymentId, Now.AddMinutes(10));
         expiredAttach.Should().Throw<InvalidOperationException>();
         package.AttachPayment(paymentId, Now.AddMinutes(5));
+        Action pendingMustNotExpire = () => package.Expire(Now.AddMinutes(11));
+        pendingMustNotExpire.Should().Throw<InvalidOperationException>();
         Action wrongAmount = () => package.MarkPaid(paymentId, 1, Now.AddMinutes(6));
         wrongAmount.Should().Throw<InvalidOperationException>();
         package.MarkPaid(paymentId, 1_000_000, Now.AddMinutes(6));

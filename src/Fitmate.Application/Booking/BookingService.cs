@@ -140,6 +140,10 @@ public class BookingService : IBookingService
         if (appt.MemberId != actorUserId && appt.PtUserId != actorUserId)
             throw new ForbiddenException(ErrorCodes.Booking.NotOwner, "Not owner or PT.");
 
+        if (await _appointments.IsPackageAppointmentAsync(appointmentId, ct))
+            throw new ConflictException("PACKAGE_ACTION_REQUIRED",
+                "Buổi này thuộc một gói PT; không thể hủy riêng qua luồng lịch lẻ.");
+
         if (appt.MemberId == actorUserId && DateTime.UtcNow > appt.SlotStartUtc.AddHours(-48))
             throw new ConflictException(
                 ErrorCodes.Booking.CannotTransition,

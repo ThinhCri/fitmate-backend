@@ -105,7 +105,7 @@ public sealed class SessionPackage : AuditableEntity
     public void Expire(DateTime nowUtc)
     {
         if (nowUtc.Kind != DateTimeKind.Utc || nowUtc < HoldExpiresAtUtc ||
-            Status is not (SessionPackageStatus.Held or SessionPackageStatus.PaymentPending))
+            Status != SessionPackageStatus.Held || PaymentId.HasValue)
             throw new InvalidOperationException("Only an unpaid expired package can be released.");
         Status = SessionPackageStatus.Expired;
         UpdatedAt = nowUtc;

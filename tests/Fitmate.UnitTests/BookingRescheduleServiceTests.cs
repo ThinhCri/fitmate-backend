@@ -23,6 +23,9 @@ public class BookingRescheduleServiceTests
         public Task<Appointment?> FindByIdAsync(Guid id, CancellationToken ct)
             => Task.FromResult(Items.GetValueOrDefault(id));
 
+        public Task<bool> IsPackageAppointmentAsync(Guid appointmentId, CancellationToken ct)
+            => Task.FromResult(false);
+
         public Task<bool> ExistsActiveForSlotAsync(Guid ptUserId, DateTime slotStartUtc, CancellationToken ct)
             => Task.FromResult(false);
 

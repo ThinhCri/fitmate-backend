@@ -62,6 +62,12 @@ public class PaymentService : IPaymentService
         if (!hold.IsActive)
             throw new ConflictException(PaymentErrorCodes.HoldExpired, $"Hold '{request.HoldId}' is no longer active.");
 
+        // A package reserves multiple holds under one future payment. Paying one of
+        // them through the single-booking route would corrupt refunds and payouts.
+        if (await _store.IsPackageHoldAsync(hold.Id, ct))
+            throw new ConflictException("PACKAGE_CHECKOUT_REQUIRED",
+                "Buổi này thuộc một gói PT. Không thể thanh toán riêng từng buổi.");
+
         var appt = await _store.FindAppointmentByHoldAsync(request.HoldId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Appointment not found for hold '{request.HoldId}'.");
 

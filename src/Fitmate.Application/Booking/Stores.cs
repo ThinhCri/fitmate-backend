@@ -10,6 +10,7 @@ namespace Fitmate.Application.Booking;
 public interface IAppointmentStore
 {
     Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct);
+    Task<bool> IsPackageAppointmentAsync(Guid appointmentId, CancellationToken ct);
     Task<bool> ExistsActiveForSlotAsync(Guid ptUserId, DateTime slotStartUtc, CancellationToken ct);
     Task<bool> HasOverlappingSlotAsync(Guid ptUserId, DateTime requestedStartUtc, int durationMinutes, Guid? excludeAppointmentId, CancellationToken ct);
     Task<T> ExecuteWithScheduleLockAsync<T>(Guid ptUserId, Func<Task<T>> operation, CancellationToken ct);

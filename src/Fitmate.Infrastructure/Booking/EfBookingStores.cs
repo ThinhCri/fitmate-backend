@@ -18,6 +18,9 @@ public class EfAppointmentStore : IAppointmentStore
     public Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct)
         => _db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId, ct);
 
+    public Task<bool> IsPackageAppointmentAsync(Guid appointmentId, CancellationToken ct)
+        => _db.SessionPackageSessions.AnyAsync(s => s.AppointmentId == appointmentId, ct);
+
     /// <summary>
     /// Slot đang active (không bao gồm Cancelled/Expired/Refunded).
     /// </summary>
@@ -114,7 +117,9 @@ public class EfAppointmentStore : IAppointmentStore
     public async Task<IReadOnlyList<Appointment>> GetExpiredHeldAppointmentsAsync(DateTime nowUtc, int limit, CancellationToken ct)
     {
         return await _db.Appointments
-            .Where(a => a.Status == AppointmentStatus.Held && a.HoldExpiresAtUtc != null && a.HoldExpiresAtUtc <= nowUtc)
+            .Where(a => a.Status == AppointmentStatus.Held && a.HoldExpiresAtUtc != null &&
+                        a.HoldExpiresAtUtc <= nowUtc &&
+                        !_db.SessionPackageSessions.Any(s => s.AppointmentId == a.Id))
             .OrderBy(a => a.HoldExpiresAtUtc)
             .Take(limit)
             .ToListAsync(ct);

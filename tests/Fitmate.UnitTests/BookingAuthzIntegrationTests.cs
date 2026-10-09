@@ -17,6 +17,7 @@ public class BookingAuthzIntegrationTests
     {
         public Dictionary<Guid, Appointment> Items { get; } = new();
         public Task<Appointment?> FindByIdAsync(Guid id, CancellationToken ct) => Task.FromResult(Items.GetValueOrDefault(id));
+        public Task<bool> IsPackageAppointmentAsync(Guid appointmentId, CancellationToken ct) => Task.FromResult(false);
         public Task<bool> ExistsActiveForSlotAsync(Guid ptUserId, DateTime slotStartUtc, CancellationToken ct) => Task.FromResult(false);
         public Task<bool> HasOverlappingSlotAsync(Guid ptUserId, DateTime requestedStartUtc, int durationMinutes, Guid? excludeAppointmentId, CancellationToken ct) => Task.FromResult(false);
         public async Task<T> ExecuteWithScheduleLockAsync<T>(Guid ptUserId, Func<Task<T>> operation, CancellationToken ct) => await operation();
