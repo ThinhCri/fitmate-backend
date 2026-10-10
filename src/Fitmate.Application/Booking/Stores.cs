@@ -37,6 +37,8 @@ public interface IBookingHoldStore
 public interface ISessionPackageStore
 {
     Task AddAsync(SessionPackage package, CancellationToken ct);
+    Task ReloadAsync(SessionPackage package, CancellationToken ct);
+    Task<bool> AllReservationsActiveAsync(SessionPackage package, DateTime nowUtc, CancellationToken ct);
 }
 
 /// <summary>Application abstraction cho BookingRescheduleRequest persistence.</summary>

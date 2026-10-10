@@ -11,7 +11,8 @@ public enum SessionPackageStatus
     StopRequested = 3,
     Stopped = 4,
     Expired = 5,
-    LatePaymentRefundPending = 6
+    LatePaymentRefundPending = 6,
+    OnlinePreparing = 7
 }
 
 public enum SessionPackageStopRequestStatus
@@ -109,6 +110,33 @@ public sealed class SessionPackage : AuditableEntity
         UpdatedAt = nowUtc;
     }
 
+    public void BeginOnlinePreparation(DateTime nowUtc)
+    {
+        if (Status != SessionPackageStatus.Held || PaymentId.HasValue ||
+            nowUtc.Kind != DateTimeKind.Utc || nowUtc >= HoldExpiresAtUtc)
+            throw new InvalidOperationException("Only an unpaid active package hold can prepare online sessions.");
+        Status = SessionPackageStatus.OnlinePreparing;
+        UpdatedAt = nowUtc;
+    }
+
+    public void CompleteOnlinePreparation(DateTime nowUtc)
+    {
+        if (Status != SessionPackageStatus.OnlinePreparing || PaymentId.HasValue ||
+            nowUtc.Kind != DateTimeKind.Utc || nowUtc >= HoldExpiresAtUtc)
+            throw new InvalidOperationException("Online package preparation is no longer valid.");
+        Status = SessionPackageStatus.Held;
+        UpdatedAt = nowUtc;
+    }
+
+    public void AbortOnlinePreparation(DateTime nowUtc)
+    {
+        if (Status != SessionPackageStatus.OnlinePreparing || PaymentId.HasValue ||
+            nowUtc.Kind != DateTimeKind.Utc)
+            throw new InvalidOperationException("Only an unpaid online preparation can be aborted.");
+        Status = SessionPackageStatus.Expired;
+        UpdatedAt = nowUtc;
+    }
+
     public void MarkPaid(Guid paymentId, long actualPaidVnd, DateTime nowUtc)
     {
         if (Status != SessionPackageStatus.PaymentPending || PaymentId != paymentId ||
@@ -130,7 +158,7 @@ public sealed class SessionPackage : AuditableEntity
     public void Expire(DateTime nowUtc)
     {
         if (nowUtc.Kind != DateTimeKind.Utc || nowUtc < HoldExpiresAtUtc ||
-            Status != SessionPackageStatus.Held || PaymentId.HasValue)
+            Status is not (SessionPackageStatus.Held or SessionPackageStatus.OnlinePreparing) || PaymentId.HasValue)
             throw new InvalidOperationException("Only an unpaid expired package can be released.");
         Status = SessionPackageStatus.Expired;
         UpdatedAt = nowUtc;

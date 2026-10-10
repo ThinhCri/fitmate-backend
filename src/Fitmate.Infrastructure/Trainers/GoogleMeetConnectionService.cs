@@ -192,6 +192,16 @@ public sealed class GoogleMeetConnectionService(
         return space;
     }
 
+    public async Task RemoveForAppointmentAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
+    {
+        var tokenName = MeetingPrefix + appointmentId.ToString("N");
+        var tracked = db.UserTokens.Local.Where(t => t.UserId == ptUserId &&
+            t.LoginProvider == Provider && t.Name == tokenName).ToArray();
+        foreach (var token in tracked) db.Entry(token).State = EntityState.Detached;
+        await db.UserTokens.Where(t => t.UserId == ptUserId && t.LoginProvider == Provider &&
+            t.Name == tokenName).ExecuteDeleteAsync(ct);
+    }
+
     public async Task<string?> GetMeetingUriAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
     {
         var token = await FindTokenAsync(ptUserId, MeetingPrefix + appointmentId.ToString("N"), ct);

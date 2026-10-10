@@ -16,7 +16,8 @@ public sealed class SessionPackageExpirationService(
             throw new ArgumentException("Expiration time must be UTC.", nameof(nowUtc));
 
         var candidates = await db.SessionPackages.AsNoTracking()
-            .Where(p => p.Status == SessionPackageStatus.Held &&
+            .Where(p => (p.Status == SessionPackageStatus.Held ||
+                         p.Status == SessionPackageStatus.OnlinePreparing) &&
                         p.PaymentId == null && p.HoldExpiresAtUtc <= nowUtc)
             .OrderBy(p => p.HoldExpiresAtUtc)
             .Select(p => new { p.Id, p.PtUserId })
@@ -29,7 +30,7 @@ public sealed class SessionPackageExpirationService(
             {
                 var package = await db.SessionPackages.Include(p => p.Sessions)
                     .SingleOrDefaultAsync(p => p.Id == candidate.Id, ct);
-                if (package is null || package.Status != SessionPackageStatus.Held ||
+                if (package is null || package.Status is not (SessionPackageStatus.Held or SessionPackageStatus.OnlinePreparing) ||
                     package.PaymentId.HasValue || package.HoldExpiresAtUtc > nowUtc)
                     return false;
 

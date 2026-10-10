@@ -1,5 +1,7 @@
 using Fitmate.Application.Booking;
 using Fitmate.Application.Payments;
+using Fitmate.Application.Trainers;
+using Fitmate.Application.Outbox;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Payment;
@@ -15,6 +17,39 @@ namespace Fitmate.IntegrationTests;
 
 public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTestAppFactory>
 {
+    private sealed class OnlineLookup(Guid serviceId, Guid ptId) : IServiceBookingLookup
+    {
+        public Task<ServiceSnapshot?> FindBookableAsync(Guid requestedId, DateTime startUtc, CancellationToken ct) =>
+            Task.FromResult<ServiceSnapshot?>(requestedId == serviceId
+                ? new ServiceSnapshot(serviceId, ptId, 100_000, 60, true, ServiceDeliveryMode.Online)
+                : null);
+    }
+
+    private sealed class PackageMeetStub(int failOnCall = 0, Func<Task>? beforeFirstSpace = null) : IGoogleMeetConnectionService
+    {
+        public int Calls { get; private set; }
+        public List<Guid> Removed { get; } = [];
+        public async Task<GoogleMeetSpace> CreateForAppointmentAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
+        {
+            Calls++;
+            if (Calls == 1 && beforeFirstSpace is not null) await beforeFirstSpace();
+            if (Calls == failOnCall)
+                throw new DomainException("GOOGLE_MEET_CREATE_FAILED", "Test Meet failure", 503);
+            return new GoogleMeetSpace("spaces/" + appointmentId,
+                "https://meet.google.com/abc-defg-hij");
+        }
+        public Task RemoveForAppointmentAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct)
+        { Removed.Add(appointmentId); return Task.CompletedTask; }
+        public Task<GoogleMeetConnectionStatus> GetStatusAsync(Guid ptUserId, CancellationToken ct) =>
+            Task.FromResult(new GoogleMeetConnectionStatus(true));
+        public Task<string> CreateAuthorizationUrlAsync(Guid ptUserId, CancellationToken ct) => throw new NotSupportedException();
+        public Task CompleteAuthorizationAsync(string code, string state, CancellationToken ct) => throw new NotSupportedException();
+        public Task DisconnectAsync(Guid ptUserId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<GoogleMeetSpace> CreateSpaceAsync(Guid ptUserId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string?> GetMeetingUriAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<string?> GetMeetingUriForParticipantAsync(Guid actorUserId, Guid appointmentId, CancellationToken ct) => throw new NotSupportedException();
+    }
+
     private sealed class TestPayosProvider(FitmateDbContext db) : IPaymentProvider, IPaymentReservation
     {
         public PaymentMethod Method => PaymentMethod.Payos;
@@ -42,6 +77,85 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
     {
         _factory = factory;
         _factory.EnsureDatabaseInitialized();
+    }
+
+    [Theory]
+    [InlineData(0, SessionPackageStatus.Held)]
+    [InlineData(3, SessionPackageStatus.Expired)]
+    public async Task OnlinePackage_PreparesAllMeetLinksOrReleasesEveryReservation(
+        int failOnCall, SessionPackageStatus expectedStatus)
+    {
+        var ptId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        _factory.CreateAuthenticatedClient("PT", ptId).Dispose();
+        _factory.CreateAuthenticatedClient("Member", memberId).Dispose();
+        var service = Service.Create(ptId, "Tập online", "Tập 1–1 qua Google Meet.", 100_000, 60);
+        service.ConfigureDetails(ServiceKind.OneToOne, ServiceDeliveryMode.Online,
+            "Người mới tập", "Thảm tập", "Hướng dẫn trong buổi", null, null);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        db.Add(service);
+        await db.SaveChangesAsync();
+        var meet = new PackageMeetStub(failOnCall, async () =>
+        {
+            var preparing = await db.SessionPackages.AsNoTracking()
+                .SingleAsync(p => p.MemberId == memberId && p.ServiceId == service.Id);
+            preparing.Status.Should().Be(SessionPackageStatus.OnlinePreparing);
+            var checkout = new PackagePaymentCheckoutService(
+                scope.ServiceProvider.GetRequiredService<IPackagePaymentStore>(),
+                scope.ServiceProvider.GetRequiredService<IPaymentStore>(),
+                scope.ServiceProvider.GetRequiredService<IAppointmentStore>(),
+                new TestPayosProvider(db));
+            Func<Task> prematureCheckout = () => checkout.CreateAsync(memberId,
+                preparing.Id, CancellationToken.None);
+            await prematureCheckout.Should().ThrowAsync<ConflictException>()
+                .Where(e => e.Code == "PACKAGE_PAYMENT_ALREADY_PROCESSED");
+            (await db.Payments.CountAsync(p => p.PackageId == preparing.Id)).Should().Be(0);
+        });
+        var holdService = new SessionPackageHoldService(
+            scope.ServiceProvider.GetRequiredService<IAppointmentStore>(),
+            scope.ServiceProvider.GetRequiredService<IBookingHoldStore>(),
+            scope.ServiceProvider.GetRequiredService<ISessionPackageStore>(),
+            new OnlineLookup(service.Id, ptId),
+            scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>(), meet);
+        var slots = Enumerable.Range(0, 4)
+            .Select(i => DateTime.UtcNow.AddDays(3 + i)).ToArray();
+        if (failOnCall == 0)
+        {
+            var held = await holdService.CreateOnlineHoldAsync(memberId, ptId, service.Id,
+                slots, CancellationToken.None);
+            held.Status.Should().Be(SessionPackageStatus.Held);
+            meet.Calls.Should().Be(4);
+            meet.Removed.Should().BeEmpty();
+        }
+        else
+        {
+            Func<Task> attempt = () => holdService.CreateOnlineHoldAsync(memberId, ptId,
+                service.Id, slots, CancellationToken.None);
+            await attempt.Should().ThrowAsync<DomainException>()
+                .Where(e => e.Code == "GOOGLE_MEET_CREATE_FAILED");
+            meet.Calls.Should().Be(failOnCall);
+            meet.Removed.Should().HaveCount(4);
+        }
+        db.ChangeTracker.Clear();
+        var package = await db.SessionPackages.AsNoTracking().Include(p => p.Sessions)
+            .SingleAsync(p => p.MemberId == memberId && p.ServiceId == service.Id);
+        package.Status.Should().Be(expectedStatus);
+        var appointmentIds = package.Sessions.Select(s => s.AppointmentId).ToArray();
+        var holdIds = package.Sessions.Select(s => s.HoldId).ToArray();
+        var appointments = await db.Appointments.AsNoTracking()
+            .Where(a => appointmentIds.Contains(a.Id)).ToArrayAsync();
+        var holds = await db.BookingHolds.AsNoTracking()
+            .Where(h => holdIds.Contains(h.Id)).ToArrayAsync();
+        appointments.Should().HaveCount(4);
+        holds.Should().HaveCount(4);
+        appointments.Should().OnlyContain(a => a.Status ==
+            (failOnCall == 0 ? AppointmentStatus.Held : AppointmentStatus.Expired));
+        holds.Should().OnlyContain(h => h.Status == (failOnCall == 0 ? "active" : "released"));
+        var heldEvents = await db.OutboxMessages.AsNoTracking()
+            .Where(o => o.Type == "booking.package_held").Select(o => o.PayloadJson).ToArrayAsync();
+        heldEvents.Count(payload => payload.Contains(package.Id.ToString(), StringComparison.OrdinalIgnoreCase))
+            .Should().Be(failOnCall == 0 ? 1 : 0);
     }
 
     [Fact]

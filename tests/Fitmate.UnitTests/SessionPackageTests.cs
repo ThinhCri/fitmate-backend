@@ -84,6 +84,29 @@ public sealed class SessionPackageTests
     }
 
     [Fact]
+    public void OnlinePreparation_BlocksCheckoutUntilReady_AndCanExpireSafely()
+    {
+        var package = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_000, Slots(4), Now, TimeSpan.FromMinutes(10));
+        package.BeginOnlinePreparation(Now.AddMinutes(1));
+        package.Status.Should().Be(SessionPackageStatus.OnlinePreparing);
+        Action prematurePayment = () => package.AttachPayment(Guid.NewGuid(), Now.AddMinutes(2));
+        prematurePayment.Should().Throw<InvalidOperationException>();
+        package.CompleteOnlinePreparation(Now.AddMinutes(3));
+        package.Status.Should().Be(SessionPackageStatus.Held);
+
+        var stale = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_000, Slots(4), Now, TimeSpan.FromMinutes(10));
+        stale.BeginOnlinePreparation(Now.AddMinutes(1));
+        Action tooLate = () => stale.CompleteOnlinePreparation(Now.AddMinutes(10));
+        tooLate.Should().Throw<InvalidOperationException>();
+        stale.Expire(Now.AddMinutes(10));
+        stale.Status.Should().Be(SessionPackageStatus.Expired);
+        Action afterExpiry = () => stale.AttachPayment(Guid.NewGuid(), Now.AddMinutes(11));
+        afterExpiry.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
     public void PackagePayment_HasExactlyOneSubject_AndRejectsSingleBookingPath()
     {
         var packageId = Guid.NewGuid();

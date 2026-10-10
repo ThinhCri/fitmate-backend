@@ -173,6 +173,26 @@ public sealed class EfSessionPackageStore(FitmateDbContext db) : ISessionPackage
 {
     public async Task AddAsync(SessionPackage package, CancellationToken ct)
         => await db.SessionPackages.AddAsync(package, ct);
+
+    public Task ReloadAsync(SessionPackage package, CancellationToken ct) =>
+        db.Entry(package).ReloadAsync(ct);
+
+    public async Task<bool> AllReservationsActiveAsync(SessionPackage package, DateTime nowUtc, CancellationToken ct)
+    {
+        var appointmentIds = package.Sessions.Select(s => s.AppointmentId).ToArray();
+        var holdIds = package.Sessions.Select(s => s.HoldId).ToArray();
+        if (appointmentIds.Length != package.SessionCount || holdIds.Distinct().Count() != package.SessionCount)
+            return false;
+        var appointments = await db.Appointments.AsNoTracking().CountAsync(a =>
+            appointmentIds.Contains(a.Id) && a.MemberId == package.MemberId &&
+            a.PtUserId == package.PtUserId && a.ServiceId == package.ServiceId &&
+            a.Status == AppointmentStatus.Held && a.HoldExpiresAtUtc > nowUtc, ct);
+        var holds = await db.BookingHolds.AsNoTracking().CountAsync(h =>
+            holdIds.Contains(h.Id) && h.MemberId == package.MemberId &&
+            h.PtUserId == package.PtUserId && h.ServiceId == package.ServiceId &&
+            h.Status == "active" && h.ExpiresAt > nowUtc, ct);
+        return appointments == package.SessionCount && holds == package.SessionCount;
+    }
 }
 
 public class EfBookingRescheduleStore : IBookingRescheduleStore

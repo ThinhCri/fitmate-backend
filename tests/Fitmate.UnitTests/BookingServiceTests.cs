@@ -153,6 +153,7 @@ public class BookingServiceTests
                 ? Task.FromException<GoogleMeetSpace>(new DomainException("GOOGLE_MEET_CREATE_FAILED", "Meet unavailable", 503))
                 : Task.FromResult(new GoogleMeetSpace("spaces/test", "https://meet.google.com/abc-defg-hij"));
         }
+        public Task RemoveForAppointmentAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct) => Task.CompletedTask;
         public Task<GoogleMeetConnectionStatus> GetStatusAsync(Guid ptUserId, CancellationToken ct) => Task.FromResult(new GoogleMeetConnectionStatus(true));
         public Task<string> CreateAuthorizationUrlAsync(Guid ptUserId, CancellationToken ct) => throw new NotImplementedException();
         public Task CompleteAuthorizationAsync(string code, string state, CancellationToken ct) => throw new NotImplementedException();

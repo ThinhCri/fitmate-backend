@@ -11,6 +11,7 @@ public interface IGoogleMeetConnectionService
     Task DisconnectAsync(Guid ptUserId, CancellationToken ct);
     Task<GoogleMeetSpace> CreateSpaceAsync(Guid ptUserId, CancellationToken ct);
     Task<GoogleMeetSpace> CreateForAppointmentAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
+    Task RemoveForAppointmentAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
     Task<string?> GetMeetingUriAsync(Guid ptUserId, Guid appointmentId, CancellationToken ct);
     Task<string?> GetMeetingUriForParticipantAsync(Guid actorUserId, Guid appointmentId, CancellationToken ct);
 }
