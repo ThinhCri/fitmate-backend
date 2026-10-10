@@ -10,6 +10,8 @@ using Fitmate.Infrastructure.Persistence;
 using Fitmate.Infrastructure.Booking;
 using Fitmate.IntegrationTests.Infrastructure;
 using FluentAssertions;
+using System.Net;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -199,6 +201,38 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         first.Sessions.Select(s => s.HoldId).Distinct().Should().HaveCount(4);
         (await db.SessionPackages.CountAsync(p => p.PtUserId == ptId)).Should().Be(1);
         (await db.SessionPackageSessions.CountAsync(s => s.PackageId == first.Id)).Should().Be(4);
+
+        using (var memberClient = _factory.CreateAuthenticatedClient("Member", memberId))
+        using (var ptClient = _factory.CreateAuthenticatedClient("PT", ptId))
+        using (var strangerClient = _factory.CreateAuthenticatedClient("Member", Guid.NewGuid()))
+        using (var publicClient = _factory.CreateClient())
+        {
+            (await publicClient.GetAsync($"/api/v1/me/session-packages/{first.Id}"))
+                .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+            (await strangerClient.GetAsync($"/api/v1/me/session-packages/{first.Id}"))
+                .StatusCode.Should().Be(HttpStatusCode.NotFound);
+            (await memberClient.GetAsync("/api/v1/me/session-packages/assigned"))
+                .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            (await memberClient.GetAsync("/api/v1/me/session-packages?page=0"))
+                .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+            var listResponse = await memberClient.GetAsync("/api/v1/me/session-packages?page=1&pageSize=10");
+            listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var list = JsonDocument.Parse(await listResponse.Content.ReadAsStringAsync());
+            var listed = list.RootElement.GetProperty("items").EnumerateArray()
+                .Single(item => item.GetProperty("id").GetGuid() == first.Id);
+            listed.GetProperty("sessions").GetArrayLength().Should().Be(4);
+            listed.GetProperty("total_price_vnd").GetInt64().Should().Be(800_004);
+            listed.GetProperty("payment_status").ValueKind.Should().Be(JsonValueKind.Null);
+
+            var ptResponse = await ptClient.GetAsync($"/api/v1/me/session-packages/{first.Id}");
+            ptResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var detail = JsonDocument.Parse(await ptResponse.Content.ReadAsStringAsync());
+            detail.RootElement.GetProperty("pt_user_id").GetGuid().Should().Be(ptId);
+            detail.RootElement.GetProperty("sessions").GetArrayLength().Should().Be(4);
+            (await ptClient.GetAsync("/api/v1/me/session-packages/assigned"))
+                .StatusCode.Should().Be(HttpStatusCode.OK);
+        }
 
         var firstSession = first.Sessions.Single(s => s.Sequence == 1);
         var paymentService = new PaymentService(

@@ -1340,6 +1340,58 @@ paths:
         '204':
           description: No Content
 
+  /me/session-packages:
+    get:
+      tags: [Bookings]
+      summary: Danh sách gói PT của hội viên hiện tại (chỉ đọc)
+      operationId: listMySessionPackages
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+      responses:
+        '200':
+          description: Gói của người gọi
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackagePage'}
+        '400': {description: Trang hoặc kích thước trang không hợp lệ}
+        '401': {description: Chưa đăng nhập}
+
+  /me/session-packages/assigned:
+    get:
+      tags: [Bookings]
+      summary: Danh sách gói PT được phân công (chỉ đọc)
+      operationId: listAssignedPtSessionPackages
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+      responses:
+        '200':
+          description: Gói của PT hiện tại
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackagePage'}
+        '400': {description: Trang hoặc kích thước trang không hợp lệ}
+        '401': {description: Chưa đăng nhập}
+        '403': {description: Không có quyền PT}
+
+  /me/session-packages/{id}:
+    get:
+      tags: [Bookings]
+      summary: Chi tiết gói PT cho hội viên hoặc PT liên quan (chỉ đọc)
+      operationId: getMySessionPackage
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Gói và trạng thái hiện tại của từng buổi
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackage'}
+        '401': {description: Chưa đăng nhập}
+        '404': {description: Gói không tồn tại hoặc không thuộc người gọi}
+        '409': {description: Dữ liệu gói cần đối soát}
+
   /bookings/holds:
     post:
       tags: [Bookings]
@@ -5736,6 +5788,68 @@ components:
           format: date-time
         is_active:
           type: boolean
+
+    SessionPackagePage:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/SessionPackage'}
+        total: {type: integer, minimum: 0}
+        page: {type: integer, minimum: 1}
+        page_size: {type: integer, minimum: 1, maximum: 100}
+
+    SessionPackage:
+      type: object
+      description: Gói PT chỉ đọc; link Meet lấy riêng qua endpoint booking sau khi thanh toán.
+      required: [id, member_id, pt_user_id, service_id, status, session_count, total_price_vnd, hold_expires_at_utc, initial_schedule_deadline_utc, make_up_deadline_utc, refunded_so_far_vnd, sessions]
+      properties:
+        id: {type: string, format: uuid}
+        member_id: {type: string, format: uuid}
+        pt_user_id: {type: string, format: uuid}
+        service_id: {type: string, format: uuid}
+        status:
+          type: string
+          enum: [Held, OnlinePreparing, PaymentPending, Active, StopRequested, Stopped, Expired, LatePaymentRefundPending]
+        session_count: {type: integer, enum: [4, 8]}
+        total_price_vnd: {type: integer, format: int64}
+        hold_expires_at_utc: {type: string, format: date-time}
+        initial_schedule_deadline_utc: {type: string, format: date-time}
+        make_up_deadline_utc: {type: string, format: date-time}
+        payment_id: {type: string, format: uuid, nullable: true}
+        payment_status: {type: string, nullable: true}
+        refunded_so_far_vnd: {type: integer, format: int64}
+        stop_request:
+          nullable: true
+          allOf: [{$ref: '#/components/schemas/SessionPackageStop'}]
+        sessions:
+          type: array
+          items: {$ref: '#/components/schemas/SessionPackageSession'}
+
+    SessionPackageSession:
+      type: object
+      required: [appointment_id, sequence, slot_start_utc, duration_minutes, status, paid_allocation_vnd]
+      properties:
+        appointment_id: {type: string, format: uuid}
+        sequence: {type: integer, minimum: 1}
+        slot_start_utc: {type: string, format: date-time}
+        duration_minutes: {type: integer, minimum: 1}
+        status: {$ref: '#/components/schemas/AppointmentStatus'}
+        paid_allocation_vnd: {type: integer, format: int64}
+
+    SessionPackageStop:
+      type: object
+      required: [id, reason, status, approval_source, requested_at_utc, pt_response_deadline_utc, refund_quote_vnd]
+      properties:
+        id: {type: string, format: uuid}
+        reason: {type: string}
+        status: {type: string, enum: [Pending, Approved]}
+        approval_source: {type: string, enum: [None, PtAccepted, PtResponseTimedOut]}
+        requested_at_utc: {type: string, format: date-time}
+        pt_response_deadline_utc: {type: string, format: date-time}
+        refund_quote_vnd: {type: integer, format: int64}
+        finalized_at_utc: {type: string, format: date-time, nullable: true}
 
     BookingHold:
       type: object
