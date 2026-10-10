@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Fitmate.Application.Outbox;
+using Fitmate.Application.Booking;
 using Fitmate.Application.Finance;
 using Fitmate.Application.Payments;
 using Fitmate.Domain.Booking;
@@ -44,6 +45,34 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         return (payment.Id, order.OrderCode);
     }
 
+    private async Task<(Guid PackageId, Guid PaymentId, long OrderCode)> SeedPackageAsync(bool releaseOneHold = false)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var member = Guid.NewGuid(); var pt = Guid.NewGuid(); var service = Guid.NewGuid();
+        var now = DateTime.UtcNow;
+        var pairs = new List<(BookingHold Hold, Appointment Appointment)>();
+        for (var i = 0; i < 4; i++)
+        {
+            var time = now.AddHours(2 + i * 24);
+            pairs.Add((BookingHold.Create(member, pt, service, time, TimeSpan.FromMinutes(10)),
+                Appointment.CreateHold(member, pt, service, time, time, 60, 100000)));
+        }
+        var package = SessionPackage.CreateHold(member, pt, service, 100000,
+            pairs.Select(p => (p.Hold.Id, p.Appointment.Id, p.Appointment.SlotStartUtc)).ToArray(),
+            now, TimeSpan.FromMinutes(10));
+        if (releaseOneHold) pairs[0].Hold.Release();
+        db.Add(package);
+        foreach (var pair in pairs) db.AddRange(pair.Hold, pair.Appointment);
+        await db.SaveChangesAsync();
+        var payment = Payment.CreatePendingForPackage(package.Id, PaymentMethod.Payos, package.TotalPriceVnd);
+        package.AttachPayment(payment.Id, now);
+        var order = PayosOrder.Create(payment.Id, package.HoldExpiresAtUtc);
+        db.AddRange(payment, order);
+        await db.SaveChangesAsync();
+        return (package.Id, payment.Id, order.OrderCode);
+    }
+
     private JsonElement Webhook(long code, long amount = 100000, string account = "00000000", bool tamper = false)
     {
         var values = new SortedDictionary<string, object>(StringComparer.Ordinal)
@@ -62,7 +91,8 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
     {
         using var scope = _factory.Services.CreateScope();
         var handler = new PayosWebhookHandler(scope.ServiceProvider.GetRequiredService<FitmateDbContext>(),
-            scope.ServiceProvider.GetRequiredService<IPaymentStore>(), scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>(), Options.Create(_options));
+            scope.ServiceProvider.GetRequiredService<IPaymentStore>(), scope.ServiceProvider.GetRequiredService<IAppointmentStore>(),
+            scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>(), Options.Create(_options));
         await handler.HandleAsync(body, default);
     }
 
@@ -95,6 +125,56 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         payment.Status.Should().Be(PaymentStatus.Paid);
         (await db.Refunds.SingleAsync(r => r.PaymentId == payment.Id)).Status.Should().Be(RefundStatus.Pending);
         (await db.Appointments.SingleAsync(a => a.Id == payment.AppointmentId)).PaymentId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Package_webhook_confirms_all_four_allocations_once()
+    {
+        var seed = await SeedPackageAsync();
+        var body = Webhook(seed.OrderCode, 400000);
+        await Task.WhenAll(DeliverAsync(body), DeliverAsync(body));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var package = await db.SessionPackages.Include(p => p.Sessions).SingleAsync(p => p.Id == seed.PackageId);
+        package.Status.Should().Be(SessionPackageStatus.Active);
+        (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).Status.Should().Be(PaymentStatus.Paid);
+        var ids = package.Sessions.Select(s => s.AppointmentId).ToArray();
+        var bookings = await db.Appointments.Where(a => ids.Contains(a.Id)).ToListAsync();
+        bookings.Should().HaveCount(4);
+        bookings.Should().OnlyContain(a => a.Status == AppointmentStatus.Confirmed &&
+            a.PaymentId == seed.PaymentId && a.ActualPaidVnd == 100000 &&
+            a.PlatformFeeVnd == 10000 && a.TrainerShareVnd == 90000);
+        (await db.Refunds.CountAsync(r => r.PaymentId == seed.PaymentId)).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Late_package_webhook_releases_every_slot_and_creates_one_refundable_liability()
+    {
+        var seed = await SeedPackageAsync(releaseOneHold: true);
+        var body = Webhook(seed.OrderCode, 400000);
+        await DeliverAsync(body);
+        await DeliverAsync(body);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var package = await db.SessionPackages.Include(p => p.Sessions).SingleAsync(p => p.Id == seed.PackageId);
+        package.Status.Should().Be(SessionPackageStatus.LatePaymentRefundPending);
+        (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).Status.Should().Be(PaymentStatus.Paid);
+        var ids = package.Sessions.Select(s => s.AppointmentId).ToArray();
+        var holdIds = package.Sessions.Select(s => s.HoldId).ToArray();
+        (await db.Appointments.Where(a => ids.Contains(a.Id)).ToListAsync())
+            .Should().OnlyContain(a => a.Status == AppointmentStatus.Expired && a.PaymentId == null);
+        (await db.BookingHolds.Where(h => holdIds.Contains(h.Id)).ToListAsync())
+            .Should().OnlyContain(h => h.Status == "released");
+        var refund = await db.Refunds.SingleAsync(r => r.PaymentId == seed.PaymentId);
+        refund.AmountVnd.Should().Be(400000);
+        refund.Status.Should().Be(RefundStatus.Pending);
+        var settlement = scope.ServiceProvider.GetRequiredService<IManualSettlementStore>();
+        var admin = Guid.NewGuid();
+        await settlement.ApproveRefundAsync(admin, refund.Id, default);
+        await settlement.ConfirmRefundAsync(admin, refund.Id,
+            new ConfirmManualRefundRequest("test-package-refund-" + Guid.NewGuid(), "test:receipt", DateTime.UtcNow.AddSeconds(1)), default);
+        (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).Status.Should().Be(PaymentStatus.Refunded);
+        (await db.FinancialLedgerEntries.CountAsync(e => e.PaymentId == seed.PaymentId)).Should().Be(0);
     }
 
     [Theory]

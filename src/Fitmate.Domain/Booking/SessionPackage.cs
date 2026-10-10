@@ -10,7 +10,8 @@ public enum SessionPackageStatus
     Active = 2,
     StopRequested = 3,
     Stopped = 4,
-    Expired = 5
+    Expired = 5,
+    LatePaymentRefundPending = 6
 }
 
 /// <summary>
@@ -99,6 +100,15 @@ public sealed class SessionPackage : AuditableEntity
             actualPaidVnd != TotalPriceVnd || nowUtc.Kind != DateTimeKind.Utc)
             throw new InvalidOperationException("Package payment identity or amount does not match the quote.");
         Status = SessionPackageStatus.Active;
+        UpdatedAt = nowUtc;
+    }
+
+    public void MarkLatePaymentForRefund(Guid paymentId, DateTime nowUtc)
+    {
+        if (Status != SessionPackageStatus.PaymentPending || PaymentId != paymentId ||
+            nowUtc.Kind != DateTimeKind.Utc)
+            throw new InvalidOperationException("Only the matching unpaid package can require a late-payment refund.");
+        Status = SessionPackageStatus.LatePaymentRefundPending;
         UpdatedAt = nowUtc;
     }
 
