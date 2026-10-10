@@ -4091,6 +4091,46 @@ paths:
         '404':
           description: Certificate not found, has no image key, or has no recorded uploader
 
+  /admin/session-packages:
+    get:
+      tags: [Admin, Bookings]
+      summary: Admin tra cứu gói PT và yêu cầu dừng (chỉ đọc)
+      operationId: adminListSessionPackages
+      parameters:
+        - {name: status, in: query, schema: {type: string, enum: [Held, PaymentPending, Active, StopRequested, Stopped, Expired, LatePaymentRefundPending, OnlinePreparing]}}
+        - {name: memberId, in: query, schema: {type: string, format: uuid}}
+        - {name: ptUserId, in: query, schema: {type: string, format: uuid}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: pageSize, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 25}}
+      responses:
+        '200':
+          description: Danh sách gói theo bộ lọc, phân trang trên server
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackagePage'}
+        '400': {description: Bộ lọc hoặc trang không hợp lệ}
+        '401': {description: Chưa đăng nhập}
+        '403': {description: Không có quyền Admin}
+        '409': {description: Dữ liệu gói cần đối soát}
+
+  /admin/session-packages/{id}:
+    get:
+      tags: [Admin, Bookings]
+      summary: Admin xem lịch, phân bổ tiền và yêu cầu dừng của một gói
+      operationId: adminGetSessionPackage
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Chi tiết gói
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackage'}
+        '401': {description: Chưa đăng nhập}
+        '403': {description: Không có quyền Admin}
+        '404': {description: Không tìm thấy gói}
+        '409': {description: Dữ liệu gói cần đối soát}
+
   /admin/bookings:
     get:
       tags: [Admin]

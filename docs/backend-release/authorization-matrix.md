@@ -11,6 +11,7 @@ PROD-2026-09-22-v1. Enforce Application + object scope. PT kế thừa Member tr
 | Cert/service/availability writes | No | No | Own, verified để bookable | Cert approve/revoke có reason |
 | Hold/pay | No | Own | Own với PT khác | Không giả Member |
 | Booking read/cancel/reschedule | No | Participant | Participant | Scoped read, mutation audited |
+| Package read/stop | No | Own package; own stop request | Assigned package; accept stop | Paged read of package/session/stop state; refunds remain MFA-gated |
 | Accept/start/complete | No | No | Assigned PT | Case correction có chứng cứ, không arbitrary status |
 | Payment read | No | Payer | Payer hoặc PT revenue projection | Finance allowlist |
 | Provider callback | Signature/server verification | Không đặc quyền từ login | Same | Same |

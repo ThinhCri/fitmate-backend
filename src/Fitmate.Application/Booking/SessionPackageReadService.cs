@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Fitmate.Application.Auth;
+using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 
 namespace Fitmate.Application.Booking;
@@ -51,6 +52,9 @@ public interface ISessionPackageReadStore
         int page, int pageSize, CancellationToken ct);
     Task<SessionPackageView?> FindForParticipantAsync(Guid packageId,
         Guid actorId, CancellationToken ct);
+    Task<SessionPackagePageView> ListForAdminAsync(SessionPackageStatus? status,
+        Guid? memberId, Guid? ptUserId, int page, int pageSize, CancellationToken ct);
+    Task<SessionPackageView?> FindForAdminAsync(Guid packageId, CancellationToken ct);
 }
 
 public sealed class SessionPackageReadService(
@@ -80,6 +84,31 @@ public sealed class SessionPackageReadService(
         if (packageId == Guid.Empty)
             throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập.");
         return await store.FindForParticipantAsync(packageId, actorId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập.");
+    }
+
+    public async Task<SessionPackagePageView> ListForAdminAsync(Guid actorId,
+        SessionPackageStatus? status, Guid? memberId, Guid? ptUserId,
+        int page, int pageSize, CancellationToken ct)
+    {
+        ValidateActor(actorId);
+        ValidatePage(page, pageSize);
+        if (memberId == Guid.Empty || ptUserId == Guid.Empty)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid,
+                "Bộ lọc người dùng không hợp lệ.",
+                new Dictionary<string, string[]> { ["user_id"] = ["valid UUID required"] });
+        await authorization.EnsureRoleAsync(actorId, "Admin", ct);
+        return await store.ListForAdminAsync(status, memberId, ptUserId, page, pageSize, ct);
+    }
+
+    public async Task<SessionPackageView> GetForAdminAsync(Guid actorId,
+        Guid packageId, CancellationToken ct)
+    {
+        ValidateActor(actorId);
+        await authorization.EnsureRoleAsync(actorId, "Admin", ct);
+        if (packageId == Guid.Empty)
+            throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập.");
+        return await store.FindForAdminAsync(packageId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập.");
     }
 

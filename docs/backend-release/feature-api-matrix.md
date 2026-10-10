@@ -9,6 +9,7 @@ BE-801 xuất inventory từng operation/schema. Spec không chứng minh implem
 | 03 | Delete/export/settings | Public deletion + cases | P workflows/retention | BE-805 |
 | 04 | Marketplace/cert/services/reviews | Trainers | C trainers/certs/services/availability; P reviews/full projection | BE-806 |
 | 05 | Booking/appointments | BookingManagement | C hold/cancel/reschedule/complete/list; S confirm/admin list; P accept/start | BE-807 |
+| 05 PT packages | Member/PT package list and stop | Admin package read-only review | C participant and Admin package reads, stop/preview; public package checkout still disabled | BE-807/818 |
 | 06 | Checkout/payment result | Payments/finance | C stub; S refund/admin payments; P verified provider/reconcile | BE-808/809/400 |
 | 07 | Revenue/index/detail | FinanceManagement | S me/revenue; C admin finance; P settlement | BE-810 |
 | 08 | Workout/player/history/weight | No raw health | C sessions/weight; S plans; P CRUD/snapshot verification | BE-811 |

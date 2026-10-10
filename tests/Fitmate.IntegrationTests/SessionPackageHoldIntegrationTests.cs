@@ -204,6 +204,7 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
 
         using (var memberClient = _factory.CreateAuthenticatedClient("Member", memberId))
         using (var ptClient = _factory.CreateAuthenticatedClient("PT", ptId))
+        using (var adminClient = _factory.CreateAuthenticatedClient("Admin", adminId))
         using (var strangerClient = _factory.CreateAuthenticatedClient("Member", Guid.NewGuid()))
         using (var publicClient = _factory.CreateClient())
         {
@@ -232,6 +233,34 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
             detail.RootElement.GetProperty("sessions").GetArrayLength().Should().Be(4);
             (await ptClient.GetAsync("/api/v1/me/session-packages/assigned"))
                 .StatusCode.Should().Be(HttpStatusCode.OK);
+
+            (await publicClient.GetAsync("/api/v1/admin/session-packages"))
+                .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+            (await memberClient.GetAsync("/api/v1/admin/session-packages"))
+                .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+            (await adminClient.GetAsync("/api/v1/admin/session-packages?status=invalid"))
+                .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await adminClient.GetAsync("/api/v1/admin/session-packages?status=1"))
+                .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await adminClient.GetAsync("/api/v1/admin/session-packages?pageSize=101"))
+                .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            (await adminClient.GetAsync($"/api/v1/admin/session-packages/{Guid.NewGuid()}"))
+                .StatusCode.Should().Be(HttpStatusCode.NotFound);
+            var adminListResponse = await adminClient.GetAsync(
+                $"/api/v1/admin/session-packages?status=Held&memberId={memberId}&ptUserId={ptId}");
+            adminListResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var adminList = JsonDocument.Parse(await adminListResponse.Content.ReadAsStringAsync());
+            adminList.RootElement.GetProperty("items").EnumerateArray()
+                .Should().ContainSingle(item => item.GetProperty("id").GetGuid() == first.Id);
+            using var filteredOut = JsonDocument.Parse(await (
+                await adminClient.GetAsync("/api/v1/admin/session-packages?status=Active"))
+                .Content.ReadAsStringAsync());
+            filteredOut.RootElement.GetProperty("items").GetArrayLength().Should().Be(0);
+            var adminDetailResponse = await adminClient.GetAsync(
+                $"/api/v1/admin/session-packages/{first.Id}");
+            adminDetailResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var adminDetail = JsonDocument.Parse(await adminDetailResponse.Content.ReadAsStringAsync());
+            adminDetail.RootElement.GetProperty("sessions").GetArrayLength().Should().Be(4);
         }
 
         var firstSession = first.Sessions.Single(s => s.Sequence == 1);

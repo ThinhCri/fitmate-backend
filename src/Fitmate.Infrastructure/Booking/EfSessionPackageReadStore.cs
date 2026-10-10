@@ -33,6 +33,30 @@ public sealed class EfSessionPackageReadStore(FitmateDbContext db) : ISessionPac
         return (await BuildViewsAsync([package], ct))[0];
     }
 
+    public async Task<SessionPackagePageView> ListForAdminAsync(SessionPackageStatus? status,
+        Guid? memberId, Guid? ptUserId, int page, int pageSize, CancellationToken ct)
+    {
+        var query = db.SessionPackages.AsNoTracking().AsQueryable();
+        if (status.HasValue) query = query.Where(p => p.Status == status.Value);
+        if (memberId.HasValue) query = query.Where(p => p.MemberId == memberId.Value);
+        if (ptUserId.HasValue) query = query.Where(p => p.PtUserId == ptUserId.Value);
+        var total = await query.CountAsync(ct);
+        var packages = await query.OrderByDescending(p => p.CreatedAt).ThenBy(p => p.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Include(p => p.Sessions).Include(p => p.StopRequests)
+            .AsSplitQuery().ToArrayAsync(ct);
+        return new SessionPackagePageView(await BuildViewsAsync(packages, ct), total, page, pageSize);
+    }
+
+    public async Task<SessionPackageView?> FindForAdminAsync(Guid packageId, CancellationToken ct)
+    {
+        var package = await db.SessionPackages.AsNoTracking()
+            .Where(p => p.Id == packageId)
+            .Include(p => p.Sessions).Include(p => p.StopRequests)
+            .AsSplitQuery().SingleOrDefaultAsync(ct);
+        return package is null ? null : (await BuildViewsAsync([package], ct))[0];
+    }
+
     private async Task<IReadOnlyList<SessionPackageView>> BuildViewsAsync(
         IReadOnlyList<SessionPackage> packages, CancellationToken ct)
     {
