@@ -1421,6 +1421,24 @@ paths:
         '404': {description: Không phải chủ gói}
         '409': {description: Gói hoặc các khoản tài chính không đủ điều kiện}
 
+  /me/session-packages/{id}/stop-preview:
+    get:
+      tags: [Bookings]
+      summary: Xem trước số tiền dự kiến hoàn khi dừng gói
+      description: Chỉ chủ gói xem được. Đây là ước tính tại thời điểm đọc; trạng thái buổi tập và mốc 48 giờ có thể thay đổi. POST yêu cầu dừng sẽ kiểm tra lại và chốt snapshot có thẩm quyền.
+      operationId: previewMySessionPackageStop
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Ước tính hoàn tiền cho từng buổi
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackageStopPreview'}
+        '401': {description: Chưa đăng nhập}
+        '404': {description: Không phải chủ gói}
+        '409': {description: Gói hoặc dữ liệu tài chính chưa đủ điều kiện}
+
   /me/session-packages/{id}/stop-requests/accept:
     post:
       tags: [Bookings]
@@ -5920,6 +5938,28 @@ components:
         pt_response_deadline_utc: {type: string, format: date-time}
         refund_quote_vnd: {type: integer, format: int64}
         finalized_at_utc: {type: string, format: date-time, nullable: true}
+
+    SessionPackageStopPreview:
+      type: object
+      required: [package_id, calculated_at_utc, refund_quote_vnd, sessions]
+      properties:
+        package_id: {type: string, format: uuid}
+        calculated_at_utc: {type: string, format: date-time}
+        refund_quote_vnd: {type: integer, format: int64}
+        sessions:
+          type: array
+          items: {$ref: '#/components/schemas/SessionPackageStopPreviewSession'}
+
+    SessionPackageStopPreviewSession:
+      type: object
+      required: [appointment_id, sequence, slot_start_utc, status, paid_allocation_vnd, eligible_for_refund]
+      properties:
+        appointment_id: {type: string, format: uuid}
+        sequence: {type: integer}
+        slot_start_utc: {type: string, format: date-time}
+        status: {$ref: '#/components/schemas/AppointmentStatus'}
+        paid_allocation_vnd: {type: integer, format: int64}
+        eligible_for_refund: {type: boolean}
 
     BookingHold:
       type: object

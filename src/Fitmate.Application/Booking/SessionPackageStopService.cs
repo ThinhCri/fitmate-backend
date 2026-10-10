@@ -1,5 +1,6 @@
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
+using System.Text.Json.Serialization;
 
 namespace Fitmate.Application.Booking;
 
@@ -7,6 +8,7 @@ public interface ISessionPackageStopStore
 {
     Task<bool> IsOwnedByAsync(Guid packageId, Guid memberId, CancellationToken ct);
     Task<bool> IsAssignedPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct);
+    Task<SessionPackageStopPreviewView> PreviewAsync(Guid packageId, Guid memberId, CancellationToken ct);
     Task<SessionPackageStopRequest> RequestAsync(Guid packageId, Guid memberId,
         string reason, CancellationToken ct);
     Task<SessionPackageStopRequest> AcceptByPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct);
@@ -18,12 +20,35 @@ public interface ISessionPackageStopStore
     Task<bool> FinalizeApprovedAsync(Guid packageId, DateTime nowUtc, CancellationToken ct);
 }
 
+public sealed record SessionPackageStopPreviewSessionView(
+    [property: JsonPropertyName("appointment_id")] Guid AppointmentId,
+    [property: JsonPropertyName("sequence")] int Sequence,
+    [property: JsonPropertyName("slot_start_utc")] DateTime SlotStartUtc,
+    [property: JsonPropertyName("status")] string Status,
+    [property: JsonPropertyName("paid_allocation_vnd")] long PaidAllocationVnd,
+    [property: JsonPropertyName("eligible_for_refund")] bool EligibleForRefund);
+
+public sealed record SessionPackageStopPreviewView(
+    [property: JsonPropertyName("package_id")] Guid PackageId,
+    [property: JsonPropertyName("calculated_at_utc")] DateTime CalculatedAtUtc,
+    [property: JsonPropertyName("refund_quote_vnd")] long RefundQuoteVnd,
+    [property: JsonPropertyName("sessions")] IReadOnlyList<SessionPackageStopPreviewSessionView> Sessions);
+
 /// <summary>
 /// Member/PT stop commands. Each mutation is owner-scoped in this layer and
 /// finalized asynchronously; refund transfer remains an Admin operation.
 /// </summary>
 public sealed class SessionPackageStopService(ISessionPackageStopStore store)
 {
+    public async Task<SessionPackageStopPreviewView> PreviewAsync(Guid memberId, Guid packageId,
+        CancellationToken ct)
+    {
+        if (memberId == Guid.Empty || packageId == Guid.Empty ||
+            !await store.IsOwnedByAsync(packageId, memberId, ct))
+            throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập.");
+        return await store.PreviewAsync(packageId, memberId, ct);
+    }
+
     public async Task<SessionPackageStopRequest> RequestAsync(Guid memberId, Guid packageId,
         string reason, CancellationToken ct)
     {

@@ -29,6 +29,10 @@ public sealed class SessionPackagesController(
     public Task<SessionPackageView> Get(Guid id, CancellationToken ct) =>
         packages.GetForParticipantAsync(current.GetUserIdOrThrow(), id, ct);
 
+    [HttpGet("{id:guid}/stop-preview")]
+    public Task<SessionPackageStopPreviewView> PreviewStop(Guid id, CancellationToken ct) =>
+        stops.PreviewAsync(current.GetUserIdOrThrow(), id, ct);
+
     [HttpPost("{id:guid}/stop-requests")]
     public async Task<SessionPackageStopView> RequestStop(Guid id,
         [FromBody] RequestPackageStopBody body,

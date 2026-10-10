@@ -106,6 +106,21 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         using var anonymous = _factory.CreateClient();
         var path = $"/api/v1/me/session-packages/{packageId}/stop-requests";
 
+        using (var privatePreview = await stranger.GetAsync(
+                   $"/api/v1/me/session-packages/{packageId}/stop-preview"))
+            privatePreview.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        using (var preview = await member.GetAsync(
+                   $"/api/v1/me/session-packages/{packageId}/stop-preview"))
+        {
+            preview.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var json = JsonDocument.Parse(await preview.Content.ReadAsStringAsync());
+            var sessions = json.RootElement.GetProperty("sessions").EnumerateArray().ToArray();
+            sessions.Should().HaveCount(4);
+            json.RootElement.GetProperty("refund_quote_vnd").GetInt64().Should().Be(
+                sessions.Where(s => s.GetProperty("eligible_for_refund").GetBoolean())
+                    .Sum(s => s.GetProperty("paid_allocation_vnd").GetInt64()));
+        }
+
         using (var unauthenticated = await anonymous.PostAsJsonAsync(path,
                    new { reason = "Tôi phải chuyển nơi ở trong thời gian tới." }))
             unauthenticated.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
@@ -141,6 +156,9 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
             replay.StatusCode.Should().Be(HttpStatusCode.OK);
             replay.Headers.GetValues("X-Idempotent-Replay").Should().Contain("true");
         }
+        using (var noLongerEligible = await member.GetAsync(
+                   $"/api/v1/me/session-packages/{packageId}/stop-preview"))
+            noLongerEligible.StatusCode.Should().Be(HttpStatusCode.Conflict);
         using (var differentPayload = await Post(member, path, "stop-request-123",
                    new { reason = "Tôi chuyển sang làm việc ở tỉnh khác lâu dài." }))
             differentPayload.StatusCode.Should().Be(HttpStatusCode.Conflict);

@@ -19,6 +19,60 @@ public sealed class EfSessionPackageStopStore(
     public Task<bool> IsAssignedPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct) =>
         db.SessionPackages.AnyAsync(p => p.Id == packageId && p.PtUserId == ptUserId, ct);
 
+    public async Task<SessionPackageStopPreviewView> PreviewAsync(Guid packageId, Guid memberId,
+        CancellationToken ct)
+    {
+        var package = await db.SessionPackages.AsNoTracking().Include(p => p.Sessions)
+            .Include(p => p.StopRequests)
+            .SingleOrDefaultAsync(p => p.Id == packageId && p.MemberId == memberId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập.");
+        if (package.Status != SessionPackageStatus.Active || package.PaymentId is null ||
+            package.StopRequests.Any(r => r.Status != SessionPackageStopRequestStatus.Withdrawn))
+            throw new ConflictException("PACKAGE_STOP_NOT_ELIGIBLE",
+                "Gói tập không ở trạng thái có thể yêu cầu dừng.");
+        var payment = await db.Payments.AsNoTracking().SingleOrDefaultAsync(p => p.Id == package.PaymentId, ct);
+        if (payment is null || payment.PackageId != packageId ||
+            payment.AmountVnd != package.TotalPriceVnd ||
+            payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded))
+            throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED",
+                "Dữ liệu gói tập và giao dịch cần đối soát.");
+        var ids = package.Sessions.Select(s => s.AppointmentId).ToArray();
+        var appointments = await db.Appointments.AsNoTracking()
+            .Where(a => ids.Contains(a.Id)).ToDictionaryAsync(a => a.Id, ct);
+        if (appointments.Count != package.Sessions.Count)
+            throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED",
+                "Thiếu dữ liệu buổi tập của gói.");
+
+        var nowUtc = DateTime.UtcNow;
+        var sessions = new List<SessionPackageStopPreviewSessionView>(package.Sessions.Count);
+        foreach (var session in package.Sessions.OrderBy(s => s.Sequence))
+        {
+            var appointment = appointments[session.AppointmentId];
+            if (appointment.MemberId != memberId || appointment.PtUserId != package.PtUserId ||
+                appointment.PaymentId != payment.Id ||
+                appointment.ActualPaidVnd != session.PaidAllocationVnd ||
+                appointment.PlatformFeeVnd != session.PlatformFeeAllocationVnd ||
+                appointment.TrainerShareVnd != session.TrainerShareAllocationVnd)
+                throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED",
+                    "Dữ liệu buổi tập và giao dịch không khớp.");
+            sessions.Add(new SessionPackageStopPreviewSessionView(appointment.Id, session.Sequence,
+                appointment.SlotStartUtc, appointment.Status.ToString(), session.PaidAllocationVnd,
+                appointment.Status == AppointmentStatus.Confirmed &&
+                appointment.SlotStartUtc >= nowUtc.AddHours(48)));
+        }
+        var eligibleIds = sessions.Where(s => s.EligibleForRefund)
+            .Select(s => s.AppointmentId).ToArray();
+        if (await db.Refunds.AnyAsync(r => r.PaymentId == payment.Id &&
+                eligibleIds.Contains(r.AppointmentId) &&
+                (r.Status == RefundStatus.Pending || r.Status == RefundStatus.Succeeded), ct) ||
+            await db.Set<ManualPtSettlement>().AnyAsync(s =>
+                eligibleIds.Contains(s.AppointmentId) && s.Status == "paid", ct))
+            throw new ConflictException("PACKAGE_STOP_FINANCE_REVIEW_REQUIRED",
+                "Một buổi đủ điều kiện đang được hoàn hoặc đã chi PT; cần Admin đối soát trước.");
+        return new SessionPackageStopPreviewView(packageId, nowUtc,
+            sessions.Where(s => s.EligibleForRefund).Sum(s => s.PaidAllocationVnd), sessions);
+    }
+
     public async Task<IReadOnlyList<Guid>> ListTimedOutPackageIdsAsync(DateTime nowUtc,
         int limit, CancellationToken ct) => await db.SessionPackageStopRequests.AsNoTracking()
         .Where(r => r.Status == SessionPackageStopRequestStatus.Pending &&
