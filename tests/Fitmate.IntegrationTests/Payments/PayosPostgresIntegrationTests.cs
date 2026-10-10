@@ -177,6 +177,42 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
     }
 
     [Fact]
+    public async Task Package_payout_checks_exact_session_allocation_and_refund()
+    {
+        var seed = await SeedPackageAsync();
+        await DeliverAsync(Webhook(seed.OrderCode, 400000));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var package = await db.SessionPackages.Include(p => p.Sessions).SingleAsync(p => p.Id == seed.PackageId);
+        var sessions = package.Sessions.OrderBy(s => s.Sequence).Take(2).ToArray();
+        var pastSlot = DateTime.UtcNow.AddDays(-2);
+        foreach (var session in sessions)
+        {
+            var appointment = await db.Appointments.SingleAsync(a => a.Id == session.AppointmentId);
+            appointment.RescheduleSlot(pastSlot, pastSlot, 60);
+            appointment.ForceStatusForTesting(AppointmentStatus.Completed, DateTime.UtcNow.AddHours(-25));
+        }
+        var payment = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
+        var refund = Refund.CreateSystemRefund(payment.Id, sessions[1].AppointmentId, 25000, "Test package session refund");
+        refund.MarkSucceeded("test-provider-" + Guid.NewGuid());
+        payment.ApplyRefund(25000);
+        db.Refunds.Add(refund);
+        await db.SaveChangesAsync();
+
+        var settlementStore = scope.ServiceProvider.GetRequiredService<IManualSettlementStore>();
+        var admin = Guid.NewGuid();
+        async Task<long> EligibleAsync(Guid appointmentId)
+        {
+            long amount = 0;
+            await settlementStore.UpdateAsync(appointmentId, admin, "test.package_payout_eligibility",
+                context => amount = ManualSettlementService.EligibleAmount(context), default);
+            return amount;
+        }
+        (await EligibleAsync(sessions[0].AppointmentId)).Should().Be(90000);
+        (await EligibleAsync(sessions[1].AppointmentId)).Should().Be(67500);
+    }
+
+    [Fact]
     public async Task Late_package_webhook_releases_every_slot_and_creates_one_refundable_liability()
     {
         var seed = await SeedPackageAsync(releaseOneHold: true);

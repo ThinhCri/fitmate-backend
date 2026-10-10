@@ -9,7 +9,9 @@ public sealed record ApproveSettlementRequest(DateTime CustomerConfirmedAt, Date
     string SessionEvidenceReference, string PayeeEvidenceReference, bool NoOpenDisputeConfirmed);
 public sealed record RecordTransferRequest(string BankReference, string EvidenceReference, DateTime TransferredAt);
 public sealed record SettlementHoldRequest(string Reason);
-public sealed record SettlementContext(Appointment Appointment, Payment Payment, ManualPtSettlement Settlement, bool HasPendingRefund, bool HasOpenDispute = false);
+public sealed record SettlementContext(Appointment Appointment, Payment Payment, ManualPtSettlement Settlement,
+    bool HasPendingRefund, bool HasOpenDispute = false,
+    bool PackageSessionVerified = false, long? PackageSessionRefundedVnd = null);
 public sealed record SettlementPage(IReadOnlyList<ManualPtSettlement> Items, int Total, int Page, int PageSize);
 public sealed record ConfirmManualRefundRequest(string BankReference, string EvidenceReference, DateTime TransferredAt);
 public sealed record ManualRefundPage(IReadOnlyList<RefundView> Items, int Total, int Page, int PageSize);
@@ -114,17 +116,22 @@ public sealed class ManualSettlementService(IManualSettlementStore store, IAutho
              context.Appointment.CompletedAtUtc.Value.Add(PayoutWaitingPeriod) > DateTime.UtcNow))
             throw new ConflictException("SETTLEMENT_WAITING_PERIOD", "Trainer payout is available 24 hours after the session is confirmed complete.");
 
+        var isPackage = context.Payment.PackageId.HasValue;
+        var refundedVnd = isPackage ? context.PackageSessionRefundedVnd : context.Payment.RefundedSoFarVnd;
         if (context.Appointment.Status != AppointmentStatus.Completed ||
             context.Appointment.SlotStartUtc.AddMinutes(context.Appointment.DurationMinutes) > DateTime.UtcNow ||
             context.Payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded) || context.HasPendingRefund || context.HasOpenDispute ||
             context.Appointment.PaymentId != context.Payment.Id || context.Payment.AmountVnd <= 0 ||
-            context.Appointment.ActualPaidVnd != context.Payment.AmountVnd ||
-            context.Appointment.PlatformFeeVnd + context.Appointment.TrainerShareVnd != context.Payment.AmountVnd)
+            context.Appointment.ActualPaidVnd <= 0 ||
+            (!isPackage && context.Appointment.ActualPaidVnd != context.Payment.AmountVnd) ||
+            (isPackage && (!context.PackageSessionVerified || !refundedVnd.HasValue)) ||
+            refundedVnd is null || refundedVnd < 0 || refundedVnd > context.Appointment.ActualPaidVnd ||
+            context.Appointment.PlatformFeeVnd + context.Appointment.TrainerShareVnd != context.Appointment.ActualPaidVnd)
             throw new ConflictException("SETTLEMENT_NOT_ELIGIBLE", "A completed, paid session without pending refunds is required.");
         // Cumulative fee refund uses the same rounding as the original fee snapshot.
-        var refundedFee = (long)Math.Round(context.Appointment.PlatformFeeVnd * (decimal)context.Payment.RefundedSoFarVnd /
-            context.Payment.AmountVnd, MidpointRounding.AwayFromZero);
-        var amount = checked(context.Appointment.TrainerShareVnd - (context.Payment.RefundedSoFarVnd - refundedFee));
+        var refundedFee = (long)Math.Round(context.Appointment.PlatformFeeVnd * (decimal)refundedVnd.Value /
+            context.Appointment.ActualPaidVnd, MidpointRounding.AwayFromZero);
+        var amount = checked(context.Appointment.TrainerShareVnd - (refundedVnd.Value - refundedFee));
         if (amount <= 0) throw new ConflictException("SETTLEMENT_NOT_ELIGIBLE", "No positive trainer balance remains.");
         return amount;
     }

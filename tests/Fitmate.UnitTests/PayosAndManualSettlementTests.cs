@@ -123,6 +123,31 @@ public class PayosAndManualSettlementTests
     }
 
     [Fact]
+    public void Package_payout_uses_verified_session_allocation_and_its_own_refunds()
+    {
+        var slot = DateTime.UtcNow.AddDays(-2);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100000);
+        var payment = Payment.CreatePendingForPackage(Guid.NewGuid(), PaymentMethod.Payos, 400000);
+        payment.MarkPaid("test-package-payout");
+        appt.AttachPayment(payment.Id, 100000, 0, .10m, 10000, 90000, "package-v1");
+        appt.ForceStatusForTesting(AppointmentStatus.Completed, DateTime.UtcNow.AddHours(-25));
+        payment.ApplyRefund(25000); // May belong to this or another session, never allocate globally.
+        var baseContext = new SettlementContext(appt, payment,
+            ManualPtSettlement.Create(appt.Id, appt.PtUserId, payment.Id), false);
+
+        var unverified = () => ManualSettlementService.EligibleAmount(baseContext);
+        unverified.Should().Throw<ConflictException>();
+        ManualSettlementService.EligibleAmount(baseContext with
+        {
+            PackageSessionVerified = true, PackageSessionRefundedVnd = 0
+        }).Should().Be(90000);
+        ManualSettlementService.EligibleAmount(baseContext with
+        {
+            PackageSessionVerified = true, PackageSessionRefundedVnd = 25000
+        }).Should().Be(67500);
+    }
+
+    [Fact]
     public async Task Non_admin_cannot_review_or_transfer_in_application_layer()
     {
         var auth = new Mock<IAuthorizationGuard>();

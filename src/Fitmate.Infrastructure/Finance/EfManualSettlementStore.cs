@@ -139,6 +139,23 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                 ?? throw new NotFoundException("PAYMENT_NOT_FOUND", "Payment not found.");
             var appointment = await payments.FindAppointmentForUpdateAsync(appointmentId, ct)
                 ?? throw new NotFoundException("BOOKING_NOT_FOUND", "Booking not found.");
+            var packageSessionVerified = false;
+            long? packageSessionRefundedVnd = null;
+            if (payment.PackageId.HasValue)
+            {
+                var allocation = await db.SessionPackageSessions.SingleOrDefaultAsync(s =>
+                    s.PackageId == payment.PackageId.Value && s.AppointmentId == appointmentId, ct);
+                if (allocation is null || appointment.PaymentId != payment.Id ||
+                    appointment.ActualPaidVnd != allocation.PaidAllocationVnd ||
+                    appointment.PlatformFeeVnd != allocation.PlatformFeeAllocationVnd ||
+                    appointment.TrainerShareVnd != allocation.TrainerShareAllocationVnd)
+                    throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED", "Package payout allocation does not match the appointment.");
+                packageSessionVerified = true;
+                packageSessionRefundedVnd = await db.Refunds
+                    .Where(r => r.PaymentId == payment.Id && r.AppointmentId == appointmentId &&
+                        r.Status == RefundStatus.Succeeded)
+                    .SumAsync(r => (long?)r.AmountVnd, ct) ?? 0L;
+            }
             var settlement = await db.Set<ManualPtSettlement>().SingleOrDefaultAsync(s => s.AppointmentId == appointmentId, ct);
             if (settlement == null)
             {
@@ -149,7 +166,8 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             var pending = await db.Refunds.AnyAsync(r => r.PaymentId == paymentId && r.Status == RefundStatus.Pending, ct);
             var dispute = await db.SupportTickets.AnyAsync(t => t.BookingId == appointmentId &&
                 t.Status != Fitmate.Domain.Support.SupportTicketStatus.Resolved && t.Status != Fitmate.Domain.Support.SupportTicketStatus.Closed, ct);
-            update(new SettlementContext(appointment, payment, settlement, pending, dispute));
+            update(new SettlementContext(appointment, payment, settlement, pending, dispute,
+                packageSessionVerified, packageSessionRefundedVnd));
             if (wasPaid) return settlement; // Do not emit duplicate receipts/audits.
             if (settlement.BankReference != null)
             {
