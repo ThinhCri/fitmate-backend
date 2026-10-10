@@ -2509,6 +2509,8 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("BookingId");
+
                     b.HasIndex("Category", "CreatedAt");
 
                     b.HasIndex("Status", "CreatedAt");

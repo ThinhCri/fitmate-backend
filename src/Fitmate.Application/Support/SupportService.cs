@@ -35,6 +35,12 @@ public class SupportService : ISupportService
                 ErrorCodes.Validation.FieldInvalid,
                 "Initial message is required.",
                 new Dictionary<string, string[]> { ["message"] = new[] { "required" } });
+        if (string.Equals(request.Category.Trim(), "booking_dispute", StringComparison.OrdinalIgnoreCase) &&
+            !request.BookingId.HasValue)
+            throw new ValidationException(
+                ErrorCodes.Validation.FieldInvalid,
+                "A booking dispute must identify the affected appointment.",
+                new Dictionary<string, string[]> { ["booking_id"] = new[] { "required" } });
 
         var priority = SupportTicketPriority.Normal;
         if (!string.IsNullOrWhiteSpace(request.Priority) &&
@@ -245,7 +251,8 @@ public class SupportService : ISupportService
         t.CreatedAt,
         t.UpdatedAt,
         t.ResolvedAt,
-        t.ClosedAt);
+        t.ClosedAt,
+        t.BookingId);
 
     private static SupportTicketDetailDto MapToDetailDto(SupportTicket t) => new(
         t.Id,
@@ -264,6 +271,7 @@ public class SupportService : ISupportService
             m.IsAdmin,
             m.Content,
             m.AttachmentUrls ?? new List<string>(),
-            m.CreatedAt)).ToList());
+            m.CreatedAt)).ToList(),
+        t.BookingId);
 }
 

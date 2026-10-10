@@ -36,7 +36,8 @@ public record SupportTicketSummaryDto(
     [property: JsonPropertyName("created_at")] DateTime CreatedAt,
     [property: JsonPropertyName("updated_at")] DateTime UpdatedAt,
     [property: JsonPropertyName("resolved_at")] DateTime? ResolvedAt,
-    [property: JsonPropertyName("closed_at")] DateTime? ClosedAt);
+    [property: JsonPropertyName("closed_at")] DateTime? ClosedAt,
+    [property: JsonPropertyName("booking_id")] Guid? BookingId = null);
 
 public record SupportTicketDetailDto(
     [property: JsonPropertyName("id")] Guid Id,
@@ -49,7 +50,8 @@ public record SupportTicketDetailDto(
     [property: JsonPropertyName("updated_at")] DateTime UpdatedAt,
     [property: JsonPropertyName("resolved_at")] DateTime? ResolvedAt,
     [property: JsonPropertyName("closed_at")] DateTime? ClosedAt,
-    [property: JsonPropertyName("messages")] IReadOnlyList<SupportTicketMessageDto> Messages);
+    [property: JsonPropertyName("messages")] IReadOnlyList<SupportTicketMessageDto> Messages,
+    [property: JsonPropertyName("booking_id")] Guid? BookingId = null);
 
 public record PagedSupportTicketsResult(
     [property: JsonPropertyName("items")] IReadOnlyList<SupportTicketSummaryDto> Items,

@@ -2,8 +2,11 @@ using System.Net;
 using System.Net.Http.Json;
 using Fitmate.Application.Preferences;
 using Fitmate.Application.Support;
+using Fitmate.Domain.Booking;
 using Fitmate.IntegrationTests.Infrastructure;
+using Fitmate.Infrastructure.Persistence;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Fitmate.IntegrationTests;
 
@@ -90,5 +93,38 @@ public class SupportAndPreferencesTests : IClassFixture<FitmateTestAppFactory>
         // IDOR Security check: User B tries to view User A's ticket -> MUST return 404 Not Found
         var getByBResponse = await clientB.GetAsync($"/api/v1/support/tickets/{ticketId}");
         getByBResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task BookingDispute_PersistsLinkedAppointmentAndRejectsUnrelatedUser()
+    {
+        var memberId = Guid.NewGuid();
+        var ptId = Guid.NewGuid();
+        var appointment = Appointment.CreateHold(memberId, ptId, Guid.NewGuid(),
+            DateTime.UtcNow.AddDays(2), DateTime.UtcNow.AddDays(2), 60, 100_000);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            db.Appointments.Add(appointment);
+            await db.SaveChangesAsync();
+        }
+
+        var request = new CreateSupportTicketRequest("PT vắng mặt", "booking_dispute", "High",
+            "PT không có mặt tại buổi tập.", null, appointment.Id);
+        var member = _factory.CreateAuthenticatedClient(role: "Member", userId: memberId);
+        var unrelated = _factory.CreateAuthenticatedClient(role: "Member", userId: Guid.NewGuid());
+
+        (await unrelated.PostAsJsonAsync("/api/v1/support/tickets", request)).StatusCode
+            .Should().Be(HttpStatusCode.NotFound);
+        var response = await member.PostAsJsonAsync("/api/v1/support/tickets", request);
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await response.Content.ReadFromJsonAsync<SupportTicketDetailDto>();
+        created!.BookingId.Should().Be(appointment.Id);
+
+        var admin = _factory.CreateAuthenticatedClient(role: "Admin", userId: Guid.NewGuid());
+        var adminResponse = await admin.GetAsync($"/api/v1/admin/support/tickets/{created.Id}");
+        adminResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await adminResponse.Content.ReadFromJsonAsync<SupportTicketDetailDto>())!
+            .BookingId.Should().Be(appointment.Id);
     }
 }

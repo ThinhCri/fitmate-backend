@@ -1,5 +1,11 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-11 — Liên kết phiếu hỗ trợ với buổi tập [BE-807/819]
+- Mobile gửi `booking_id` khi mở phiếu từ chi tiết lịch; BE kiểm tra người gửi là participant và trả `booking_id` ở danh sách/chi tiết để Member/Admin tra cứu đúng buổi. Phiếu loại `booking_dispute` không có mã buổi bị từ chối thay vì tạo case mồ côi.
+- Bổ sung migration có thể chạy lại an toàn cho cột `support_tickets."BookingId"` còn thiếu trong chuỗi migration; không apply lên DB ứng dụng. Sửa transaction khóa buổi tập qua EF execution strategy, tránh HTTP 500 khi tạo phiếu liên kết trên PostgreSQL.
+- Kiểm thử: SupportService unit 21/21 trước bổ sung guard cuối, PostgreSQL SupportAndPreferences integration 3/3, Mobile support repository 9/9, Admin reports API 4/4, Mobile và Web typecheck PASS. Cần chạy lại suite sau các chỉnh sửa cuối và nghiệm thu trên thiết bị.
+- Liên kết phiếu không tự đưa ra phán quyết vắng mặt, hoàn tiền hay dấu phạt. Checkout gói PT vẫn internal-only cho tới khi workflow quyết định và provider/operator UAT hoàn tất.
+
 ## 2026-10-10 — Quyết định yêu cầu dừng gói PT [BE-807/809]
 - Đổi stop request từ quan hệ một-một sang lịch sử nhiều request/gói, nhưng DB chỉ cho một request Pending/Approved tại một thời điểm. Hội viên có thể rút khi còn chờ trong 24 giờ, giữ bản ghi cũ và gửi lại nếu thay đổi kế hoạch.
 - PT được phân công có thể chấp nhận sớm; PT không có quyền tự bác yêu cầu. Nếu chưa được chấp nhận/rút khi hết 24 giờ, booking worker duyệt theo timeout. Mỗi chuyển trạng thái khóa payment, audit/outbox atomic; request lặp và sweep lặp không tạo quyết định/notification thứ hai. Test PostgreSQL đã kiểm quyền, lịch sử và cuộc đua PT accept với member withdraw.

@@ -23,6 +23,7 @@ public class SupportTicketConfiguration : IEntityTypeConfiguration<SupportTicket
         e.Property(x => x.ClosedAt).HasColumnName("closed_at");
 
         e.HasIndex(x => new { x.UserId, x.CreatedAt });
+        e.HasIndex(x => x.BookingId);
         e.HasIndex(x => new { x.Status, x.CreatedAt });
         e.HasIndex(x => new { x.Category, x.CreatedAt });
 

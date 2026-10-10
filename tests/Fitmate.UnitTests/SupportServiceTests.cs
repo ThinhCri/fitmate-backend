@@ -64,6 +64,38 @@ public class SupportServiceTests
         string message = "TÃ´i khÃ´ng nháº­n Ä‘Æ°á»£c mÃ£ xÃ¡c thá»±c.") =>
         new(subject, category, Priority: null, message, AttachmentUrls: null);
 
+    [Fact]
+    public async Task LinkedBooking_IsReturnedToOwnerAndAdmin()
+    {
+        var store = new InMemoryStore();
+        var service = new SupportService(store);
+        var bookingId = Guid.NewGuid();
+        var request = ValidRequest() with { BookingId = bookingId };
+
+        var created = await service.CreateTicketAsync(UserId, request, CancellationToken.None);
+        var ownerView = await service.GetTicketAsync(created.Id, UserId, false, CancellationToken.None);
+        var adminView = await service.GetTicketAsync(created.Id, AdminId, true, CancellationToken.None);
+
+        store.LastLinkedBookingId.Should().Be(bookingId);
+        created.BookingId.Should().Be(bookingId);
+        ownerView!.BookingId.Should().Be(bookingId);
+        adminView!.BookingId.Should().Be(bookingId);
+    }
+
+    [Fact]
+    public async Task BookingDispute_WithoutBookingId_IsRejected()
+    {
+        var store = new InMemoryStore();
+        var service = new SupportService(store);
+
+        var action = () => service.CreateTicketAsync(UserId,
+            ValidRequest(category: "booking_dispute"), CancellationToken.None);
+
+        var exception = await action.Should().ThrowAsync<ValidationException>();
+        exception.Which.Errors.Should().ContainKey("booking_id");
+        store.Added.Should().BeEmpty();
+    }
+
     // ---------- Create: validation ----------
 
     [Fact]

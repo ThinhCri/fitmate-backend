@@ -96,11 +96,15 @@ public class EfSupportTicketStore : ISupportTicketStore
         var ids = _db.ChangeTracker.Entries<SupportTicket>().Where(e => e.Entity.BookingId.HasValue)
             .Select(e => e.Entity.BookingId!.Value).Distinct().OrderBy(x => x).ToList();
         if (!_db.Database.IsNpgsql() || ids.Count == 0) { await _db.SaveChangesAsync(ct); return; }
-        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
-        foreach (var id in ids)
-            await _db.Appointments.FromSqlInterpolated($"SELECT * FROM appointments WHERE id = {id} FOR UPDATE").LoadAsync(ct);
-        await _db.SaveChangesAsync(ct);
-        await transaction.CommitAsync(ct);
+        var strategy = _db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+            foreach (var id in ids)
+                await _db.Appointments.FromSqlInterpolated($"SELECT * FROM appointments WHERE id = {id} FOR UPDATE").LoadAsync(ct);
+            await _db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        });
     }
 }
 
