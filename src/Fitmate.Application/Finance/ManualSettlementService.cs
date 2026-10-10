@@ -2,6 +2,8 @@ using Fitmate.Application.Auth;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Payment;
+using Fitmate.Domain.Support;
+using System.Text.Json.Serialization;
 
 namespace Fitmate.Application.Finance;
 
@@ -15,9 +17,20 @@ public sealed record SettlementContext(Appointment Appointment, Payment Payment,
 public sealed record SettlementPage(IReadOnlyList<ManualPtSettlement> Items, int Total, int Page, int PageSize);
 public sealed record ConfirmManualRefundRequest(string BankReference, string EvidenceReference, DateTime TransferredAt);
 public sealed record ManualRefundPage(IReadOnlyList<RefundView> Items, int Total, int Page, int PageSize);
+public sealed record ResolveBookingIncidentRequest(
+    [property: JsonPropertyName("outcome")] string Outcome,
+    [property: JsonPropertyName("reason")] string Reason,
+    [property: JsonPropertyName("evidence_reference")] string EvidenceReference);
+public sealed record BookingIncidentDecisionView(
+    [property: JsonPropertyName("ticket_id")] Guid TicketId,
+    [property: JsonPropertyName("booking_id")] Guid BookingId,
+    [property: JsonPropertyName("outcome")] string Outcome,
+    [property: JsonPropertyName("refund_id")] Guid? RefundId);
 
 public interface IManualSettlementStore
 {
+    Task<BookingIncidentDecisionView> ResolveIncidentAsync(Guid adminId, Guid ticketId,
+        BookingIncidentOutcome outcome, string reason, string evidenceReference, CancellationToken ct);
     Task<ManualPtSettlement> UpdateAsync(Guid appointmentId, Guid adminId, string action, Action<SettlementContext> update, CancellationToken ct);
     Task<SettlementPage> ListAsync(int page, int pageSize, CancellationToken ct);
     Task<RefundView> CreateRefundAsync(Guid adminId, CreateRefundRequest request, CancellationToken ct);
@@ -34,6 +47,22 @@ public interface IFinanceStepUp
 public sealed class ManualSettlementService(IManualSettlementStore store, IAuthorizationGuard authz, IFinanceStepUp stepUp)
 {
     public static readonly TimeSpan PayoutWaitingPeriod = TimeSpan.FromHours(24);
+
+    public async Task<BookingIncidentDecisionView> ResolveBookingIncidentAsync(Guid adminId,
+        Guid ticketId, ResolveBookingIncidentRequest request, CancellationToken ct)
+    {
+        await authz.EnsureRoleAsync(adminId, "Admin", ct);
+        await stepUp.EnsureAsync(adminId, ct);
+        if (!Enum.TryParse<BookingIncidentOutcome>(request.Outcome, true, out var outcome) ||
+            !Enum.IsDefined(outcome) ||
+            string.IsNullOrWhiteSpace(request.Reason) || request.Reason.Trim().Length is < 20 or > 1000 ||
+            string.IsNullOrWhiteSpace(request.EvidenceReference) ||
+            request.EvidenceReference.Trim().Length is < 5 or > 200)
+            throw new DomainException("BOOKING_DECISION_INVALID",
+                "Choose a valid outcome, a 20-1000 character reason and a private evidence reference.", 400);
+        return await store.ResolveIncidentAsync(adminId, ticketId, outcome,
+            request.Reason.Trim(), request.EvidenceReference.Trim(), ct);
+    }
 
     public async Task<RefundView> CreateRefundAsync(Guid adminId, CreateRefundRequest request, CancellationToken ct)
     {

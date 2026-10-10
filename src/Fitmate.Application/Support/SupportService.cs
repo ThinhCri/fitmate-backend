@@ -272,6 +272,9 @@ public class SupportService : ISupportService
             m.Content,
             m.AttachmentUrls ?? new List<string>(),
             m.CreatedAt)).ToList(),
-        t.BookingId);
+        t.BookingId,
+        t.BookingResolution?.ToString(),
+        t.BookingResolvedAtUtc,
+        t.BookingResolutionReason);
 }
 

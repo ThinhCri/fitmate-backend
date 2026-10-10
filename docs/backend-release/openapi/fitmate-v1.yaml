@@ -4347,6 +4347,58 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /admin/finance/booking-incidents/{ticketId}/resolve:
+    post:
+      tags: [Admin]
+      summary: Decide a linked booking incident with finance step-up
+      operationId: adminResolveBookingIncident
+      parameters:
+        - in: path
+          name: ticketId
+          required: true
+          schema: { type: string, format: uuid }
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string }
+        - in: header
+          name: X-Finance-Totp
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome, reason, evidence_reference]
+              properties:
+                outcome: { type: string, enum: [SessionDelivered, MemberNoShow, PtNoShow] }
+                reason: { type: string, minLength: 20, maxLength: 1000 }
+                evidence_reference: { type: string, minLength: 5, maxLength: 200 }
+      responses:
+        '200':
+          description: Incident decision recorded; PT no-show returns a pending refund ID
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ticket_id, booking_id, outcome]
+                properties:
+                  ticket_id: { type: string, format: uuid }
+                  booking_id: { type: string, format: uuid }
+                  outcome: { type: string }
+                  refund_id: { type: string, format: uuid, nullable: true }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Incident or payment state conflicts with the requested decision
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProblemDetails' }
+
   /admin/finance/overview:
     get:
       tags: [Admin]
@@ -6371,6 +6423,9 @@ components:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
         booking_id: { type: string, format: uuid, nullable: true }
+        booking_resolution: { type: string, nullable: true, enum: [SessionDelivered, MemberNoShow, PtNoShow] }
+        booking_resolved_at_utc: { type: string, format: date-time, nullable: true }
+        booking_resolution_reason: { type: string, nullable: true }
         subject: { type: string }
         category: { type: string }
         priority: { type: string }

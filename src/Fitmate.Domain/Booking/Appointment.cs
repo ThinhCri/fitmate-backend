@@ -148,6 +148,20 @@ public class Appointment : AuditableEntity
         Touch();
     }
 
+    public void ResolveCompletedByAdmin(DateTime nowUtc)
+    {
+        if (Status is not (AppointmentStatus.Confirmed or AppointmentStatus.InProgress or
+            AppointmentStatus.AwaitingMemberConfirmation or AppointmentStatus.Disputed) ||
+            nowUtc.Kind != DateTimeKind.Utc ||
+            nowUtc < SlotStartUtc.AddMinutes(DurationMinutes))
+            throw new ConflictException(ErrorCodes.Booking.CannotTransition,
+                "The appointment is not eligible for this Admin attendance decision.");
+        Status = AppointmentStatus.Completed;
+        CompletedAtUtc = nowUtc;
+        LegacyCompletionTimeUnknown = false;
+        Touch();
+    }
+
     public void RescheduleSlot(DateTime newSlotStartUtc, DateTime newSlotStartLocal, int newDurationMinutes)
     {
         SlotStartUtc = newSlotStartUtc;

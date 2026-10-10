@@ -6,6 +6,7 @@ using Fitmate.Domain.Booking;
 using Fitmate.Domain.Identity;
 using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
+using Fitmate.Domain.Support;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,6 +14,137 @@ namespace Fitmate.Infrastructure.Finance;
 
 public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore payments, IOutboxDispatcher outbox) : IManualSettlementStore
 {
+    public async Task<BookingIncidentDecisionView> ResolveIncidentAsync(Guid adminId, Guid ticketId,
+        BookingIncidentOutcome outcome, string reason, string evidenceReference, CancellationToken ct)
+    {
+        var link = await db.SupportTickets.AsNoTracking().Where(t => t.Id == ticketId)
+            .Select(t => t.BookingId).SingleOrDefaultAsync(ct)
+            ?? throw new NotFoundException("BOOKING_INCIDENT_NOT_FOUND", "Linked booking incident not found.");
+        var paymentId = await db.Appointments.AsNoTracking().Where(a => a.Id == link)
+            .Select(a => a.PaymentId).SingleOrDefaultAsync(ct)
+            ?? throw new ConflictException("BOOKING_PAYMENT_REQUIRED", "A paid booking is required for this decision.");
+
+        return await payments.ExecuteInTransactionAsync(async () =>
+        {
+            var payment = await payments.FindByIdForUpdateAsync(paymentId, ct)
+                ?? throw new NotFoundException("PAYMENT_NOT_FOUND", "Payment not found.");
+            var appointment = await payments.FindAppointmentForUpdateAsync(link, ct)
+                ?? throw new NotFoundException("BOOKING_NOT_FOUND", "Booking not found.");
+            var ticket = await db.SupportTickets.FromSqlInterpolated(
+                    $"SELECT * FROM support_tickets WHERE id = {ticketId} FOR UPDATE")
+                .SingleOrDefaultAsync(ct)
+                ?? throw new NotFoundException("BOOKING_INCIDENT_NOT_FOUND", "Linked booking incident not found.");
+
+            if (ticket.BookingId != appointment.Id || ticket.Category != "booking_dispute" ||
+                appointment.PaymentId != payment.Id ||
+                payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded) ||
+                payment.Method != PaymentMethod.Payos)
+                throw new ConflictException("BOOKING_INCIDENT_RECONCILIATION_REQUIRED",
+                    "The incident, appointment and payOS payment do not match.");
+
+            var now = DateTime.UtcNow;
+            if (now < appointment.SlotStartUtc.AddMinutes(appointment.DurationMinutes))
+                throw new ConflictException("BOOKING_SESSION_NOT_ENDED", "Attendance can be decided after the scheduled session ends.");
+
+            var allocationVnd = appointment.ActualPaidVnd;
+            if (payment.PackageId.HasValue)
+            {
+                var session = await db.SessionPackageSessions.SingleOrDefaultAsync(s =>
+                    s.PackageId == payment.PackageId && s.AppointmentId == appointment.Id, ct);
+                if (session is null || allocationVnd != session.PaidAllocationVnd ||
+                    appointment.PlatformFeeVnd != session.PlatformFeeAllocationVnd ||
+                    appointment.TrainerShareVnd != session.TrainerShareAllocationVnd)
+                    throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED",
+                        "The package session allocation does not match the paid booking.");
+            }
+            else if (payment.RequireAppointmentId() != appointment.Id || allocationVnd != payment.AmountVnd)
+                throw new ConflictException("BOOKING_INCIDENT_RECONCILIATION_REQUIRED",
+                    "The single-session amount does not match the payment.");
+
+            if (allocationVnd <= 0 ||
+                appointment.PlatformFeeVnd + appointment.TrainerShareVnd != allocationVnd)
+                throw new ConflictException("BOOKING_INCIDENT_RECONCILIATION_REQUIRED",
+                    "The booking financial snapshot is invalid.");
+
+            Guid? refundId = null;
+            if (outcome == BookingIncidentOutcome.PtNoShow)
+            {
+                if (appointment.Status is not (AppointmentStatus.Confirmed or AppointmentStatus.InProgress or
+                    AppointmentStatus.AwaitingMemberConfirmation or AppointmentStatus.Disputed))
+                    throw new ConflictException("BOOKING_DECISION_NOT_ALLOWED", "PT no-show cannot resolve this booking state.");
+                var settlement = await db.Set<ManualPtSettlement>()
+                    .SingleOrDefaultAsync(s => s.AppointmentId == appointment.Id, ct);
+                if (settlement?.Status == "paid")
+                    throw new ConflictException("PAYOUT_ALREADY_TRANSFERRED",
+                        "A paid-out booking requires manual finance reconciliation before refund.");
+                var refundedForSession = await db.Refunds.Where(r => r.PaymentId == payment.Id &&
+                        r.AppointmentId == appointment.Id && r.Status == RefundStatus.Succeeded)
+                    .SumAsync(r => (long?)r.AmountVnd, ct) ?? 0;
+                var pendingForSession = await db.Refunds.Where(r => r.PaymentId == payment.Id &&
+                        r.AppointmentId == appointment.Id && r.Status == RefundStatus.Pending)
+                    .SumAsync(r => (long?)r.AmountVnd, ct) ?? 0;
+                if (refundedForSession != 0 || pendingForSession != 0 ||
+                    allocationVnd > payment.AmountVnd - payment.RefundedSoFarVnd -
+                    (await db.Refunds.Where(r => r.PaymentId == payment.Id && r.Status == RefundStatus.Pending)
+                        .SumAsync(r => (long?)r.AmountVnd, ct) ?? 0))
+                    throw new ConflictException("REFUND_RECONCILIATION_REQUIRED",
+                        "An existing refund or payment balance needs manual review.");
+                appointment.Cancel("Admin verified PT no-show; see incident ticket.");
+                var refund = Refund.Create(payment.Id, appointment.Id, allocationVnd,
+                    $"PT no-show incident {ticket.Id}", adminId);
+                db.Refunds.Add(refund);
+                refundId = refund.Id;
+                settlement?.Hold("PT no-show incident: refund pending.");
+                outbox.Enqueue("payment.refund_requested", new
+                {
+                    refundId, paymentId = payment.Id, appointmentId = appointment.Id,
+                    packageId = payment.PackageId, amountVnd = allocationVnd
+                });
+                outbox.Enqueue("booking.cancelled", new
+                {
+                    appointmentId = appointment.Id, actorUserId = adminId,
+                    reason = "Admin verified PT no-show", memberId = appointment.MemberId,
+                    ptUserId = appointment.PtUserId
+                });
+            }
+            else
+            {
+                appointment.ResolveCompletedByAdmin(now);
+                if (await db.FinancialLedgerEntries.AnyAsync(e => e.AppointmentId == appointment.Id &&
+                    e.EntryType == FinancialLedgerEntryTypes.GrossBookingFee, ct))
+                    throw new ConflictException("BOOKING_ALREADY_RECOGNIZED", "This session already has recognized revenue.");
+                db.FinancialLedgerEntries.AddRange(new[]
+                {
+                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, allocationVnd, now,
+                        appointment.PtUserId.ToString(), appointmentId: appointment.Id,
+                        paymentId: payment.Id, sourceEventId: $"booking.completed:{appointment.Id}"),
+                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.PlatformCommission, appointment.PlatformFeeVnd, now,
+                        appointment.PtUserId.ToString(), appointmentId: appointment.Id,
+                        paymentId: payment.Id, sourceEventId: $"booking.completed:{appointment.Id}"),
+                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayable, appointment.TrainerShareVnd, now,
+                        appointment.PtUserId.ToString(), appointmentId: appointment.Id,
+                        paymentId: payment.Id, sourceEventId: $"booking.completed:{appointment.Id}")
+                });
+                outbox.Enqueue("booking.completed", new
+                {
+                    appointmentId = appointment.Id, memberId = appointment.MemberId,
+                    ptUserId = appointment.PtUserId, confirmationSource = "admin_incident_decision"
+                });
+            }
+
+            ticket.ResolveBookingIncident(adminId, outcome, reason, evidenceReference, now);
+            db.SupportTicketMessages.Add(ticket.Messages.Last());
+            db.AuditLogs.Add(AuditLog.Record(adminId, "Admin", "booking.incident_resolved",
+                "Appointment", appointment.Id,
+                metadataJson: System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    ticketId, outcome = outcome.ToString(), refundId, evidenceReference
+                })));
+            await db.SaveChangesAsync(ct);
+            return new BookingIncidentDecisionView(ticketId, appointment.Id, outcome.ToString(), refundId);
+        }, ct);
+    }
+
     public Task<RefundView> CreateRefundAsync(Guid adminId, CreateRefundRequest request, CancellationToken ct) =>
         payments.ExecuteInTransactionAsync(async () =>
         {

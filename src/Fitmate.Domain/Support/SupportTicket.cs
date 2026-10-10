@@ -1,4 +1,13 @@
+using Fitmate.Domain.Common;
+
 namespace Fitmate.Domain.Support;
+
+public enum BookingIncidentOutcome
+{
+    SessionDelivered = 1,
+    MemberNoShow = 2,
+    PtNoShow = 3
+}
 
 public enum SupportTicketStatus
 {
@@ -36,6 +45,11 @@ public class SupportTicket
     public DateTime UpdatedAt { get; private set; }
     public DateTime? ResolvedAt { get; private set; }
     public DateTime? ClosedAt { get; private set; }
+    public BookingIncidentOutcome? BookingResolution { get; private set; }
+    public Guid? BookingResolvedByAdminId { get; private set; }
+    public DateTime? BookingResolvedAtUtc { get; private set; }
+    public string? BookingResolutionReason { get; private set; }
+    public string? BookingEvidenceReference { get; private set; }
 
     private readonly List<SupportTicketMessage> _messages = new();
     public IReadOnlyCollection<SupportTicketMessage> Messages => _messages.AsReadOnly();
@@ -128,6 +142,10 @@ public class SupportTicket
 
     public void ChangeStatus(SupportTicketStatus newStatus)
     {
+        if (BookingId.HasValue && BookingResolution is null &&
+            newStatus is SupportTicketStatus.Resolved or SupportTicketStatus.Closed)
+            throw new ConflictException("BOOKING_DECISION_REQUIRED",
+                "A linked booking incident needs an Admin decision before it can be closed.");
         var now = DateTime.UtcNow;
         Status = newStatus;
         UpdatedAt = now;
@@ -148,6 +166,32 @@ public class SupportTicket
             throw new InvalidOperationException("Only the ticket owner can close this ticket.");
 
         ChangeStatus(SupportTicketStatus.Closed);
+    }
+
+    public void ResolveBookingIncident(Guid adminId, BookingIncidentOutcome outcome,
+        string reason, string evidenceReference, DateTime? nowUtc = null)
+    {
+        if (!BookingId.HasValue)
+            throw new ConflictException("BOOKING_LINK_REQUIRED", "The ticket is not linked to a booking.");
+        if (BookingResolution.HasValue || Status is SupportTicketStatus.Resolved or SupportTicketStatus.Closed)
+            throw new ConflictException("BOOKING_ALREADY_RESOLVED", "The booking incident already has a decision.");
+        if (!Enum.IsDefined(outcome))
+            throw new ArgumentOutOfRangeException(nameof(outcome));
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length is < 20 or > 1000)
+            throw new ArgumentException("Decision reason must have 20-1000 characters.", nameof(reason));
+        if (string.IsNullOrWhiteSpace(evidenceReference) || evidenceReference.Trim().Length is < 5 or > 200)
+            throw new ArgumentException("Private evidence reference must have 5-200 characters.", nameof(evidenceReference));
+        var now = nowUtc ?? DateTime.UtcNow;
+        BookingResolution = outcome;
+        BookingResolvedByAdminId = adminId;
+        BookingResolvedAtUtc = now;
+        BookingResolutionReason = reason.Trim();
+        BookingEvidenceReference = evidenceReference.Trim();
+        _messages.Add(new SupportTicketMessage(Guid.NewGuid(), Id, adminId, true,
+            BookingResolutionReason, new List<string>(), now));
+        Status = SupportTicketStatus.Resolved;
+        ResolvedAt = now;
+        UpdatedAt = now;
     }
 }
 

@@ -2463,6 +2463,29 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("BookingResolution")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("booking_resolution");
+
+                    b.Property<Guid?>("BookingResolvedByAdminId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_resolved_by_admin_id");
+
+                    b.Property<DateTime?>("BookingResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("booking_resolved_at_utc");
+
+                    b.Property<string>("BookingResolutionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("booking_resolution_reason");
+
+                    b.Property<string>("BookingEvidenceReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("booking_evidence_reference");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(64)

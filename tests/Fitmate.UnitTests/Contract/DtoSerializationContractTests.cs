@@ -432,7 +432,7 @@ public class DtoSerializationContractTests
         keys.Should().BeEquivalentTo(new[]
         {
             "id", "user_id", "subject", "category", "priority", "status",
-            "created_at", "updated_at", "resolved_at", "closed_at"
+            "created_at", "updated_at", "resolved_at", "closed_at", "booking_id"
         });
     }
 

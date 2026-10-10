@@ -1,5 +1,11 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-11 — Kết luận tranh chấp buổi PT có chứng cứ [BE-807/809/819]
+- Admin có endpoint riêng `POST /api/v1/admin/finance/booking-incidents/{ticketId}/resolve`, bắt buộc Admin role, Idempotency-Key, finance TOTP, lý do 20–1000 ký tự và tham chiếu chứng cứ nội bộ. Không thể đóng phiếu liên kết buổi tập theo đường trạng thái chung khi chưa có kết luận.
+- Trong một transaction khóa payment/appointment/ticket, PT vắng được hủy buổi và tạo yêu cầu hoàn tiền thủ công đúng phân bổ của buổi; tiền vẫn Paid cho tới khi Admin duyệt và ghi nhận chuyển khoản thật. Buổi đã diễn ra hoặc hội viên vắng được ghi nhận Completed và ledger 10%/90%; không tạo payout trực tiếp. Gói 4 buổi giữ nguyên các buổi không liên quan.
+- Lưu kết luận/audit/outbox và migration cột phiếu hỗ trợ; không apply lên DB ứng dụng. Unit 965/965, OpenAPI parity 11/11, integration trọng tâm 5/5 trên PostgreSQL cô lập. Full integration chế độ quiet 90/91 hai lần vì test tranh slot đồng thời không ổn định; test đó pass khi chạy riêng và full run với detailed logging pass, cần xác minh lại tính ổn định. Web Admin có form kết luận với TOTP/idempotency; test Web 127/127 và build PASS. Mobile support repository 10/10 và typecheck PASS.
+- Chưa tự cấp dấu phạt PT từ một phiếu báo cáo, chưa mở checkout gói cho người dùng và chưa xác nhận provider/thiết bị thật. Không quảng bá đây là release approval hoặc thực hiện chuyển tiền tự động.
+
 ## 2026-10-11 — Liên kết phiếu hỗ trợ với buổi tập [BE-807/819]
 - Mobile gửi `booking_id` khi mở phiếu từ chi tiết lịch; BE kiểm tra người gửi là participant và trả `booking_id` ở danh sách/chi tiết để Member/Admin tra cứu đúng buổi. Phiếu loại `booking_dispute` không có mã buổi bị từ chối thay vì tạo case mồ côi.
 - Bổ sung migration có thể chạy lại an toàn cho cột `support_tickets."BookingId"` còn thiếu trong chuỗi migration; không apply lên DB ứng dụng. Sửa transaction khóa buổi tập qua EF execution strategy, tránh HTTP 500 khi tạo phiếu liên kết trên PostgreSQL.

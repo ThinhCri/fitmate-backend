@@ -21,6 +21,12 @@ public class SupportTicketConfiguration : IEntityTypeConfiguration<SupportTicket
         e.Property(x => x.UpdatedAt).HasColumnName("updated_at").IsRequired();
         e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
         e.Property(x => x.ClosedAt).HasColumnName("closed_at");
+        e.Property(x => x.BookingResolution).HasColumnName("booking_resolution")
+            .HasConversion<string>().HasMaxLength(32);
+        e.Property(x => x.BookingResolvedByAdminId).HasColumnName("booking_resolved_by_admin_id");
+        e.Property(x => x.BookingResolvedAtUtc).HasColumnName("booking_resolved_at_utc");
+        e.Property(x => x.BookingResolutionReason).HasColumnName("booking_resolution_reason").HasMaxLength(1000);
+        e.Property(x => x.BookingEvidenceReference).HasColumnName("booking_evidence_reference").HasMaxLength(200);
 
         e.HasIndex(x => new { x.UserId, x.CreatedAt });
         e.HasIndex(x => x.BookingId);
