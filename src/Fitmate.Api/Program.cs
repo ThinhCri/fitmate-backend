@@ -241,6 +241,8 @@ builder.Services.AddScoped<IAppointmentStore, Fitmate.Infrastructure.Booking.EfA
 builder.Services.AddScoped<IBookingHoldStore, Fitmate.Infrastructure.Booking.EfBookingHoldStore>();
 builder.Services.AddScoped<ISessionPackageStore, Fitmate.Infrastructure.Booking.EfSessionPackageStore>();
 builder.Services.AddScoped<SessionPackageHoldService>();
+builder.Services.AddScoped<ISessionPackageStopStore, Fitmate.Infrastructure.Booking.EfSessionPackageStopStore>();
+builder.Services.AddScoped<SessionPackageStopService>();
 builder.Services.AddScoped<Fitmate.Infrastructure.Booking.SessionPackageExpirationService>();
 builder.Services.AddScoped<IServiceBookingLookup, Fitmate.Infrastructure.Booking.ServiceBookingLookup>();
 builder.Services.AddScoped<IBookingService, Fitmate.Application.Booking.BookingService>();

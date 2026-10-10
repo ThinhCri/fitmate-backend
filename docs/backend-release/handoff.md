@@ -1,5 +1,10 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-10 — Gửi yêu cầu dừng gói PT nội bộ [BE-807/809]
+- `SessionPackageStopService` kiểm quyền chủ gói ở Application layer, chuẩn hóa lý do 10–1000 ký tự; `EfSessionPackageStopStore` khóa payment theo cùng thứ tự với finance, khóa từng appointment, kiểm phân bổ gói và ghi snapshot/audit/outbox trong một transaction.
+- Gửi lại cùng lý do trả request cũ, không phát thêm sự kiện. Chặn nếu buổi dự kiến hoàn đã có pending/succeeded refund hoặc PT đã được chi; trường hợp này chuyển Admin đối soát, không tự tính trùng. PostgreSQL integration đã kiểm ownership, replay và refund conflict.
+- Service vẫn **internal-only**: chưa route Mobile và chưa cho PT phản hồi / timeout 24h / tạo refund từ snapshot. Không mở checkout gói hoặc gọi luồng dừng gói production-ready.
+
 ## 2026-10-10 — PT package stop request snapshot foundation [BE-807/809]
 - Thêm snapshot bền vững cho yêu cầu dừng gói: lý do, thời điểm gửi, hạn PT phản hồi sau 24 giờ, số tiền dự kiến hoàn theo từng buổi; xét cửa sổ 48 giờ đúng lúc hội viên gửi yêu cầu, không tính lại sau khi PT chờ phản hồi.
 - `SessionPackage.RequestStop` chỉ nhận gói Active, đủ ảnh chụp trạng thái/slot của toàn bộ buổi; Completed và buổi dưới 48 giờ không tự đủ điều kiện hoàn. Migration chỉ thêm `session_package_stop_requests` và `session_package_stop_sessions`, `Down` chặn xóa bản ghi tài chính chưa đối soát.

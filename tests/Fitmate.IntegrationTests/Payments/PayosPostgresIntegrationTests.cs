@@ -107,6 +107,91 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         }
     }
 
+    [Fact]
+    public async Task StopService_RejectsOtherMember_AndReplaysOneRequest()
+    {
+        var (packageId, paymentId, _) = await SeedPackageAsync();
+        Guid memberId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var package = await db.SessionPackages.Include(p => p.Sessions)
+                .SingleAsync(p => p.Id == packageId);
+            memberId = package.MemberId;
+            package.MarkPaid(paymentId, package.TotalPriceVnd, DateTime.UtcNow);
+            var payment = await db.Payments.SingleAsync(p => p.Id == paymentId);
+            payment.MarkPaid("stop-service-test");
+            foreach (var session in package.Sessions)
+            {
+                var appointment = await db.Appointments.SingleAsync(a => a.Id == session.AppointmentId);
+                appointment.AttachPayment(paymentId, session.PaidAllocationVnd, 0, 0.10m,
+                    session.PlatformFeeAllocationVnd, session.TrainerShareAllocationVnd, "v1");
+                appointment.ForceStatusForTesting(AppointmentStatus.Confirmed);
+            }
+            await db.SaveChangesAsync();
+        }
+
+        const string reason = "Tôi chuyển nơi làm việc và không thể tiếp tục lịch này.";
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+            Func<Task> otherMember = () => service.RequestAsync(Guid.NewGuid(), packageId,
+                reason, CancellationToken.None);
+            await otherMember.Should().ThrowAsync<NotFoundException>();
+            var first = await service.RequestAsync(memberId, packageId, reason, CancellationToken.None);
+            var replay = await service.RequestAsync(memberId, packageId, reason, CancellationToken.None);
+            replay.Id.Should().Be(first.Id);
+            first.RefundQuoteVnd.Should().BeGreaterThan(0);
+        }
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            (await db.SessionPackageStopRequests.CountAsync(r => r.PackageId == packageId)).Should().Be(1);
+            var events = await db.OutboxMessages.Where(o => o.Type == "booking.package_stop_requested")
+                .Select(o => o.PayloadJson).ToListAsync();
+            events.Count(payload => payload.Contains(packageId.ToString(), StringComparison.OrdinalIgnoreCase))
+                .Should().Be(1);
+        }
+    }
+
+    [Fact]
+    public async Task StopService_BlocksSessionAlreadyReservedForRefund()
+    {
+        var (packageId, paymentId, _) = await SeedPackageAsync();
+        Guid memberId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var package = await db.SessionPackages.Include(p => p.Sessions)
+                .SingleAsync(p => p.Id == packageId);
+            memberId = package.MemberId;
+            package.MarkPaid(paymentId, package.TotalPriceVnd, DateTime.UtcNow);
+            (await db.Payments.SingleAsync(p => p.Id == paymentId)).MarkPaid("stop-refund-test");
+            foreach (var session in package.Sessions)
+            {
+                var appointment = await db.Appointments.SingleAsync(a => a.Id == session.AppointmentId);
+                appointment.AttachPayment(paymentId, session.PaidAllocationVnd, 0, 0.10m,
+                    session.PlatformFeeAllocationVnd, session.TrainerShareAllocationVnd, "v1");
+                appointment.ForceStatusForTesting(AppointmentStatus.Confirmed);
+            }
+            var future = package.Sessions.OrderByDescending(s => s.InitialSlotStartUtc).First();
+            db.Refunds.Add(Refund.CreateSystemRefund(paymentId, future.AppointmentId,
+                future.PaidAllocationVnd, "Admin đang xử lý hoàn buổi này."));
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+            Func<Task> request = () => service.RequestAsync(memberId, packageId,
+                "Lịch công tác của tôi thay đổi dài ngày.", CancellationToken.None);
+            await request.Should().ThrowAsync<ConflictException>()
+                .Where(e => e.Code == "PACKAGE_STOP_FINANCE_REVIEW_REQUIRED");
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            (await db.SessionPackageStopRequests.CountAsync(r => r.PackageId == packageId)).Should().Be(0);
+        }
+    }
+
     private JsonElement Webhook(long code, long amount = 100000, string account = "00000000", bool tamper = false)
     {
         var values = new SortedDictionary<string, object>(StringComparer.Ordinal)
