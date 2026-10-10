@@ -51,6 +51,11 @@ public class EfCertificateStore : ICertificateStore
     public Task<Fitmate.Domain.Identity.ApplicationUser?> FindUserAsync(Guid userId, CancellationToken ct)
         => _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
 
+    public Task<bool> HasPermanentlyBannedPhoneAsync(string phoneNumber, Guid excludingUserId,
+        CancellationToken ct) => _db.PtProfiles.AnyAsync(p => p.PermanentlyBanned &&
+            p.UserId != excludingUserId && _db.Users.Any(u => u.Id == p.UserId &&
+                u.PhoneNumber == phoneNumber), ct);
+
     public async Task<(IReadOnlyList<Certificate> Items, int Total)> ListByPtPagedAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct)
     {
         // Store assumes page≥1 + pageSize đã được Service chuẩn hoá. Defensive clamp here vẫn an toàn.

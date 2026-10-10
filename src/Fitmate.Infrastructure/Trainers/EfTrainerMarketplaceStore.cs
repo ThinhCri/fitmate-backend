@@ -34,6 +34,8 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
 
         var profiles = await _db.PtProfiles
             .Where(p => p.VerificationStatus == PtVerificationStatus.Approved &&
+                !p.PermanentlyBanned &&
+                (p.SuspendedUntilUtc == null || p.SuspendedUntilUtc <= DateTime.UtcNow) &&
                 verifiedPtIds.Contains(p.UserId) &&
                 _db.Users.Any(u => u.Id == p.UserId && u.Status == UserStatus.Active &&
                     u.EmailConfirmed && u.PhoneNumberConfirmed) &&
@@ -122,6 +124,7 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
 
         var profile = await _db.PtProfiles.FirstOrDefaultAsync(p => p.UserId == ptUserId, ct);
         if (profile is null || profile.VerificationStatus != PtVerificationStatus.Approved ||
+            !profile.CanAcceptNewBookings(DateTime.UtcNow) ||
             !await _db.Users.AnyAsync(u => u.Id == ptUserId && u.Status == UserStatus.Active &&
                 u.EmailConfirmed && u.PhoneNumberConfirmed, ct)) return null;
 

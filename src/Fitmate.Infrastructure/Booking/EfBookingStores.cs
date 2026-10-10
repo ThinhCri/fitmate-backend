@@ -244,7 +244,9 @@ public class ServiceBookingLookup : IServiceBookingLookup
         if (s.DeliveryMode == Fitmate.Domain.Trainers.ServiceDeliveryMode.Online &&
             (_meet is null || !(await _meet.GetStatusAsync(s.PtUserId, ct)).Connected)) return null;
         var bookable = await _db.PtProfiles.AnyAsync(p => p.UserId == s.PtUserId &&
-            p.VerificationStatus == Fitmate.Domain.Trainers.PtVerificationStatus.Approved, ct) &&
+            p.VerificationStatus == Fitmate.Domain.Trainers.PtVerificationStatus.Approved &&
+            !p.PermanentlyBanned &&
+            (p.SuspendedUntilUtc == null || p.SuspendedUntilUtc <= DateTime.UtcNow), ct) &&
             await _db.Certificates.AnyAsync(c => c.PtUserId == s.PtUserId &&
                 c.Status == Fitmate.Domain.Common.CertificateStatus.Approved, ct) &&
             await _db.Users.AnyAsync(u => u.Id == s.PtUserId &&

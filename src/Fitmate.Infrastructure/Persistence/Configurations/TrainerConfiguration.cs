@@ -20,6 +20,11 @@ public class PtProfileConfiguration : IEntityTypeConfiguration<PtProfile>
         e.Property(x => x.VerificationReason).HasMaxLength(500);
         e.Property(x => x.VerificationReviewedAt);
         e.Property(x => x.VerificationReviewedByAdminId);
+        e.Property(x => x.VerifiedNoShowStrikes).IsRequired();
+        e.Property(x => x.PenaltyFlags).IsRequired();
+        e.Property(x => x.SuspendedUntilUtc);
+        e.Property(x => x.SecondFlagAtUtc);
+        e.Property(x => x.PermanentlyBanned).IsRequired();
     }
 }
 

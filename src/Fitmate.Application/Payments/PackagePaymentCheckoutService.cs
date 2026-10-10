@@ -1,4 +1,5 @@
 using Fitmate.Application.Booking;
+using System.Text.Json.Serialization;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Payment;
@@ -6,12 +7,15 @@ using Fitmate.Domain.Payment;
 namespace Fitmate.Application.Payments;
 
 public sealed record PackageCheckoutView(
-    Guid PackageId, Guid PaymentId, long AmountVnd, PaymentStatus Status,
-    string? RedirectUrl);
+    [property: JsonPropertyName("package_id")] Guid PackageId,
+    [property: JsonPropertyName("payment_id")] Guid PaymentId,
+    [property: JsonPropertyName("amount_vnd")] long AmountVnd,
+    [property: JsonPropertyName("status")] PaymentStatus Status,
+    [property: JsonPropertyName("redirect_url")] string? RedirectUrl);
 
 /// <summary>
-/// Internal one-order checkout preparation for a package. No public route is
-/// registered until verified callbacks and all finance consumers support packages.
+/// One-order checkout preparation for a package. All financial consumers
+/// verify the persisted per-session allocation before refund or payout.
 /// </summary>
 public sealed class PackagePaymentCheckoutService(
     IPackagePaymentStore packages,
@@ -19,7 +23,8 @@ public sealed class PackagePaymentCheckoutService(
     IAppointmentStore appointments,
     IPaymentProvider provider)
 {
-    public async Task<PackageCheckoutView> CreateAsync(Guid memberId, Guid packageId, CancellationToken ct)
+    public async Task<PackageCheckoutView> CreateAsync(Guid memberId, Guid packageId,
+        CancellationToken ct, bool acknowledgeShortNotice = false)
     {
         if (memberId == Guid.Empty || packageId == Guid.Empty)
             throw new ForbiddenException(ErrorCodes.Identity.NotAuthenticated, "Authentication required.");
@@ -31,7 +36,6 @@ public sealed class PackagePaymentCheckoutService(
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, "Package not found.");
         if (candidate.MemberId != memberId)
             throw new NotFoundException(ErrorCodes.General.NotFound, "Package not found.");
-
         var payment = await appointments.ExecuteWithScheduleLockAsync(candidate.PtUserId, async () =>
         {
             var package = await packages.FindWithSessionsAsync(packageId, ct)
@@ -56,6 +60,11 @@ public sealed class PackagePaymentCheckoutService(
             if (package.Status != SessionPackageStatus.Held)
                 throw new ConflictException("PACKAGE_PAYMENT_ALREADY_PROCESSED",
                     "The package is no longer awaiting payment.");
+
+            if (!acknowledgeShortNotice && package.Sessions.Any(s =>
+                s.InitialSlotStartUtc < nowUtc.AddHours(48)))
+                throw new DomainException("PACKAGE_SHORT_NOTICE_ACK_REQUIRED",
+                    "A session starts within 48 hours. Acknowledge the cancellation policy before payment.", 400);
 
             var pending = Payment.CreatePendingForPackage(package.Id, PaymentMethod.Payos,
                 package.TotalPriceVnd);

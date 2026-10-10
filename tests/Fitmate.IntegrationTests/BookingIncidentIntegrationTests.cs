@@ -4,6 +4,7 @@ using Fitmate.Domain.Common;
 using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
 using Fitmate.Domain.Support;
+using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
 using Fitmate.IntegrationTests.Infrastructure;
 using FluentAssertions;
@@ -36,7 +37,8 @@ public sealed class BookingIncidentIntegrationTests : IClassFixture<FitmateTestA
         var ticket = SupportTicket.Create(appointment.MemberId, "Sự cố buổi tập",
             "booking_dispute", SupportTicketPriority.High, "Tôi cần kiểm tra buổi tập này.");
         ticket.LinkBooking(appointment.Id);
-        db.AddRange(appointment, payment, ticket);
+        db.AddRange(appointment, payment, ticket,
+            PtProfile.CreateDraft(appointment.PtUserId, "Fitness", 5, 100_000, null));
         await db.SaveChangesAsync();
         return (ticket.Id, appointment.Id, payment.Id);
     }
@@ -63,6 +65,8 @@ public sealed class BookingIncidentIntegrationTests : IClassFixture<FitmateTestA
         (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).Status.Should().Be(PaymentStatus.Paid);
         var ticket = await db.SupportTickets.SingleAsync(t => t.Id == seed.TicketId);
         ticket.BookingResolution.Should().Be(BookingIncidentOutcome.PtNoShow);
+        var ptId = (await db.Appointments.SingleAsync(a => a.Id == seed.AppointmentId)).PtUserId;
+        (await db.PtProfiles.SingleAsync(p => p.UserId == ptId)).VerifiedNoShowStrikes.Should().Be(1);
         var retry = () => store.ResolveIncidentAsync(admin, seed.TicketId,
             BookingIncidentOutcome.PtNoShow, "PT không xuất hiện, đã xác minh với hai bên.",
             "private:test-evidence", CancellationToken.None);
@@ -162,7 +166,7 @@ public sealed class BookingIncidentIntegrationTests : IClassFixture<FitmateTestA
         var ticket = SupportTicket.Create(member, "PT không có mặt", "booking_dispute",
             SupportTicketPriority.High, "PT không đến buổi đầu tiên.");
         ticket.LinkBooking(appointments[0].Id);
-        seedDb.AddRange(payment, ticket);
+        seedDb.AddRange(payment, ticket, PtProfile.CreateDraft(pt, "Fitness", 5, 100_000, null));
         await seedDb.SaveChangesAsync();
 
         using var scope = _factory.Services.CreateScope();

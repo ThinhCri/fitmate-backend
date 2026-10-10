@@ -7,6 +7,7 @@ using Fitmate.Domain.Identity;
 using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
 using Fitmate.Domain.Support;
+using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -67,6 +68,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                     "The booking financial snapshot is invalid.");
 
             Guid? refundId = null;
+            PtProfile? penalizedPt = null;
             if (outcome == BookingIncidentOutcome.PtNoShow)
             {
                 if (appointment.Status is not (AppointmentStatus.Confirmed or AppointmentStatus.InProgress or
@@ -90,6 +92,19 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                     throw new ConflictException("REFUND_RECONCILIATION_REQUIRED",
                         "An existing refund or payment balance needs manual review.");
                 appointment.Cancel("Admin verified PT no-show; see incident ticket.");
+                var ptProfile = await db.PtProfiles.FromSqlInterpolated(
+                        $"SELECT * FROM pt_profiles WHERE \"UserId\" = {appointment.PtUserId} FOR UPDATE")
+                    .SingleOrDefaultAsync(ct)
+                    ?? throw new ConflictException("PT_PROFILE_REQUIRED", "PT profile needs reconciliation before a no-show penalty.");
+                ptProfile.RecordVerifiedNoShow(now);
+                penalizedPt = ptProfile;
+                if (ptProfile.PermanentlyBanned)
+                {
+                    var user = await db.Users.SingleOrDefaultAsync(u => u.Id == appointment.PtUserId, ct)
+                        ?? throw new ConflictException("PT_USER_REQUIRED", "PT account needs reconciliation.");
+                    user.Status = UserStatus.Locked;
+                    user.UpdatedAt = now;
+                }
                 var refund = Refund.Create(payment.Id, appointment.Id, allocationVnd,
                     $"PT no-show incident {ticket.Id}", adminId);
                 db.Refunds.Add(refund);
@@ -141,7 +156,9 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                     ticketId, outcome = outcome.ToString(), refundId, evidenceReference
                 })));
             await db.SaveChangesAsync(ct);
-            return new BookingIncidentDecisionView(ticketId, appointment.Id, outcome.ToString(), refundId);
+            return new BookingIncidentDecisionView(ticketId, appointment.Id, outcome.ToString(), refundId,
+                penalizedPt?.VerifiedNoShowStrikes, penalizedPt?.PenaltyFlags,
+                penalizedPt?.SuspendedUntilUtc, penalizedPt?.PermanentlyBanned);
         }, ct);
     }
 

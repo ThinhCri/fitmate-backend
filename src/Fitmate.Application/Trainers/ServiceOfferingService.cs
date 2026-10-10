@@ -11,18 +11,21 @@ public class ServiceOfferingService : IServiceOfferingService
     private readonly IServiceOfferingStore _store;
     private readonly IAuthorizationGuard _authz;
     private readonly IGoogleMeetConnectionService? _meet;
+    private readonly IPtDisciplineGuard? _discipline;
 
     public ServiceOfferingService(IServiceOfferingStore store, IAuthorizationGuard authz,
-        IGoogleMeetConnectionService? meet = null)
+        IGoogleMeetConnectionService? meet = null, IPtDisciplineGuard? discipline = null)
     {
         _store = store;
         _authz = authz;
         _meet = meet;
+        _discipline = discipline;
     }
 
     public async Task<Domain.Trainers.Service> CreateAsync(Guid ptUserId, string name, string? description, long priceVnd, int durationMinutes, CancellationToken ct, ServiceOfferingDetails? details = null)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
+        if (_discipline is not null) await _discipline.EnsureMayPublishAsync(ptUserId, ct);
         // Domain.Service.Create đã validate name/price/duration ném ArgumentException;
         // catch + convert sang ValidationException để chuẩn format ProblemDetails.
         Domain.Trainers.Service entity;
@@ -50,6 +53,8 @@ public class ServiceOfferingService : IServiceOfferingService
     public async Task<Domain.Trainers.Service> UpdateAsync(Guid ptUserId, Guid serviceId, string? name, string? description, long? priceVnd, int? durationMinutes, bool? isActive, CancellationToken ct, ServiceOfferingDetails? details = null)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
+        if (_discipline is not null && isActive != false)
+            await _discipline.EnsureMayPublishAsync(ptUserId, ct);
         var service = await _store.FindAsync(serviceId, ct)
             ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Service {serviceId} not found.");
         if (service.PtUserId != ptUserId)

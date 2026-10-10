@@ -1357,6 +1357,41 @@ paths:
         '400': {description: Trang hoặc kích thước trang không hợp lệ}
         '401': {description: Chưa đăng nhập}
 
+  /me/session-packages/holds:
+    post:
+      tags: [Bookings]
+      summary: Hold four or eight PT sessions atomically for ten minutes
+      operationId: createMySessionPackageHold
+      parameters:
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pt_user_id, service_id, delivery_mode, slot_starts_utc]
+              properties:
+                pt_user_id: {type: string, format: uuid}
+                service_id: {type: string, format: uuid}
+                delivery_mode: {type: string, enum: [in_person, online]}
+                slot_starts_utc:
+                  type: array
+                  items: {type: string, format: date-time}
+                  minItems: 4
+                  maxItems: 8
+      responses:
+        '201':
+          description: Package reservations held
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackage'}
+        '400': {description: Invalid slots or mode}
+        '401': {description: Authentication required}
+        '404': {description: PT service or slot unavailable}
+        '409': {description: One or more slots already held or booked}
+        '503': {description: Google Meet unavailable for online package}
+
   /me/session-packages/assigned:
     get:
       tags: [Bookings]
@@ -1391,6 +1426,43 @@ paths:
         '401': {description: Chưa đăng nhập}
         '404': {description: Gói không tồn tại hoặc không thuộc người gọi}
         '409': {description: Dữ liệu gói cần đối soát}
+
+  /me/session-packages/{id}/payment-requests:
+    post:
+      tags: [Payments]
+      summary: Create one payOS payment for an active package hold
+      operationId: createMySessionPackagePayment
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [acknowledge_short_notice]
+              properties:
+                acknowledge_short_notice: {type: boolean}
+      responses:
+        '200':
+          description: Payment request; redirect is not payment confirmation
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [package_id, payment_id, amount_vnd, status]
+                properties:
+                  package_id: {type: string, format: uuid}
+                  payment_id: {type: string, format: uuid}
+                  amount_vnd: {type: integer, format: int64}
+                  status: {type: string}
+                  redirect_url: {type: string, nullable: true}
+        '400': {description: Invalid request or short-notice acknowledgment missing}
+        '401': {description: Authentication required}
+        '404': {description: Package not owned by caller}
+        '409': {description: Package hold expired or payment already settled}
+        '503': {description: payOS is not configured}
 
   /me/session-packages/{id}/stop-requests:
     post:
@@ -4389,6 +4461,10 @@ paths:
                   booking_id: { type: string, format: uuid }
                   outcome: { type: string }
                   refund_id: { type: string, format: uuid, nullable: true }
+                  pt_strikes: { type: integer, nullable: true }
+                  pt_penalty_flags: { type: integer, nullable: true }
+                  pt_suspended_until_utc: { type: string, format: date-time, nullable: true }
+                  pt_permanently_banned: { type: boolean, nullable: true }
         '400': { $ref: '#/components/responses/ValidationError' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }

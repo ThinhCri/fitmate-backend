@@ -17,6 +17,46 @@ public class PtProfile : AuditableEntity
     public string? VerificationReason { get; private set; }
     public DateTime? VerificationReviewedAt { get; private set; }
     public Guid? VerificationReviewedByAdminId { get; private set; }
+    public int VerifiedNoShowStrikes { get; private set; }
+    public int PenaltyFlags { get; private set; }
+    public DateTime? SuspendedUntilUtc { get; private set; }
+    public DateTime? SecondFlagAtUtc { get; private set; }
+    public bool PermanentlyBanned { get; private set; }
+
+    public bool CanAcceptNewBookings(DateTime nowUtc) =>
+        !PermanentlyBanned && (SuspendedUntilUtc is null || SuspendedUntilUtc <= nowUtc);
+
+    public void RecordVerifiedNoShow(DateTime nowUtc)
+    {
+        if (nowUtc.Kind != DateTimeKind.Utc)
+            throw new ArgumentException("A UTC decision time is required.", nameof(nowUtc));
+        if (PermanentlyBanned) return;
+        if (PenaltyFlags == 2 && SecondFlagAtUtc.HasValue &&
+            nowUtc >= SecondFlagAtUtc.Value.AddYears(1))
+        {
+            VerifiedNoShowStrikes = 0;
+            PenaltyFlags = 0;
+            SecondFlagAtUtc = null;
+            SuspendedUntilUtc = null;
+        }
+        VerifiedNoShowStrikes++;
+        if (VerifiedNoShowStrikes % 2 == 0)
+        {
+            PenaltyFlags++;
+            if (PenaltyFlags == 1) SuspendedUntilUtc = nowUtc.AddDays(7);
+            else if (PenaltyFlags == 2)
+            {
+                SuspendedUntilUtc = nowUtc.AddDays(30);
+                SecondFlagAtUtc = nowUtc;
+            }
+            else
+            {
+                PermanentlyBanned = true;
+                SuspendedUntilUtc = null;
+            }
+        }
+        Touch();
+    }
 
     private PtProfile() { }
 

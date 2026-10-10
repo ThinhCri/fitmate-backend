@@ -2688,6 +2688,21 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Fitmate.Domain.Trainers.PtProfile", b =>
                 {
+                    b.Property<int>("VerifiedNoShowStrikes")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("PenaltyFlags")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("SuspendedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("SecondFlagAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("PermanentlyBanned")
+                        .HasColumnType("boolean");
+
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")

@@ -25,7 +25,11 @@ public sealed record BookingIncidentDecisionView(
     [property: JsonPropertyName("ticket_id")] Guid TicketId,
     [property: JsonPropertyName("booking_id")] Guid BookingId,
     [property: JsonPropertyName("outcome")] string Outcome,
-    [property: JsonPropertyName("refund_id")] Guid? RefundId);
+    [property: JsonPropertyName("refund_id")] Guid? RefundId,
+    [property: JsonPropertyName("pt_strikes")] int? PtStrikes,
+    [property: JsonPropertyName("pt_penalty_flags")] int? PtPenaltyFlags,
+    [property: JsonPropertyName("pt_suspended_until_utc")] DateTime? PtSuspendedUntilUtc,
+    [property: JsonPropertyName("pt_permanently_banned")] bool? PtPermanentlyBanned);
 
 public interface IManualSettlementStore
 {

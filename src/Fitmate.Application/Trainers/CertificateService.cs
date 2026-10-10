@@ -77,6 +77,9 @@ public class CertificateService : ICertificateService
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, "PT user not found.");
         if (!user.PhoneNumberConfirmed || string.IsNullOrWhiteSpace(user.PhoneNumber))
             throw new ConflictException("PT_PHONE_NOT_VERIFIED", "PT must verify a phone number before approval.");
+        if (await _store.HasPermanentlyBannedPhoneAsync(user.PhoneNumber, user.Id, ct))
+            throw new ConflictException("PT_PHONE_PERMANENTLY_BANNED",
+                "This verified phone number belongs to a permanently banned PT.");
 
         cert.Approve(adminUserId); // throws ConflictException nếu không ở Pending
         var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct);

@@ -229,6 +229,7 @@ builder.Services.AddScoped<IServiceOfferingStore, Fitmate.Infrastructure.Trainer
 builder.Services.AddScoped<IAvailabilitySlotStore, Fitmate.Infrastructure.Trainers.EfAvailabilitySlotStore>();
 builder.Services.AddScoped<IServiceOfferingService, Fitmate.Application.Trainers.ServiceOfferingService>();
 builder.Services.AddScoped<IAvailabilityService, Fitmate.Application.Trainers.AvailabilityService>();
+builder.Services.AddScoped<IPtDisciplineGuard, Fitmate.Infrastructure.Trainers.EfPtDisciplineGuard>();
 
 // BE-120 & BE-806: Trainer marketplace & reviews.
 builder.Services.AddScoped<ITrainerMarketplaceStore, Fitmate.Infrastructure.Trainers.EfTrainerMarketplaceStore>();

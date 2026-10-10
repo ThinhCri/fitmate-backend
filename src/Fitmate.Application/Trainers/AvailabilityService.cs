@@ -11,16 +11,20 @@ public class AvailabilityService : IAvailabilityService
 {
     private readonly IAvailabilitySlotStore _store;
     private readonly IAuthorizationGuard _authz;
+    private readonly IPtDisciplineGuard? _discipline;
 
-    public AvailabilityService(IAvailabilitySlotStore store, IAuthorizationGuard authz)
+    public AvailabilityService(IAvailabilitySlotStore store, IAuthorizationGuard authz,
+        IPtDisciplineGuard? discipline = null)
     {
         _store = store;
         _authz = authz;
+        _discipline = discipline;
     }
 
     public async Task<IReadOnlyList<AvailabilitySlot>> ReplaceMineAsync(Guid ptUserId, IReadOnlyList<SlotInput> slots, CancellationToken ct)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
+        if (_discipline is not null) await _discipline.EnsureMayPublishAsync(ptUserId, ct);
         if (slots is null || slots.Count == 0)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "slots required", new Dictionary<string, string[]> { ["slots"] = new[] { "required" } });
 
@@ -95,6 +99,8 @@ public class AvailabilityService : IAvailabilityService
     public async Task<IReadOnlyList<AvailabilitySlot>> ReplaceScopedAsync(Guid ptUserId, DateTime fromUtc, DateTime toUtc, IReadOnlyList<SlotInput> slots, CancellationToken ct)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct);
+        if (_discipline is not null && slots?.Count > 0)
+            await _discipline.EnsureMayPublishAsync(ptUserId, ct);
         if (toUtc <= fromUtc)
             throw new ValidationException(
                 ErrorCodes.Validation.FieldInvalid,
