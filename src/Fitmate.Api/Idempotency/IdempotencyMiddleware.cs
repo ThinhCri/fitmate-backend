@@ -92,6 +92,9 @@ public class IdempotencyMiddleware
 
         var ownerToken = Guid.NewGuid();
         var isFinancial = IsFinancialPath(context.Request.Path);
+        var operationName = $"{context.Request.Method} {operation}";
+        if (operationName.Length > 128)
+            operationName = $"{operationName[..119]}-{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(operationName)))[..8]}";
 
         var acquireResult = await service.AcquireAsync(
             storageKey,
@@ -99,7 +102,7 @@ public class IdempotencyMiddleware
             ownerToken,
             isFinancial,
             actor,
-            $"{context.Request.Method} {operation}",
+            operationName,
             context.RequestAborted);
 
         switch (acquireResult.Status)
@@ -215,7 +218,8 @@ public class IdempotencyMiddleware
         return p.Contains("/payments/", StringComparison.OrdinalIgnoreCase)
             || p.Contains("/refunds/", StringComparison.OrdinalIgnoreCase)
             || p.Contains("/settlements/", StringComparison.OrdinalIgnoreCase)
-            || p.Contains("/finance/", StringComparison.OrdinalIgnoreCase);
+            || p.Contains("/finance/", StringComparison.OrdinalIgnoreCase)
+            || p.Contains("/session-packages/", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ShouldStorePath(PathString path)

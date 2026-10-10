@@ -19,8 +19,8 @@ public interface ISessionPackageStopStore
 }
 
 /// <summary>
-/// Internal command only. Do not expose it until PT response, expiry and refund
-/// settlement can complete the same lifecycle.
+/// Member/PT stop commands. Each mutation is owner-scoped in this layer and
+/// finalized asynchronously; refund transfer remains an Admin operation.
 /// </summary>
 public sealed class SessionPackageStopService(ISessionPackageStopStore store)
 {
@@ -55,8 +55,7 @@ public sealed class SessionPackageStopService(ISessionPackageStopStore store)
         return await store.WithdrawAsync(packageId, memberId, requestId, ct);
     }
 
-    // Internal timeout command. Scheduling and customer-visible finalization stay gated
-    // until the refund/remaining-session workflow is complete.
+    // Internal timeout command, invoked by the booking expiration worker.
     public Task<bool> ApproveTimedOutAsync(Guid packageId, DateTime nowUtc, CancellationToken ct) =>
         packageId == Guid.Empty || nowUtc.Kind != DateTimeKind.Utc
             ? throw new ArgumentException("A package ID and UTC time are required.")

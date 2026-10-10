@@ -1392,6 +1392,76 @@ paths:
         '404': {description: Gói không tồn tại hoặc không thuộc người gọi}
         '409': {description: Dữ liệu gói cần đối soát}
 
+  /me/session-packages/{id}/stop-requests:
+    post:
+      tags: [Bookings]
+      summary: Hội viên yêu cầu dừng gói đang hoạt động
+      description: Lý do bắt buộc; báo giá hoàn tiền được chốt theo trạng thái từng buổi và mốc 48 giờ tại thời điểm nhận yêu cầu. PT có 24 giờ để phản hồi. Tiền chưa được chuyển ở bước này.
+      operationId: requestMySessionPackageStop
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 10, maxLength: 1000}
+      responses:
+        '200':
+          description: Yêu cầu đang chờ PT; báo giá hoàn tiền đã chốt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackageStop'}
+        '400': {description: Thiếu khóa chống gửi trùng hoặc lý do không hợp lệ}
+        '401': {description: Chưa đăng nhập}
+        '404': {description: Không phải chủ gói}
+        '409': {description: Gói hoặc các khoản tài chính không đủ điều kiện}
+
+  /me/session-packages/{id}/stop-requests/accept:
+    post:
+      tags: [Bookings]
+      summary: PT đồng ý yêu cầu dừng gói đang chờ
+      description: Chỉ PT được phân công có thể đồng ý. Hệ thống hoàn tất dừng gói và tạo yêu cầu chuyển hoàn thủ công; PT không tự chuyển tiền.
+      operationId: acceptAssignedSessionPackageStop
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+      responses:
+        '200':
+          description: Yêu cầu đã được duyệt
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackageStop'}
+        '400': {description: Thiếu khóa chống gửi trùng}
+        '401': {description: Chưa đăng nhập}
+        '403': {description: Không có quyền PT}
+        '404': {description: Không phải PT được phân công}
+        '409': {description: Không có yêu cầu đang chờ}
+
+  /me/session-packages/{id}/stop-requests/{requestId}/withdraw:
+    post:
+      tags: [Bookings]
+      summary: Hội viên rút yêu cầu dừng trước khi được duyệt
+      operationId: withdrawMySessionPackageStop
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+        - {name: requestId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+      responses:
+        '200':
+          description: Yêu cầu đã rút; gói trở lại trạng thái hoạt động
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SessionPackageStop'}
+        '400': {description: Thiếu khóa chống gửi trùng}
+        '401': {description: Chưa đăng nhập}
+        '404': {description: Không phải chủ gói hoặc không có yêu cầu}
+        '409': {description: Yêu cầu đã được duyệt hoặc quá hạn rút}
+
   /bookings/holds:
     post:
       tags: [Bookings]
@@ -5844,7 +5914,7 @@ components:
       properties:
         id: {type: string, format: uuid}
         reason: {type: string}
-        status: {type: string, enum: [Pending, Approved]}
+        status: {type: string, enum: [Pending, Approved, Withdrawn]}
         approval_source: {type: string, enum: [None, PtAccepted, PtResponseTimedOut]}
         requested_at_utc: {type: string, format: date-time}
         pt_response_deadline_utc: {type: string, format: date-time}

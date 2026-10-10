@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Net;
+using System.Net.Http.Json;
 using Fitmate.Application.Outbox;
 using Fitmate.Application.Booking;
 using Fitmate.Application.Finance;
@@ -92,6 +94,106 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         }
         await db.SaveChangesAsync();
         return (packageId, package.MemberId, package.PtUserId);
+    }
+
+    [Fact]
+    public async Task PackageStopHttp_EnforcesOwnershipIdempotencyAndPtDecision()
+    {
+        var (packageId, memberId, ptUserId) = await SeedActivePackageForStopAsync();
+        using var member = _factory.CreateAuthenticatedClient("Member", memberId);
+        using var pt = _factory.CreateAuthenticatedClient("PT", ptUserId);
+        using var stranger = _factory.CreateAuthenticatedClient("Member", Guid.NewGuid());
+        using var anonymous = _factory.CreateClient();
+        var path = $"/api/v1/me/session-packages/{packageId}/stop-requests";
+
+        using (var unauthenticated = await anonymous.PostAsJsonAsync(path,
+                   new { reason = "Tôi phải chuyển nơi ở trong thời gian tới." }))
+            unauthenticated.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        using (var missingKey = await member.PostAsJsonAsync(path,
+                   new { reason = "Tôi phải chuyển nơi ở trong thời gian tới." }))
+            missingKey.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        async Task<HttpResponseMessage> Post(HttpClient client, string url, string key, object? body = null)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, url);
+            request.Headers.Add("Idempotency-Key", key);
+            if (body is not null) request.Content = JsonContent.Create(body);
+            return await client.SendAsync(request);
+        }
+
+        var reason = "Tôi phải chuyển nơi ở trong thời gian tới.";
+        using (var other = await Post(stranger, path, "other-owner-123", new { reason }))
+            other.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        using (var invalid = await Post(member, path, "invalid-reason-123", new { reason = "Ngắn" }))
+            invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        Guid requestId;
+        using (var created = await Post(member, path, "stop-request-123", new { reason }))
+        {
+            created.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+            requestId = json.RootElement.GetProperty("id").GetGuid();
+            json.RootElement.GetProperty("status").GetString().Should().Be("Pending");
+            json.RootElement.GetProperty("refund_quote_vnd").GetInt64().Should().BeGreaterThan(0);
+        }
+        using (var replay = await Post(member, path, "stop-request-123", new { reason }))
+        {
+            replay.StatusCode.Should().Be(HttpStatusCode.OK);
+            replay.Headers.GetValues("X-Idempotent-Replay").Should().Contain("true");
+        }
+        using (var differentPayload = await Post(member, path, "stop-request-123",
+                   new { reason = "Tôi chuyển sang làm việc ở tỉnh khác lâu dài." }))
+            differentPayload.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var acceptPath = path + "/accept";
+        using (var nonPt = await Post(member, acceptPath, "member-accept-123"))
+            nonPt.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        using (var accepted = await Post(pt, acceptPath, "pt-accept-123"))
+        {
+            accepted.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var json = JsonDocument.Parse(await accepted.Content.ReadAsStringAsync());
+            json.RootElement.GetProperty("id").GetGuid().Should().Be(requestId);
+            json.RootElement.GetProperty("status").GetString().Should().Be("Approved");
+        }
+        using (var lateWithdraw = await Post(member, path + $"/{requestId}/withdraw",
+                   "withdraw-late-123"))
+            lateWithdraw.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task PackageStopHttp_MemberCanWithdrawPendingRequest()
+    {
+        var (packageId, memberId, ptUserId) = await SeedActivePackageForStopAsync();
+        using var member = _factory.CreateAuthenticatedClient("Member", memberId);
+        using var pt = _factory.CreateAuthenticatedClient("PT", ptUserId);
+        var path = $"/api/v1/me/session-packages/{packageId}/stop-requests";
+        using var submit = new HttpRequestMessage(HttpMethod.Post, path)
+        {
+            Content = JsonContent.Create(new { reason = "Tôi chuyển nhà và không thể tiếp tục lịch tập." })
+        };
+        submit.Headers.Add("Idempotency-Key", "stop-withdraw-123");
+        using var created = await member.SendAsync(submit);
+        created.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var createdJson = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
+        var requestId = createdJson.RootElement.GetProperty("id").GetGuid();
+
+        var withdrawPath = path + $"/{requestId}/withdraw";
+        using var withdraw = new HttpRequestMessage(HttpMethod.Post, withdrawPath);
+        withdraw.Headers.Add("Idempotency-Key", "withdraw-pending-123");
+        using var response = await member.SendAsync(withdraw);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        json.RootElement.GetProperty("status").GetString().Should().Be("Withdrawn");
+
+        using var detail = await member.GetAsync($"/api/v1/me/session-packages/{packageId}");
+        detail.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var detailJson = JsonDocument.Parse(await detail.Content.ReadAsStringAsync());
+        detailJson.RootElement.GetProperty("status").GetString().Should().Be("Active");
+        detailJson.RootElement.GetProperty("stop_request").ValueKind.Should().Be(JsonValueKind.Null);
+        using var noPending = new HttpRequestMessage(HttpMethod.Post, path + "/accept");
+        noPending.Headers.Add("Idempotency-Key", "accept-withdrawn-123");
+        using var ptResponse = await pt.SendAsync(noPending);
+        ptResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
     }
 
     [Fact]
