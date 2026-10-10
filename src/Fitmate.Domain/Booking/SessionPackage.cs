@@ -180,6 +180,17 @@ public sealed class SessionPackage : AuditableEntity
         Status = SessionPackageStatus.Active;
         UpdatedAt = nowUtc;
     }
+
+    public void FinalizeStopRequest(Guid requestId, DateTime nowUtc)
+    {
+        if (Status != SessionPackageStatus.StopRequested || nowUtc.Kind != DateTimeKind.Utc)
+            throw new InvalidOperationException("Only a requested package stop can be finalized.");
+        var request = StopRequests.SingleOrDefault(r => r.Id == requestId)
+            ?? throw new InvalidOperationException("Stop request does not belong to this package.");
+        request.FinalizeApproved(nowUtc);
+        Status = SessionPackageStatus.Stopped;
+        UpdatedAt = nowUtc;
+    }
 }
 
 public sealed class SessionPackageStopRequest
@@ -196,6 +207,7 @@ public sealed class SessionPackageStopRequest
     public SessionPackageStopApprovalSource ApprovalSource { get; private set; }
     public DateTime? ApprovedAtUtc { get; private set; }
     public DateTime? WithdrawnAtUtc { get; private set; }
+    public DateTime? FinalizedAtUtc { get; private set; }
     public List<SessionPackageStopSession> Sessions { get; private set; } = [];
 
     internal static SessionPackageStopRequest Create(Guid packageId, string reason,
@@ -247,6 +259,14 @@ public sealed class SessionPackageStopRequest
             throw new InvalidOperationException("Only a pending stop request can be withdrawn before deadline.");
         Status = SessionPackageStopRequestStatus.Withdrawn;
         WithdrawnAtUtc = nowUtc;
+    }
+
+    internal void FinalizeApproved(DateTime nowUtc)
+    {
+        if (Status != SessionPackageStopRequestStatus.Approved || FinalizedAtUtc.HasValue ||
+            nowUtc.Kind != DateTimeKind.Utc || !ApprovedAtUtc.HasValue || nowUtc < ApprovedAtUtc.Value)
+            throw new InvalidOperationException("Only an approved, unfinalized stop request can be finalized.");
+        FinalizedAtUtc = nowUtc;
     }
 }
 

@@ -173,6 +173,7 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
             events.Count(payload => payload.Contains(packageId.ToString(), StringComparison.OrdinalIgnoreCase))
                 .Should().Be(1);
         }
+
     }
 
     [Fact]
@@ -233,6 +234,86 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
             .Select(o => o.PayloadJson).ToListAsync();
         events.Count(payload => payload.Contains(packageId.ToString(), StringComparison.OrdinalIgnoreCase))
             .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task StopFinalization_RefundsOnlySnapshotEligibleSessions_AndReplaysSafely()
+    {
+        var (packageId, memberId, ptUserId) = await SeedActivePackageForStopAsync();
+        Guid requestId;
+        DateTime approvedAt;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+            var requested = await service.RequestAsync(memberId, packageId,
+                "Tôi cần dừng gói vì chuyển nơi sinh sống.", CancellationToken.None);
+            requestId = requested.Id;
+            (await service.FinalizeApprovedAsync(packageId, DateTime.UtcNow, CancellationToken.None))
+                .Should().BeFalse();
+            var approved = await service.AcceptByPtAsync(ptUserId, packageId, CancellationToken.None);
+            approvedAt = approved.ApprovedAtUtc!.Value;
+        }
+
+        // The approved quote stays immutable even if finalization runs after the 48h window moves.
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+            (await service.FinalizeApprovedAsync(packageId, approvedAt.AddHours(30), CancellationToken.None))
+                .Should().BeTrue();
+            (await service.FinalizeApprovedAsync(packageId, approvedAt.AddHours(30), CancellationToken.None))
+                .Should().BeFalse();
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var package = await db.SessionPackages.AsNoTracking().Include(p => p.Sessions)
+                .Include(p => p.StopRequests).ThenInclude(r => r.Sessions)
+                .SingleAsync(p => p.Id == packageId);
+            package.Status.Should().Be(SessionPackageStatus.Stopped);
+            var request = package.StopRequests.Single(r => r.Id == requestId);
+            request.FinalizedAtUtc.Should().NotBeNull();
+            var eligibleIds = request.Sessions.Where(s => s.EligibleForRefund)
+                .Select(s => s.AppointmentId).ToHashSet();
+            eligibleIds.Should().HaveCount(2);
+            var refunds = await db.Refunds.AsNoTracking()
+                .Where(r => r.PaymentId == package.PaymentId).ToListAsync();
+            refunds.Should().HaveCount(2);
+            refunds.Select(r => r.AppointmentId).Should().BeEquivalentTo(eligibleIds);
+            refunds.Sum(r => r.AmountVnd).Should().Be(request.RefundQuoteVnd);
+            refunds.Should().OnlyContain(r => r.Status == RefundStatus.Pending &&
+                r.RequestedByAdminId == Refund.SystemUserId && r.ApprovedAtUtc == null);
+            var appointments = await db.Appointments.AsNoTracking()
+                .Where(a => package.Sessions.Select(s => s.AppointmentId).Contains(a.Id))
+                .ToListAsync();
+            appointments.Where(a => eligibleIds.Contains(a.Id))
+                .Should().OnlyContain(a => a.Status == AppointmentStatus.Cancelled);
+            appointments.Where(a => !eligibleIds.Contains(a.Id))
+                .Should().OnlyContain(a => a.Status == AppointmentStatus.Confirmed);
+            var events = await db.OutboxMessages.AsNoTracking()
+                .Where(o => o.Type == "booking.package_stopped")
+                .Select(o => o.PayloadJson).ToListAsync();
+            events.Count(payload => payload.Contains(packageId.ToString(), StringComparison.OrdinalIgnoreCase))
+                .Should().Be(1);
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var paymentId = await db.SessionPackages.Where(p => p.Id == packageId)
+                .Select(p => p.PaymentId).SingleAsync();
+            var refund = await db.Refunds.AsNoTracking()
+                .Where(r => r.PaymentId == paymentId).OrderBy(r => r.Id).FirstAsync();
+            var settlement = scope.ServiceProvider.GetRequiredService<IManualSettlementStore>();
+            var adminId = Guid.NewGuid();
+            await settlement.ApproveRefundAsync(adminId, refund.Id, CancellationToken.None);
+            var transfer = new ConfirmManualRefundRequest("stop-refund-" + Guid.NewGuid(),
+                "test:receipt", DateTime.UtcNow.AddSeconds(1));
+            await settlement.ConfirmRefundAsync(adminId, refund.Id, transfer, CancellationToken.None);
+            await settlement.ConfirmRefundAsync(adminId, refund.Id, transfer, CancellationToken.None);
+            (await db.Refunds.AsNoTracking().SingleAsync(r => r.Id == refund.Id))
+                .Status.Should().Be(RefundStatus.Succeeded);
+        }
     }
 
     [Fact]

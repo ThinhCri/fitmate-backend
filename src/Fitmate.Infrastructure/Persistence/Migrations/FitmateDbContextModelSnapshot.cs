@@ -406,6 +406,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("ApprovedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("FinalizedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("PackageId")
                         .HasColumnType("uuid");
 

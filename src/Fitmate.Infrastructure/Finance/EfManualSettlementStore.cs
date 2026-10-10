@@ -36,7 +36,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                 packageSession = await db.SessionPackageSessions.SingleOrDefaultAsync(s =>
                     s.PackageId == payment.PackageId.Value && s.AppointmentId == appointmentId, ct);
                 packageAppointment = await payments.FindAppointmentForUpdateAsync(appointmentId, ct);
-                if (packageStatus != SessionPackageStatus.Active || packageSession is null ||
+                if (packageStatus is not (SessionPackageStatus.Active or SessionPackageStatus.Stopped) || packageSession is null ||
                     packageAppointment?.PaymentId != payment.Id ||
                     packageAppointment.ActualPaidVnd != packageSession.PaidAllocationVnd ||
                     packageAppointment.PlatformFeeVnd != packageSession.PlatformFeeAllocationVnd ||
@@ -100,7 +100,7 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                     .SingleOrDefaultAsync(p => p.Id == payment.PackageId.Value, ct)
                 : null;
             var latePackage = package?.Status == SessionPackageStatus.LatePaymentRefundPending;
-            var activePackage = package?.Status == SessionPackageStatus.Active;
+            var activePackage = package?.Status is SessionPackageStatus.Active or SessionPackageStatus.Stopped;
             var packageSession = package?.Sessions.SingleOrDefault(s => s.AppointmentId == refund.AppointmentId);
             Appointment? packageAppointment = null;
             long packageRefundedBefore = 0;

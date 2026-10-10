@@ -14,6 +14,8 @@ public interface ISessionPackageStopStore
         Guid requestId, CancellationToken ct);
     Task<bool> ApproveTimedOutAsync(Guid packageId, DateTime nowUtc, CancellationToken ct);
     Task<IReadOnlyList<Guid>> ListTimedOutPackageIdsAsync(DateTime nowUtc, int limit, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> ListApprovedPackageIdsAsync(int limit, CancellationToken ct);
+    Task<bool> FinalizeApprovedAsync(Guid packageId, DateTime nowUtc, CancellationToken ct);
 }
 
 /// <summary>
@@ -69,5 +71,21 @@ public sealed class SessionPackageStopService(ISessionPackageStopStore store)
         foreach (var id in ids)
             if (await store.ApproveTimedOutAsync(id, nowUtc, ct)) approved++;
         return approved;
+    }
+
+    public Task<bool> FinalizeApprovedAsync(Guid packageId, DateTime nowUtc, CancellationToken ct) =>
+        packageId == Guid.Empty || nowUtc.Kind != DateTimeKind.Utc
+            ? throw new ArgumentException("A package ID and UTC time are required.")
+            : store.FinalizeApprovedAsync(packageId, nowUtc, ct);
+
+    public async Task<int> SweepApprovedAsync(DateTime nowUtc, CancellationToken ct)
+    {
+        if (nowUtc.Kind != DateTimeKind.Utc)
+            throw new ArgumentException("Sweep time must be UTC.", nameof(nowUtc));
+        var ids = await store.ListApprovedPackageIdsAsync(50, ct);
+        var finalized = 0;
+        foreach (var id in ids)
+            if (await store.FinalizeApprovedAsync(id, nowUtc, ct)) finalized++;
+        return finalized;
     }
 }

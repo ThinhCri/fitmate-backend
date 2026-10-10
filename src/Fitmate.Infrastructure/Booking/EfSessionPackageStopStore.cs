@@ -28,6 +28,15 @@ public sealed class EfSessionPackageStopStore(
         .OrderBy(r => r.PtResponseDeadlineUtc).ThenBy(r => r.Id)
         .Select(r => r.PackageId).Take(limit).ToArrayAsync(ct);
 
+    public async Task<IReadOnlyList<Guid>> ListApprovedPackageIdsAsync(int limit, CancellationToken ct) =>
+        await db.SessionPackageStopRequests.AsNoTracking()
+            .Where(r => r.Status == SessionPackageStopRequestStatus.Approved &&
+                        r.FinalizedAtUtc == null &&
+                        db.SessionPackages.Any(p => p.Id == r.PackageId &&
+                            p.Status == SessionPackageStatus.StopRequested))
+            .OrderBy(r => r.ApprovedAtUtc).ThenBy(r => r.Id)
+            .Select(r => r.PackageId).Take(limit).ToArrayAsync(ct);
+
     public Task<SessionPackageStopRequest> RequestAsync(Guid packageId, Guid memberId,
         string reason, CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
     {
@@ -156,6 +165,101 @@ public sealed class EfSessionPackageStopStore(
         db.AuditLogs.Add(AuditLog.Record(Refund.SystemUserId, "System",
             "booking.package_stop_timeout_approved", "SessionPackageStopRequest", request.Id));
         EnqueueApproved(package, request);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }, ct);
+
+    public Task<bool> FinalizeApprovedAsync(Guid packageId, DateTime nowUtc,
+        CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
+    {
+        // Serialize with every refund and payout mutation on the package payment.
+        var paymentId = await db.SessionPackages.Where(p => p.Id == packageId)
+            .Select(p => p.PaymentId).SingleOrDefaultAsync(ct);
+        if (!paymentId.HasValue) return false;
+        var payment = await payments.FindByIdForUpdateAsync(paymentId.Value, ct)
+            ?? throw new ConflictException("PACKAGE_PAYMENT_MISSING", "Không tìm thấy giao dịch của gói tập.");
+        var package = await db.SessionPackages.Include(p => p.Sessions)
+            .Include(p => p.StopRequests).ThenInclude(r => r.Sessions)
+            .SingleAsync(p => p.Id == packageId, ct);
+        if (package.Status == SessionPackageStatus.Stopped) return false;
+        var request = CurrentRequest(package);
+        if (package.Status != SessionPackageStatus.StopRequested ||
+            request?.Status != SessionPackageStopRequestStatus.Approved ||
+            request.FinalizedAtUtc.HasValue)
+            return false;
+        if (payment.PackageId != package.Id || payment.Id != package.PaymentId ||
+            payment.AmountVnd != package.TotalPriceVnd ||
+            payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded) ||
+            request.Sessions.Count != package.Sessions.Count ||
+            request.Sessions.Select(s => s.AppointmentId).Distinct().Count() != package.Sessions.Count ||
+            !request.Sessions.Select(s => s.AppointmentId).ToHashSet()
+                .SetEquals(package.Sessions.Select(s => s.AppointmentId)))
+            throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED",
+                "Yêu cầu dừng gói, giao dịch và các buổi tập không khớp.");
+
+        var allocations = package.Sessions.ToDictionary(s => s.AppointmentId);
+        var eligible = request.Sessions.Where(s => s.EligibleForRefund)
+            .OrderBy(s => s.AppointmentId).ToArray();
+        if (eligible.Sum(s => s.PaidAllocationVnd) != request.RefundQuoteVnd ||
+            request.Sessions.Any(s => s.PaidAllocationVnd != allocations[s.AppointmentId].PaidAllocationVnd))
+            throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED", "Giá trị hoàn không khớp snapshot đã duyệt.");
+
+        var eligibleIds = eligible.Select(s => s.AppointmentId).ToArray();
+        var existingRefunds = await db.Refunds.Where(r => r.PaymentId == payment.Id &&
+            r.Status == RefundStatus.Pending).ToListAsync(ct);
+        if (request.RefundQuoteVnd > payment.AmountVnd - payment.RefundedSoFarVnd -
+                existingRefunds.Sum(r => r.AmountVnd) ||
+            await db.Refunds.AnyAsync(r => r.PaymentId == payment.Id &&
+                eligibleIds.Contains(r.AppointmentId) && r.Status == RefundStatus.Succeeded, ct) ||
+            existingRefunds.Any(r => eligibleIds.Contains(r.AppointmentId)) ||
+            await db.Set<ManualPtSettlement>().AnyAsync(s =>
+                eligibleIds.Contains(s.AppointmentId) && s.Status == "paid", ct))
+            throw new ConflictException("PACKAGE_STOP_FINANCE_REVIEW_REQUIRED",
+                "Buổi tập có khoản hoàn hoặc chi PT cần Admin đối soát trước.");
+
+        foreach (var snapshot in eligible)
+        {
+            var appointment = await payments.FindAppointmentForUpdateAsync(snapshot.AppointmentId, ct)
+                ?? throw new ConflictException("PACKAGE_SESSION_MISSING", "Không tìm thấy buổi tập trong gói.");
+            var allocation = allocations[snapshot.AppointmentId];
+            if (appointment.MemberId != package.MemberId || appointment.PtUserId != package.PtUserId ||
+                appointment.PaymentId != payment.Id ||
+                appointment.ActualPaidVnd != allocation.PaidAllocationVnd ||
+                appointment.PlatformFeeVnd != allocation.PlatformFeeAllocationVnd ||
+                appointment.TrainerShareVnd != allocation.TrainerShareAllocationVnd ||
+                appointment.Status != AppointmentStatus.Confirmed ||
+                appointment.SlotStartUtc != snapshot.SlotStartAtRequestUtc)
+                throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED",
+                    "Buổi tập đã thay đổi sau yêu cầu dừng; cần Admin đối soát.");
+            var reason = $"Approved package stop {request.Id}";
+            appointment.Cancel(reason);
+            var refund = Refund.CreateSystemRefund(payment.Id, appointment.Id,
+                snapshot.PaidAllocationVnd, reason);
+            db.Refunds.Add(refund);
+            var settlement = await db.Set<ManualPtSettlement>()
+                .SingleOrDefaultAsync(s => s.AppointmentId == appointment.Id, ct);
+            if (settlement is not null && settlement.Status != "paid")
+                settlement.Hold("Approved package stop refund pending review.");
+            outbox.Enqueue("booking.cancelled", new
+            {
+                appointmentId = appointment.Id, actorUserId = Refund.SystemUserId,
+                reason, memberId = package.MemberId, ptUserId = package.PtUserId
+            });
+            outbox.Enqueue("payment.refund_requested", new
+            {
+                refundId = refund.Id, paymentId = payment.Id, appointmentId = appointment.Id,
+                packageId, amountVnd = refund.AmountVnd
+            });
+        }
+        package.FinalizeStopRequest(request.Id, nowUtc);
+        db.AuditLogs.Add(AuditLog.Record(Refund.SystemUserId, "System",
+            "booking.package_stopped", "SessionPackageStopRequest", request.Id));
+        outbox.Enqueue("booking.package_stopped", new
+        {
+            packageId, stopRequestId = request.Id, memberId = package.MemberId,
+            ptUserId = package.PtUserId, refundQuoteVnd = request.RefundQuoteVnd,
+            refundCount = eligible.Length
+        });
         await db.SaveChangesAsync(ct);
         return true;
     }, ct);
