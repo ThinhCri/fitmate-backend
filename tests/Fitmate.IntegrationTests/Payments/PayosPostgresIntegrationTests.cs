@@ -5,6 +5,7 @@ using Fitmate.Application.Finance;
 using Fitmate.Application.Payments;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
+using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
 using Fitmate.Infrastructure.Payments.Payos;
 using Fitmate.Infrastructure.Persistence;
@@ -210,6 +211,87 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         }
         (await EligibleAsync(sessions[0].AppointmentId)).Should().Be(90000);
         (await EligibleAsync(sessions[1].AppointmentId)).Should().Be(67500);
+    }
+
+    [Fact]
+    public async Task Package_future_session_refund_cancels_only_that_session_and_never_reverses_unearned_revenue()
+    {
+        var seed = await SeedPackageAsync();
+        await DeliverAsync(Webhook(seed.OrderCode, 400000));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var package = await db.SessionPackages.Include(p => p.Sessions).SingleAsync(p => p.Id == seed.PackageId);
+        var session = package.Sessions.OrderBy(s => s.Sequence).Last();
+        var store = scope.ServiceProvider.GetRequiredService<IManualSettlementStore>();
+        var admin = Guid.NewGuid();
+        var nearSession = package.Sessions.OrderBy(s => s.Sequence).First();
+        var nearRefund = () => store.CreateRefundAsync(admin,
+            new(seed.PaymentId, nearSession.PaidAllocationVnd,
+                "Near-start package session needs incident review", nearSession.AppointmentId), default);
+        await nearRefund.Should().ThrowAsync<ConflictException>();
+        var request = new CreateRefundRequest(seed.PaymentId, session.PaidAllocationVnd,
+            "Approved future package session cancellation", session.AppointmentId);
+        var refund = await store.CreateRefundAsync(admin, request, default);
+        (await store.CreateRefundAsync(admin, request, default)).Id.Should().Be(refund.Id);
+        (await db.Appointments.SingleAsync(a => a.Id == session.AppointmentId)).Status.Should().Be(AppointmentStatus.Cancelled);
+        var anotherId = package.Sessions.OrderBy(s => s.Sequence).First().AppointmentId;
+        (await db.Appointments.SingleAsync(a => a.Id == anotherId)).Status.Should().Be(AppointmentStatus.Confirmed);
+        (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).RefundedSoFarVnd.Should().Be(0);
+
+        await store.ApproveRefundAsync(admin, refund.Id, default);
+        var transfer = new ConfirmManualRefundRequest("test-package-session-" + Guid.NewGuid(),
+            "test:receipt", DateTime.UtcNow.AddSeconds(1));
+        await store.ConfirmRefundAsync(admin, refund.Id, transfer, default);
+        await store.ConfirmRefundAsync(admin, refund.Id, transfer, default);
+        (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).RefundedSoFarVnd.Should().Be(100000);
+        (await db.FinancialLedgerEntries.CountAsync(e => e.RefundId == refund.Id)).Should().Be(0);
+        var excessive = () => store.CreateRefundAsync(admin,
+            new(seed.PaymentId, 1, "Exceeds cancelled session allocation", session.AppointmentId), default);
+        await excessive.Should().ThrowAsync<ConflictException>();
+    }
+
+    [Fact]
+    public async Task Package_completed_session_partial_refund_reverses_only_its_own_recognized_allocation()
+    {
+        var seed = await SeedPackageAsync();
+        await DeliverAsync(Webhook(seed.OrderCode, 400000));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var package = await db.SessionPackages.Include(p => p.Sessions).SingleAsync(p => p.Id == seed.PackageId);
+        var session = package.Sessions.OrderBy(s => s.Sequence).First();
+        var appt = await db.Appointments.SingleAsync(a => a.Id == session.AppointmentId);
+        var past = DateTime.UtcNow.AddDays(-2);
+        appt.RescheduleSlot(past, past, 60);
+        appt.ForceStatusForTesting(AppointmentStatus.Completed, past.AddHours(1));
+        db.FinancialLedgerEntries.AddRange(new[]
+        {
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.GrossBookingFee, 100000, past,
+                appt.PtUserId.ToString(), appointmentId: appt.Id, paymentId: seed.PaymentId, sourceEventId: $"test.completed:{appt.Id}"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.PlatformCommission, 10000, past,
+                appt.PtUserId.ToString(), appointmentId: appt.Id, paymentId: seed.PaymentId, sourceEventId: $"test.completed:{appt.Id}"),
+            FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.TrainerPayable, 90000, past,
+                appt.PtUserId.ToString(), appointmentId: appt.Id, paymentId: seed.PaymentId, sourceEventId: $"test.completed:{appt.Id}")
+        });
+        await db.SaveChangesAsync();
+
+        var store = scope.ServiceProvider.GetRequiredService<IManualSettlementStore>();
+        var admin = Guid.NewGuid();
+        var refund = await store.CreateRefundAsync(admin,
+            new(seed.PaymentId, 25000, "Reviewed completed package session", appt.Id), default);
+        await store.ApproveRefundAsync(admin, refund.Id, default);
+        var transfer = new ConfirmManualRefundRequest("test-completed-session-" + Guid.NewGuid(),
+            "test:receipt", DateTime.UtcNow.AddSeconds(1));
+        await store.ConfirmRefundAsync(admin, refund.Id, transfer, default);
+        await store.ConfirmRefundAsync(admin, refund.Id, transfer, default);
+        var adjustments = await db.FinancialLedgerEntries.Where(e => e.RefundId == refund.Id).ToListAsync();
+        adjustments.Should().HaveCount(3);
+        adjustments.Single(e => e.EntryType == FinancialLedgerEntryTypes.RefundGrossReduction).AmountVnd.Should().Be(-25000);
+        adjustments.Single(e => e.EntryType == FinancialLedgerEntryTypes.RefundPlatformFeeReturn).AmountVnd.Should().Be(-2500);
+        adjustments.Single(e => e.EntryType == FinancialLedgerEntryTypes.RefundTrainerDeduction).AmountVnd.Should().Be(-22500);
+        adjustments.Should().OnlyContain(e => e.AppointmentId == appt.Id && e.PaymentId == seed.PaymentId);
+        var excessive = () => store.CreateRefundAsync(admin,
+            new(seed.PaymentId, 80000, "Would exceed one session allocation", appt.Id), default);
+        (await excessive.Should().ThrowAsync<ConflictException>()).Which.Code.Should().Be("REFUND_CAP_EXCEEDED");
     }
 
     [Fact]

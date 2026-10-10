@@ -20,17 +20,64 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                 ?? throw new NotFoundException("PAYMENT_NOT_FOUND", "Payment not found.");
             if (payment.Method != PaymentMethod.Payos || payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded))
                 throw new ConflictException("REFUND_NOT_ELIGIBLE", "Use the original provider workflow for this payment.");
-            var appointmentId = payment.RequireAppointmentId();
+            var appointmentId = payment.PackageId.HasValue
+                ? request.AppointmentId ?? throw new DomainException("PACKAGE_APPOINTMENT_REQUIRED", "Choose a package session to refund.", 400)
+                : payment.RequireAppointmentId();
             var pending = await db.Refunds.Where(r => r.PaymentId == payment.Id && r.Status == RefundStatus.Pending).ToListAsync(ct);
-            var existing = pending.FirstOrDefault(r => r.AmountVnd == request.AmountVnd && r.Reason == request.Reason);
+            var existing = pending.FirstOrDefault(r => r.AppointmentId == appointmentId &&
+                r.AmountVnd == request.AmountVnd && r.Reason == request.Reason);
             if (existing != null) return View(existing);
+            SessionPackageSession? packageSession = null;
+            Appointment? packageAppointment = null;
+            if (payment.PackageId.HasValue)
+            {
+                var packageStatus = await db.SessionPackages.Where(p => p.Id == payment.PackageId.Value)
+                    .Select(p => (SessionPackageStatus?)p.Status).SingleOrDefaultAsync(ct);
+                packageSession = await db.SessionPackageSessions.SingleOrDefaultAsync(s =>
+                    s.PackageId == payment.PackageId.Value && s.AppointmentId == appointmentId, ct);
+                packageAppointment = await payments.FindAppointmentForUpdateAsync(appointmentId, ct);
+                if (packageStatus != SessionPackageStatus.Active || packageSession is null ||
+                    packageAppointment?.PaymentId != payment.Id ||
+                    packageAppointment.ActualPaidVnd != packageSession.PaidAllocationVnd ||
+                    packageAppointment.PlatformFeeVnd != packageSession.PlatformFeeAllocationVnd ||
+                    packageAppointment.TrainerShareVnd != packageSession.TrainerShareAllocationVnd ||
+                    packageAppointment.Status is not (AppointmentStatus.Confirmed or AppointmentStatus.Completed) ||
+                    (packageAppointment.Status == AppointmentStatus.Confirmed &&
+                     (request.AmountVnd != packageSession.PaidAllocationVnd ||
+                      packageAppointment.SlotStartUtc < DateTime.UtcNow.AddHours(48))))
+                    throw new ConflictException("PACKAGE_REFUND_NOT_ELIGIBLE", "Only a full session at least 48 hours ahead or a reviewed completed session can be refunded here.");
+            }
             if (request.AmountVnd > payment.AmountVnd - payment.RefundedSoFarVnd - pending.Sum(r => r.AmountVnd))
                 throw new ConflictException("REFUND_CAP_EXCEEDED", "Refund intents exceed the collected amount.");
+            if (packageSession is not null)
+            {
+                var succeededForSession = await db.Refunds.Where(r => r.PaymentId == payment.Id &&
+                    r.AppointmentId == appointmentId && r.Status == RefundStatus.Succeeded)
+                    .SumAsync(r => (long?)r.AmountVnd, ct) ?? 0L;
+                var reservedForSession = pending.Where(r => r.AppointmentId == appointmentId).Sum(r => r.AmountVnd);
+                if (request.AmountVnd > packageSession.PaidAllocationVnd - succeededForSession - reservedForSession)
+                    throw new ConflictException("REFUND_CAP_EXCEEDED", "Refund intents exceed this package session's allocation.");
+            }
             var refund = Refund.Create(payment.Id, appointmentId, request.AmountVnd, request.Reason, adminId);
             db.Refunds.Add(refund);
-            var settlement = await db.Set<ManualPtSettlement>().SingleOrDefaultAsync(s => s.AppointmentId == payment.AppointmentId, ct);
+            if (packageAppointment?.Status == AppointmentStatus.Confirmed)
+            {
+                packageAppointment.Cancel("Package session refund requested by Admin.");
+                outbox.Enqueue("booking.cancelled", new
+                {
+                    appointmentId, actorUserId = adminId, reason = request.Reason.Trim(),
+                    memberId = packageAppointment.MemberId, ptUserId = packageAppointment.PtUserId
+                });
+            }
+            var settlement = await db.Set<ManualPtSettlement>().SingleOrDefaultAsync(s => s.AppointmentId == appointmentId, ct);
             if (settlement != null && settlement.Status != "paid") settlement.Hold("Refund pending review.");
             db.AuditLogs.Add(AuditLog.Record(adminId, "Admin", "finance.manual_refund_requested", "Refund", refund.Id));
+            if (packageSession is not null)
+                outbox.Enqueue("payment.refund_requested", new
+                {
+                    refundId = refund.Id, paymentId = payment.Id, appointmentId,
+                    packageId = payment.PackageId, amountVnd = refund.AmountVnd
+                });
             await db.SaveChangesAsync(ct);
             return View(refund);
         }, ct);
@@ -46,18 +93,41 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             var refund = await db.Refunds.SingleAsync(r => r.Id == refundId, ct);
             if (payment.Method != PaymentMethod.Payos || !refund.ApprovedAtUtc.HasValue || request.TransferredAt < refund.ApprovedAtUtc.Value)
                 throw new ConflictException("REFUND_NOT_ELIGIBLE", "Invalid manual refund confirmation.");
-            var latePackage = payment.PackageId.HasValue
+            var bankReference = request.BankReference.Trim();
+            if (refund.Status == RefundStatus.Succeeded && refund.ProviderRefundRef == bankReference) return View(refund);
+            var package = payment.PackageId.HasValue
                 ? await db.SessionPackages.Include(p => p.Sessions)
                     .SingleOrDefaultAsync(p => p.Id == payment.PackageId.Value, ct)
                 : null;
-            if (payment.PackageId.HasValue &&
-                (latePackage?.Status != SessionPackageStatus.LatePaymentRefundPending ||
-                 refund.AmountVnd != payment.AmountVnd ||
-                 refund.AppointmentId != latePackage.Sessions.OrderBy(s => s.Sequence).FirstOrDefault()?.AppointmentId))
-                throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED", "Package refund requires manual reconciliation.");
-            var appointmentId = latePackage is null ? payment.RequireAppointmentId() : refund.AppointmentId;
-            var bankReference = request.BankReference.Trim();
-            if (refund.Status == RefundStatus.Succeeded && refund.ProviderRefundRef == bankReference) return View(refund);
+            var latePackage = package?.Status == SessionPackageStatus.LatePaymentRefundPending;
+            var activePackage = package?.Status == SessionPackageStatus.Active;
+            var packageSession = package?.Sessions.SingleOrDefault(s => s.AppointmentId == refund.AppointmentId);
+            Appointment? packageAppointment = null;
+            long packageRefundedBefore = 0;
+            if (payment.PackageId.HasValue)
+            {
+                if (package is null || package.PaymentId != payment.Id ||
+                    (latePackage && (refund.AmountVnd != payment.AmountVnd ||
+                        refund.AppointmentId != package.Sessions.OrderBy(s => s.Sequence).FirstOrDefault()?.AppointmentId)) ||
+                    (!latePackage && !activePackage))
+                    throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED", "Package refund requires manual reconciliation.");
+                if (activePackage)
+                {
+                    packageAppointment = await payments.FindAppointmentForUpdateAsync(refund.AppointmentId, ct);
+                    if (packageSession is null || packageAppointment?.PaymentId != payment.Id ||
+                        packageAppointment.ActualPaidVnd != packageSession.PaidAllocationVnd ||
+                        packageAppointment.PlatformFeeVnd != packageSession.PlatformFeeAllocationVnd ||
+                        packageAppointment.TrainerShareVnd != packageSession.TrainerShareAllocationVnd ||
+                        packageAppointment.Status is not (AppointmentStatus.Cancelled or AppointmentStatus.Completed))
+                        throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED", "Package session refund does not match its allocation.");
+                    packageRefundedBefore = await db.Refunds.Where(r => r.PaymentId == payment.Id &&
+                        r.AppointmentId == refund.AppointmentId && r.Status == RefundStatus.Succeeded)
+                        .SumAsync(r => (long?)r.AmountVnd, ct) ?? 0L;
+                    if (refund.AmountVnd > packageSession.PaidAllocationVnd - packageRefundedBefore)
+                        throw new ConflictException("REFUND_CAP_EXCEEDED", "Refund exceeds this package session's allocation.");
+                }
+            }
+            var appointmentId = package is null ? payment.RequireAppointmentId() : refund.AppointmentId;
             if (refund.Status != RefundStatus.Pending)
                 throw new ConflictException("REFUND_ALREADY_PROCESSED", "Refund is no longer pending.");
             await LockReferenceAsync(bankReference, ct);
@@ -68,22 +138,33 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             payment.ApplyRefund(refund.AmountVnd);
             refund.MarkManualTransferSucceeded(bankReference, request.TransferredAt);
 
-            if (latePackage is null)
+            if (!latePackage)
             {
-                var appt = await db.Appointments.FindAsync(new object[] { appointmentId }, ct);
-                var platformFeeVnd = appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
-                var refundedSoFarAfter = payment.RefundedSoFarVnd;
-                var cumFeeBefore = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarBefore / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
-                var cumFeeAfter = payment.AmountVnd > 0 ? (long)Math.Round(platformFeeVnd * (decimal)refundedSoFarAfter / payment.AmountVnd, MidpointRounding.AwayFromZero) : 0L;
-                var refundFee = cumFeeAfter - cumFeeBefore;
-                var refundTrainer = refund.AmountVnd - refundFee;
-                var occurredAt = refund.SucceededAtUtc ?? request.TransferredAt;
-                db.FinancialLedgerEntries.AddRange(new[]
+                var appt = packageAppointment ?? await db.Appointments.FindAsync(new object[] { appointmentId }, ct);
+                // A cancelled, never-completed package session has no recognized revenue to reverse.
+                if (!activePackage || appt?.Status == AppointmentStatus.Completed)
                 {
-                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundGrossReduction, -refund.AmountVnd, occurredAt, adminId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}"),
-                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundPlatformFeeReturn, -refundFee, occurredAt, adminId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}"),
-                    FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundTrainerDeduction, -refundTrainer, occurredAt, adminId.ToString(), appointmentId: payment.AppointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}")
-                });
+                    if (activePackage && !await db.FinancialLedgerEntries.AnyAsync(e =>
+                            e.AppointmentId == appointmentId &&
+                            e.EntryType == FinancialLedgerEntryTypes.GrossBookingFee, ct))
+                        throw new ConflictException("PACKAGE_RECONCILIATION_REQUIRED", "Completed session has no recognized revenue entry.");
+                    var allocationPaid = activePackage ? packageSession!.PaidAllocationVnd : payment.AmountVnd;
+                    var platformFeeVnd = activePackage ? packageSession!.PlatformFeeAllocationVnd :
+                        appt?.PlatformFeeVnd ?? (long)Math.Round(payment.AmountVnd * 0.10m, MidpointRounding.AwayFromZero);
+                    var cumulativeBefore = activePackage ? packageRefundedBefore : refundedSoFarBefore;
+                    var cumulativeAfter = checked(cumulativeBefore + refund.AmountVnd);
+                    var cumFeeBefore = (long)Math.Round(platformFeeVnd * (decimal)cumulativeBefore / allocationPaid, MidpointRounding.AwayFromZero);
+                    var cumFeeAfter = (long)Math.Round(platformFeeVnd * (decimal)cumulativeAfter / allocationPaid, MidpointRounding.AwayFromZero);
+                    var refundFee = cumFeeAfter - cumFeeBefore;
+                    var refundTrainer = refund.AmountVnd - refundFee;
+                    var occurredAt = refund.SucceededAtUtc ?? request.TransferredAt;
+                    db.FinancialLedgerEntries.AddRange(new[]
+                    {
+                        FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundGrossReduction, -refund.AmountVnd, occurredAt, adminId.ToString(), appointmentId: appointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}"),
+                        FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundPlatformFeeReturn, -refundFee, occurredAt, adminId.ToString(), appointmentId: appointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}"),
+                        FinancialLedgerEntry.Create(FinancialLedgerEntryTypes.RefundTrainerDeduction, -refundTrainer, occurredAt, adminId.ToString(), appointmentId: appointmentId, paymentId: payment.Id, refundId: refund.Id, sourceEventId: $"refund.confirmed:{refund.Id}")
+                    });
+                }
             }
             db.AuditLogs.Add(AuditLog.Record(adminId, "Admin", "finance.manual_refund_confirmed", "Refund", refundId,
                 metadataJson: System.Text.Json.JsonSerializer.Serialize(new { request.EvidenceReference, request.TransferredAt })));

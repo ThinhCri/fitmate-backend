@@ -4803,6 +4803,7 @@ paths:
                 paymentId: {type: string, format: uuid}
                 amountVnd: {type: integer, format: int64, minimum: 1}
                 reason: {type: string, minLength: 1, maxLength: 500}
+                appointmentId: {type: string, format: uuid, nullable: true, description: 'Required for a package payment; identifies the exact session allocation to refund. Omit for a single-session payment.'}
       responses:
         '200': {$ref: '#/components/responses/ManualRefundResult'}
         '400': {description: Invalid request}

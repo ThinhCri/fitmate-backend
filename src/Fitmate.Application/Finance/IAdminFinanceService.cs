@@ -31,7 +31,7 @@ public sealed record LedgerPage(
     int Page,
     int PageSize);
 
-public sealed record CreateRefundRequest(Guid PaymentId, long AmountVnd, string Reason);
+public sealed record CreateRefundRequest(Guid PaymentId, long AmountVnd, string Reason, Guid? AppointmentId = null);
 
 public sealed record RefundView(
     Guid Id,
