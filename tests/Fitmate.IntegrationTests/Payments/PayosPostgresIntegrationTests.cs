@@ -105,6 +105,7 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         using var stranger = _factory.CreateAuthenticatedClient("Member", Guid.NewGuid());
         using var anonymous = _factory.CreateClient();
         var path = $"/api/v1/me/session-packages/{packageId}/stop-requests";
+        long expectedQuoteVnd;
 
         using (var privatePreview = await stranger.GetAsync(
                    $"/api/v1/me/session-packages/{packageId}/stop-preview"))
@@ -119,6 +120,7 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
             json.RootElement.GetProperty("refund_quote_vnd").GetInt64().Should().Be(
                 sessions.Where(s => s.GetProperty("eligible_for_refund").GetBoolean())
                     .Sum(s => s.GetProperty("paid_allocation_vnd").GetInt64()));
+            expectedQuoteVnd = json.RootElement.GetProperty("refund_quote_vnd").GetInt64();
         }
 
         using (var unauthenticated = await anonymous.PostAsJsonAsync(path,
@@ -137,13 +139,21 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         }
 
         var reason = "Tôi phải chuyển nơi ở trong thời gian tới.";
-        using (var other = await Post(stranger, path, "other-owner-123", new { reason }))
+        using (var other = await Post(stranger, path, "other-owner-123",
+                   new { reason, expected_refund_quote_vnd = expectedQuoteVnd }))
             other.StatusCode.Should().Be(HttpStatusCode.NotFound);
-        using (var invalid = await Post(member, path, "invalid-reason-123", new { reason = "Ngắn" }))
+        using (var invalid = await Post(member, path, "invalid-reason-123",
+                   new { reason = "Ngắn", expected_refund_quote_vnd = expectedQuoteVnd }))
             invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using (var missingQuote = await Post(member, path, "missing-quote-123", new { reason }))
+            missingQuote.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using (var changedQuote = await Post(member, path, "changed-quote-123",
+                   new { reason, expected_refund_quote_vnd = expectedQuoteVnd - 1 }))
+            changedQuote.StatusCode.Should().Be(HttpStatusCode.Conflict);
 
         Guid requestId;
-        using (var created = await Post(member, path, "stop-request-123", new { reason }))
+        using (var created = await Post(member, path, "stop-request-123",
+                   new { reason, expected_refund_quote_vnd = expectedQuoteVnd }))
         {
             created.StatusCode.Should().Be(HttpStatusCode.OK);
             using var json = JsonDocument.Parse(await created.Content.ReadAsStringAsync());
@@ -151,7 +161,8 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
             json.RootElement.GetProperty("status").GetString().Should().Be("Pending");
             json.RootElement.GetProperty("refund_quote_vnd").GetInt64().Should().BeGreaterThan(0);
         }
-        using (var replay = await Post(member, path, "stop-request-123", new { reason }))
+        using (var replay = await Post(member, path, "stop-request-123",
+                   new { reason, expected_refund_quote_vnd = expectedQuoteVnd }))
         {
             replay.StatusCode.Should().Be(HttpStatusCode.OK);
             replay.Headers.GetValues("X-Idempotent-Replay").Should().Contain("true");
@@ -185,9 +196,14 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         using var member = _factory.CreateAuthenticatedClient("Member", memberId);
         using var pt = _factory.CreateAuthenticatedClient("PT", ptUserId);
         var path = $"/api/v1/me/session-packages/{packageId}/stop-requests";
+        using var preview = await member.GetAsync($"/api/v1/me/session-packages/{packageId}/stop-preview");
+        preview.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var previewJson = JsonDocument.Parse(await preview.Content.ReadAsStringAsync());
+        var expectedQuoteVnd = previewJson.RootElement.GetProperty("refund_quote_vnd").GetInt64();
         using var submit = new HttpRequestMessage(HttpMethod.Post, path)
         {
-            Content = JsonContent.Create(new { reason = "Tôi chuyển nhà và không thể tiếp tục lịch tập." })
+            Content = JsonContent.Create(new { reason = "Tôi chuyển nhà và không thể tiếp tục lịch tập.",
+                expected_refund_quote_vnd = expectedQuoteVnd })
         };
         submit.Headers.Add("Idempotency-Key", "stop-withdraw-123");
         using var created = await member.SendAsync(submit);

@@ -10,7 +10,7 @@ public interface ISessionPackageStopStore
     Task<bool> IsAssignedPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct);
     Task<SessionPackageStopPreviewView> PreviewAsync(Guid packageId, Guid memberId, CancellationToken ct);
     Task<SessionPackageStopRequest> RequestAsync(Guid packageId, Guid memberId,
-        string reason, CancellationToken ct);
+        string reason, long? expectedRefundQuoteVnd, CancellationToken ct);
     Task<SessionPackageStopRequest> AcceptByPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct);
     Task<SessionPackageStopRequest> WithdrawAsync(Guid packageId, Guid memberId,
         Guid requestId, CancellationToken ct);
@@ -50,7 +50,7 @@ public sealed class SessionPackageStopService(ISessionPackageStopStore store)
     }
 
     public async Task<SessionPackageStopRequest> RequestAsync(Guid memberId, Guid packageId,
-        string reason, CancellationToken ct)
+        string reason, CancellationToken ct, long? expectedRefundQuoteVnd = null)
     {
         if (memberId == Guid.Empty || packageId == Guid.Empty ||
             !await store.IsOwnedByAsync(packageId, memberId, ct))
@@ -59,7 +59,11 @@ public sealed class SessionPackageStopService(ISessionPackageStopStore store)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid,
                 "Vui lòng nhập lý do dừng gói từ 10 đến 1000 ký tự.",
                 new Dictionary<string, string[]> { ["reason"] = ["10–1000 characters"] });
-        return await store.RequestAsync(packageId, memberId, reason.Trim(), ct);
+        if (expectedRefundQuoteVnd < 0)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid,
+                "Số tiền hoàn dự kiến không hợp lệ.",
+                new Dictionary<string, string[]> { ["expected_refund_quote_vnd"] = [">= 0"] });
+        return await store.RequestAsync(packageId, memberId, reason.Trim(), expectedRefundQuoteVnd, ct);
     }
 
     public async Task<SessionPackageStopRequest> AcceptByPtAsync(Guid ptUserId, Guid packageId,

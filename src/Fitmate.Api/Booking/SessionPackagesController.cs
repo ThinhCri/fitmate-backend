@@ -2,6 +2,7 @@ using Fitmate.Api.Auth;
 using Fitmate.Application.Booking;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -40,7 +41,11 @@ public sealed class SessionPackagesController(
         CancellationToken ct)
     {
         RequireIdempotencyKey(idempotencyKey);
-        return ToView(await stops.RequestAsync(current.GetUserIdOrThrow(), id, body.Reason, ct));
+        if (body.ExpectedRefundQuoteVnd is null)
+            throw new DomainException(ErrorCodes.Validation.RequiredField,
+                "expected_refund_quote_vnd is required.", 400);
+        return ToView(await stops.RequestAsync(current.GetUserIdOrThrow(), id, body.Reason,
+            ct, body.ExpectedRefundQuoteVnd));
     }
 
     [HttpPost("{id:guid}/stop-requests/accept")]
@@ -75,4 +80,6 @@ public sealed class SessionPackagesController(
         request.FinalizedAtUtc);
 }
 
-public sealed record RequestPackageStopBody(string Reason);
+public sealed record RequestPackageStopBody(
+    string Reason,
+    [property: JsonPropertyName("expected_refund_quote_vnd")] long? ExpectedRefundQuoteVnd);

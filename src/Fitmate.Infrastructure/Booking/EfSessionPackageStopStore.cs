@@ -92,7 +92,7 @@ public sealed class EfSessionPackageStopStore(
             .Select(r => r.PackageId).Take(limit).ToArrayAsync(ct);
 
     public Task<SessionPackageStopRequest> RequestAsync(Guid packageId, Guid memberId,
-        string reason, CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
+        string reason, long? expectedRefundQuoteVnd, CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
     {
         // Finance mutations lock this same payment first. Keep the lock order so
         // a refund cannot be created between eligibility checks and the snapshot.
@@ -141,6 +141,12 @@ public sealed class EfSessionPackageStopStore(
                 eligibleIds.Contains(s.AppointmentId) && s.Status == "paid", ct))
             throw new ConflictException("PACKAGE_STOP_FINANCE_REVIEW_REQUIRED",
                 "Một buổi đủ điều kiện đang được hoàn hoặc đã chi PT; cần Admin đối soát trước.");
+
+        var currentQuoteVnd = package.Sessions.Where(s => eligibleIds.Contains(s.AppointmentId))
+            .Sum(s => s.PaidAllocationVnd);
+        if (expectedRefundQuoteVnd.HasValue && expectedRefundQuoteVnd.Value != currentQuoteVnd)
+            throw new ConflictException("PACKAGE_STOP_QUOTE_CHANGED",
+                "Mức hoàn tiền đã thay đổi. Vui lòng xem lại trước khi xác nhận dừng gói.");
 
         var snapshot = appointments.Select(a => (a.Id, a.Status, a.SlotStartUtc)).ToArray();
         var request = package.RequestStop(reason, snapshot, nowUtc);
