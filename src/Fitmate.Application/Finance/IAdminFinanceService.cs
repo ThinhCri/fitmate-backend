@@ -47,10 +47,11 @@ public sealed record RefundView(
 
 public sealed record DiscrepancyItem(
     Guid PaymentId,
-    Guid AppointmentId,
+    Guid? AppointmentId,
     string Issue,
     long ExpectedVnd,
-    long ActualVnd);
+    long ActualVnd,
+    Guid? PackageId = null);
 
 public sealed record VerifyLegacyAppointmentRequest(
     DateTime VerifiedCompletedAtUtc,

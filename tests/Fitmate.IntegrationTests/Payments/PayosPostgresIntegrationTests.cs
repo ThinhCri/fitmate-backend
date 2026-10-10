@@ -148,6 +148,35 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
     }
 
     [Fact]
+    public async Task Package_refund_projects_only_to_its_session_not_every_session()
+    {
+        var seed = await SeedPackageAsync();
+        await DeliverAsync(Webhook(seed.OrderCode, 400000));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var package = await db.SessionPackages.Include(p => p.Sessions).SingleAsync(p => p.Id == seed.PackageId);
+        var session = package.Sessions.OrderBy(s => s.Sequence).Skip(1).First();
+        var payment = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
+        var refund = Refund.CreateSystemRefund(payment.Id, session.AppointmentId, 25000, "Test package session refund");
+        refund.MarkSucceeded("test-provider-" + Guid.NewGuid());
+        payment.ApplyRefund(refund.AmountVnd);
+        db.Refunds.Add(refund);
+        await db.SaveChangesAsync();
+
+        var from = DateTime.UtcNow.AddDays(-1);
+        var to = DateTime.UtcNow.AddDays(1);
+        var adminRows = await scope.ServiceProvider.GetRequiredService<IAdminFinanceStore>()
+            .ListBookingsInRangeAsync(from, to, default);
+        var trainerRows = await scope.ServiceProvider.GetRequiredService<ITrainerRevenueStore>()
+            .ListBookingsInRangeAsync(package.PtUserId, from, to, default);
+        adminRows.Where(r => package.Sessions.Any(s => s.AppointmentId == r.AppointmentId))
+            .Sum(r => r.RefundedVnd).Should().Be(25000);
+        trainerRows.Single(r => r.AppointmentId == session.AppointmentId).RefundedVnd.Should().Be(25000);
+        trainerRows.Where(r => r.AppointmentId != session.AppointmentId)
+            .Should().OnlyContain(r => r.RefundedVnd == 0);
+    }
+
+    [Fact]
     public async Task Late_package_webhook_releases_every_slot_and_creates_one_refundable_liability()
     {
         var seed = await SeedPackageAsync(releaseOneHold: true);
@@ -175,6 +204,33 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
             new ConfirmManualRefundRequest("test-package-refund-" + Guid.NewGuid(), "test:receipt", DateTime.UtcNow.AddSeconds(1)), default);
         (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).Status.Should().Be(PaymentStatus.Refunded);
         (await db.FinancialLedgerEntries.CountAsync(e => e.PaymentId == seed.PaymentId)).Should().Be(0);
+        var trainerRows = await scope.ServiceProvider.GetRequiredService<ITrainerRevenueStore>()
+            .ListBookingsInRangeAsync(package.PtUserId, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1), default);
+        trainerRows.Where(r => ids.Contains(r.AppointmentId)).Should().OnlyContain(r => r.RefundedVnd == 0);
+    }
+
+    [Fact]
+    public async Task Package_payment_discrepancy_reports_package_id_without_a_fake_appointment()
+    {
+        var seed = await SeedPackageAsync();
+        await DeliverAsync(Webhook(seed.OrderCode, 400000));
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var strategy = db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync();
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE payments SET \"RefundedSoFarVnd\" = 1 WHERE id = {seed.PaymentId}");
+            var result = await scope.ServiceProvider.GetRequiredService<IAdminFinanceStore>()
+                .GetReconciliationDataAsync(default);
+            var discrepancy = result.Discrepancies.Single(d => d.PaymentId == seed.PaymentId);
+            discrepancy.PackageId.Should().Be(seed.PackageId);
+            discrepancy.AppointmentId.Should().BeNull();
+            discrepancy.ExpectedVnd.Should().Be(0);
+            discrepancy.ActualVnd.Should().Be(1);
+            await tx.RollbackAsync();
+        });
     }
 
     [Theory]
@@ -272,6 +328,13 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
             await store.ConfirmRefundAsync(admin, refundId, request, default);
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
             (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).RefundedSoFarVnd.Should().Be(10000);
+            var appointment = await db.Appointments.SingleAsync(a => a.Id == seed.AppointmentId);
+            var trainerRows = await scope.ServiceProvider.GetRequiredService<ITrainerRevenueStore>()
+                .ListBookingsInRangeAsync(appointment.PtUserId, DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1), default);
+            trainerRows.Single(r => r.AppointmentId == appointment.Id).RefundedVnd.Should().Be(10000);
+            var adminRows = await scope.ServiceProvider.GetRequiredService<IAdminFinanceStore>()
+                .ListBookingsInRangeAsync(DateTime.UtcNow.AddDays(-1), DateTime.UtcNow.AddDays(1), default);
+            adminRows.Single(r => r.AppointmentId == appointment.Id).RefundedVnd.Should().Be(10000);
         }
     }
 

@@ -35,9 +35,10 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
                 a.Status,
                 PaidOutVnd = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id && s.Status == "paid").Select(s => (long?)s.AmountVnd).FirstOrDefault() ?? 0L,
                 SettlementStatus = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.Status).FirstOrDefault() ?? "pending_review",
-                RefundedVnd = _db.Payments
-                    .Where(p => p.AppointmentId == a.Id && (p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.PartialRefunded))
-                    .Sum(p => (long?)p.RefundedSoFarVnd) ?? 0L
+                RefundedVnd = a.ActualPaidVnd > 0
+                    ? _db.Refunds.Where(r => r.AppointmentId == a.Id && r.PaymentId == a.PaymentId &&
+                        r.Status == RefundStatus.Succeeded).Sum(r => (long?)r.AmountVnd) ?? 0L
+                    : 0L
             })
             .ToListAsync(ct);
 
@@ -77,9 +78,10 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
                 a.Status,
                 PaidOutVnd = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id && s.Status == "paid").Select(s => (long?)s.AmountVnd).FirstOrDefault() ?? 0L,
                 SettlementStatus = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.Status).FirstOrDefault() ?? "pending_review",
-                RefundedVnd = _db.Payments
-                    .Where(p => p.AppointmentId == a.Id && (p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.PartialRefunded))
-                    .Sum(p => (long?)p.RefundedSoFarVnd) ?? 0L
+                RefundedVnd = a.ActualPaidVnd > 0
+                    ? _db.Refunds.Where(r => r.AppointmentId == a.Id && r.PaymentId == a.PaymentId &&
+                        r.Status == RefundStatus.Succeeded).Sum(r => (long?)r.AmountVnd) ?? 0L
+                    : 0L
             })
             .ToListAsync(ct);
 

@@ -46,10 +46,10 @@ public class EfAdminFinanceStore : IAdminFinanceStore
                 a.PlatformFeeVnd,
                 a.TrainerShareVnd,
                 a.Status,
-                RefundedSoFar = _db.Payments
-                    .Where(p => p.AppointmentId == a.Id
-                             && (p.Status == PaymentStatus.Refunded || p.Status == PaymentStatus.PartialRefunded))
-                    .Sum(p => (long?)p.RefundedSoFarVnd) ?? 0L
+                RefundedSoFar = a.ActualPaidVnd > 0
+                    ? _db.Refunds.Where(r => r.AppointmentId == a.Id && r.PaymentId == a.PaymentId &&
+                        r.Status == RefundStatus.Succeeded).Sum(r => (long?)r.AmountVnd) ?? 0L
+                    : 0L
             })
             .ToListAsync(ct);
 
@@ -245,7 +245,8 @@ public class EfAdminFinanceStore : IAdminFinanceStore
             {
                 discrepancies.Add(new DiscrepancyItem(
                     PaymentId: p.Id,
-                    AppointmentId: p.RequireAppointmentId(),
+                    AppointmentId: p.AppointmentId,
+                    PackageId: p.PackageId,
                     Issue: "Payment.RefundedSoFarVnd differs from sum of succeeded Refunds",
                     ExpectedVnd: pRefunds,
                     ActualVnd: p.RefundedSoFarVnd));
