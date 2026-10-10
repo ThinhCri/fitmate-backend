@@ -14,6 +14,20 @@ public enum SessionPackageStatus
     LatePaymentRefundPending = 6
 }
 
+public enum SessionPackageStopRequestStatus
+{
+    Pending = 0,
+    Approved = 1,
+    Withdrawn = 2
+}
+
+public enum SessionPackageStopApprovalSource
+{
+    None = 0,
+    PtAccepted = 1,
+    PtResponseTimedOut = 2
+}
+
 /// <summary>
 /// Durable owner and financial snapshot for a four/eight-session purchase.
 /// No public checkout route may use this until payment/refund/settlement all consume
@@ -35,7 +49,7 @@ public sealed class SessionPackage : AuditableEntity
     public Guid? PaymentId { get; private set; }
     public SessionPackageStatus Status { get; private set; }
     public List<SessionPackageSession> Sessions { get; private set; } = [];
-    public SessionPackageStopRequest? StopRequest { get; private set; }
+    public List<SessionPackageStopRequest> StopRequests { get; private set; } = [];
 
     public static SessionPackage CreateHold(Guid memberId, Guid ptUserId, Guid serviceId,
         long pricePerSessionVnd, IReadOnlyList<(Guid HoldId, Guid AppointmentId, DateTime SlotStartUtc)> slots,
@@ -126,7 +140,8 @@ public sealed class SessionPackage : AuditableEntity
         IReadOnlyList<(Guid AppointmentId, AppointmentStatus Status, DateTime SlotStartUtc)> currentSessions,
         DateTime nowUtc)
     {
-        if (Status != SessionPackageStatus.Active || StopRequest is not null ||
+        if (Status != SessionPackageStatus.Active ||
+            StopRequests.Any(r => r.Status != SessionPackageStopRequestStatus.Withdrawn) ||
             nowUtc.Kind != DateTimeKind.Utc)
             throw new InvalidOperationException("Only an active package without a stop request can be stopped.");
         if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 10 || reason.Trim().Length > 1000)
@@ -148,10 +163,22 @@ public sealed class SessionPackage : AuditableEntity
                 current.SlotStartUtc >= nowUtc.AddHours(48));
         }).ToList();
 
-        StopRequest = SessionPackageStopRequest.Create(Id, reason.Trim(), nowUtc, snapshots);
+        var stopRequest = SessionPackageStopRequest.Create(Id, reason.Trim(), nowUtc, snapshots);
+        StopRequests.Add(stopRequest);
         Status = SessionPackageStatus.StopRequested;
         UpdatedAt = nowUtc;
-        return StopRequest;
+        return stopRequest;
+    }
+
+    public void WithdrawStopRequest(Guid requestId, DateTime nowUtc)
+    {
+        if (Status != SessionPackageStatus.StopRequested || nowUtc.Kind != DateTimeKind.Utc)
+            throw new InvalidOperationException("Only a requested package stop can be withdrawn.");
+        var request = StopRequests.SingleOrDefault(r => r.Id == requestId)
+            ?? throw new InvalidOperationException("Stop request does not belong to this package.");
+        request.Withdraw(nowUtc);
+        Status = SessionPackageStatus.Active;
+        UpdatedAt = nowUtc;
     }
 }
 
@@ -165,6 +192,10 @@ public sealed class SessionPackageStopRequest
     public DateTime RequestedAtUtc { get; private set; }
     public DateTime PtResponseDeadlineUtc { get; private set; }
     public long RefundQuoteVnd { get; private set; }
+    public SessionPackageStopRequestStatus Status { get; private set; }
+    public SessionPackageStopApprovalSource ApprovalSource { get; private set; }
+    public DateTime? ApprovedAtUtc { get; private set; }
+    public DateTime? WithdrawnAtUtc { get; private set; }
     public List<SessionPackageStopSession> Sessions { get; private set; } = [];
 
     internal static SessionPackageStopRequest Create(Guid packageId, string reason,
@@ -175,10 +206,47 @@ public sealed class SessionPackageStopRequest
             Id = Guid.NewGuid(), PackageId = packageId, Reason = reason,
             RequestedAtUtc = nowUtc, PtResponseDeadlineUtc = nowUtc.AddHours(24),
             RefundQuoteVnd = sessions.Where(s => s.EligibleForRefund).Sum(s => s.PaidAllocationVnd),
+            Status = SessionPackageStopRequestStatus.Pending,
+            ApprovalSource = SessionPackageStopApprovalSource.None,
             Sessions = sessions
         };
         foreach (var session in sessions) session.Attach(request.Id);
         return request;
+    }
+
+    public bool ApproveByPt(DateTime nowUtc)
+    {
+        if (Status == SessionPackageStopRequestStatus.Approved &&
+            ApprovalSource == SessionPackageStopApprovalSource.PtAccepted) return false;
+        if (Status != SessionPackageStopRequestStatus.Pending || nowUtc.Kind != DateTimeKind.Utc ||
+            nowUtc >= PtResponseDeadlineUtc)
+            throw new InvalidOperationException("PT can accept only a pending request before its deadline.");
+        Status = SessionPackageStopRequestStatus.Approved;
+        ApprovalSource = SessionPackageStopApprovalSource.PtAccepted;
+        ApprovedAtUtc = nowUtc;
+        return true;
+    }
+
+    public bool ApproveAfterTimeout(DateTime nowUtc)
+    {
+        if (Status == SessionPackageStopRequestStatus.Approved &&
+            ApprovalSource == SessionPackageStopApprovalSource.PtResponseTimedOut) return false;
+        if (Status != SessionPackageStopRequestStatus.Pending || nowUtc.Kind != DateTimeKind.Utc ||
+            nowUtc < PtResponseDeadlineUtc)
+            throw new InvalidOperationException("Only a pending request past its deadline can time out.");
+        Status = SessionPackageStopRequestStatus.Approved;
+        ApprovalSource = SessionPackageStopApprovalSource.PtResponseTimedOut;
+        ApprovedAtUtc = nowUtc;
+        return true;
+    }
+
+    internal void Withdraw(DateTime nowUtc)
+    {
+        if (Status != SessionPackageStopRequestStatus.Pending || nowUtc.Kind != DateTimeKind.Utc ||
+            nowUtc >= PtResponseDeadlineUtc)
+            throw new InvalidOperationException("Only a pending stop request can be withdrawn before deadline.");
+        Status = SessionPackageStopRequestStatus.Withdrawn;
+        WithdrawnAtUtc = nowUtc;
     }
 }
 

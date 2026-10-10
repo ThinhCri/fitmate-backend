@@ -1,5 +1,11 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-10 — Quyết định yêu cầu dừng gói PT [BE-807/809]
+- Đổi stop request từ quan hệ một-một sang lịch sử nhiều request/gói, nhưng DB chỉ cho một request Pending/Approved tại một thời điểm. Hội viên có thể rút khi còn chờ trong 24 giờ, giữ bản ghi cũ và gửi lại nếu thay đổi kế hoạch.
+- PT được phân công có thể chấp nhận sớm; PT không có quyền tự bác yêu cầu. Nếu chưa được chấp nhận/rút khi hết 24 giờ, booking worker duyệt theo timeout. Mỗi chuyển trạng thái khóa payment, audit/outbox atomic; request lặp và sweep lặp không tạo quyết định/notification thứ hai. Test PostgreSQL đã kiểm quyền, lịch sử và cuộc đua PT accept với member withdraw.
+- Migration `AllowRepeatedPackageStopRequests` chỉ thêm cột quyết định và filtered unique index; đã loại `UpdateData` exercise seed ngoài scope. Chưa apply vào app DB.
+- **Approved chỉ là đủ điều kiện bước xử lý tiếp**, chưa hủy lịch hay hoàn tiền. Cần finalizer tạo pending refund theo snapshot, khóa/chuyển trạng thái từng buổi, Admin manual transfer, Mobile/Admin UI và kiểm thử end-to-end. Package checkout vẫn internal-only.
+
 ## 2026-10-10 — Gửi yêu cầu dừng gói PT nội bộ [BE-807/809]
 - `SessionPackageStopService` kiểm quyền chủ gói ở Application layer, chuẩn hóa lý do 10–1000 ký tự; `EfSessionPackageStopStore` khóa payment theo cùng thứ tự với finance, khóa từng appointment, kiểm phân bổ gói và ghi snapshot/audit/outbox trong một transaction.
 - Gửi lại cùng lý do trả request cũ, không phát thêm sự kiện. Chặn nếu buổi dự kiến hoàn đã có pending/succeeded refund hoặc PT đã được chi; trường hợp này chuyển Admin đối soát, không tự tính trùng. PostgreSQL integration đã kiểm ownership, replay và refund conflict.

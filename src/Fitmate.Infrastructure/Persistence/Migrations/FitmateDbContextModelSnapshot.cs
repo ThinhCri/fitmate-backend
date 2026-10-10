@@ -400,6 +400,12 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid");
 
+                    b.Property<int>("ApprovalSource")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("ApprovedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("PackageId")
                         .HasColumnType("uuid");
 
@@ -417,10 +423,17 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("RequestedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("WithdrawnAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.HasKey("Id");
 
                     b.HasIndex("PackageId")
-                        .IsUnique();
+                        .IsUnique()
+                        .HasFilter("\"Status\" IN (0, 1)");
 
                     b.ToTable("session_package_stop_requests", null, t =>
                         {
@@ -3994,8 +4007,8 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageStopRequest", b =>
                 {
                     b.HasOne("Fitmate.Domain.Booking.SessionPackage", null)
-                        .WithOne("StopRequest")
-                        .HasForeignKey("Fitmate.Domain.Booking.SessionPackageStopRequest", "PackageId")
+                        .WithMany("StopRequests")
+                        .HasForeignKey("PackageId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
@@ -4195,7 +4208,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                 {
                     b.Navigation("Sessions");
 
-                    b.Navigation("StopRequest");
+                    b.Navigation("StopRequests");
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageStopRequest", b =>

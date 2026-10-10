@@ -6,8 +6,14 @@ namespace Fitmate.Application.Booking;
 public interface ISessionPackageStopStore
 {
     Task<bool> IsOwnedByAsync(Guid packageId, Guid memberId, CancellationToken ct);
+    Task<bool> IsAssignedPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct);
     Task<SessionPackageStopRequest> RequestAsync(Guid packageId, Guid memberId,
         string reason, CancellationToken ct);
+    Task<SessionPackageStopRequest> AcceptByPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct);
+    Task<SessionPackageStopRequest> WithdrawAsync(Guid packageId, Guid memberId,
+        Guid requestId, CancellationToken ct);
+    Task<bool> ApproveTimedOutAsync(Guid packageId, DateTime nowUtc, CancellationToken ct);
+    Task<IReadOnlyList<Guid>> ListTimedOutPackageIdsAsync(DateTime nowUtc, int limit, CancellationToken ct);
 }
 
 /// <summary>
@@ -27,5 +33,41 @@ public sealed class SessionPackageStopService(ISessionPackageStopStore store)
                 "Vui lòng nhập lý do dừng gói từ 10 đến 1000 ký tự.",
                 new Dictionary<string, string[]> { ["reason"] = ["10–1000 characters"] });
         return await store.RequestAsync(packageId, memberId, reason.Trim(), ct);
+    }
+
+    public async Task<SessionPackageStopRequest> AcceptByPtAsync(Guid ptUserId, Guid packageId,
+        CancellationToken ct)
+    {
+        if (ptUserId == Guid.Empty || packageId == Guid.Empty ||
+            !await store.IsAssignedPtAsync(packageId, ptUserId, ct))
+            throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập được phân công.");
+        return await store.AcceptByPtAsync(packageId, ptUserId, ct);
+    }
+
+    public async Task<SessionPackageStopRequest> WithdrawAsync(Guid memberId, Guid packageId,
+        Guid requestId, CancellationToken ct)
+    {
+        if (memberId == Guid.Empty || packageId == Guid.Empty || requestId == Guid.Empty ||
+            !await store.IsOwnedByAsync(packageId, memberId, ct))
+            throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy yêu cầu dừng gói.");
+        return await store.WithdrawAsync(packageId, memberId, requestId, ct);
+    }
+
+    // Internal timeout command. Scheduling and customer-visible finalization stay gated
+    // until the refund/remaining-session workflow is complete.
+    public Task<bool> ApproveTimedOutAsync(Guid packageId, DateTime nowUtc, CancellationToken ct) =>
+        packageId == Guid.Empty || nowUtc.Kind != DateTimeKind.Utc
+            ? throw new ArgumentException("A package ID and UTC time are required.")
+            : store.ApproveTimedOutAsync(packageId, nowUtc, ct);
+
+    public async Task<int> SweepTimedOutAsync(DateTime nowUtc, CancellationToken ct)
+    {
+        if (nowUtc.Kind != DateTimeKind.Utc)
+            throw new ArgumentException("Sweep time must be UTC.", nameof(nowUtc));
+        var ids = await store.ListTimedOutPackageIdsAsync(nowUtc, 50, ct);
+        var approved = 0;
+        foreach (var id in ids)
+            if (await store.ApproveTimedOutAsync(id, nowUtc, ct)) approved++;
+        return approved;
     }
 }

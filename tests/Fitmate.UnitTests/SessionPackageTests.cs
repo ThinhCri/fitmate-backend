@@ -141,4 +141,55 @@ public sealed class SessionPackageTests
         incomplete.Should().Throw<ArgumentException>();
         package.Status.Should().Be(SessionPackageStatus.Active);
     }
+
+    [Fact]
+    public void StopRequest_PtAcceptsOrTimeoutApproves_WithoutPtVeto()
+    {
+        var package = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_000, Slots(4), Now, TimeSpan.FromMinutes(10));
+        var paymentId = Guid.NewGuid();
+        package.AttachPayment(paymentId, Now.AddMinutes(1));
+        package.MarkPaid(paymentId, package.TotalPriceVnd, Now.AddMinutes(2));
+        var sessions = package.Sessions.Select(s =>
+            (s.AppointmentId, AppointmentStatus.Confirmed, s.InitialSlotStartUtc)).ToArray();
+        var request = package.RequestStop("Lịch làm việc của tôi thay đổi dài ngày.", sessions, Now);
+
+        request.ApproveByPt(Now.AddHours(23)).Should().BeTrue();
+        request.ApprovalSource.Should().Be(SessionPackageStopApprovalSource.PtAccepted);
+        request.ApproveByPt(Now.AddHours(23)).Should().BeFalse();
+        Action cannotWithdraw = () => package.WithdrawStopRequest(request.Id, Now.AddHours(23));
+        cannotWithdraw.Should().Throw<InvalidOperationException>();
+
+        var other = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_000, Slots(4), Now, TimeSpan.FromMinutes(10));
+        var otherPayment = Guid.NewGuid();
+        other.AttachPayment(otherPayment, Now.AddMinutes(1));
+        other.MarkPaid(otherPayment, other.TotalPriceVnd, Now.AddMinutes(2));
+        var otherSessions = other.Sessions.Select(s =>
+            (s.AppointmentId, AppointmentStatus.Confirmed, s.InitialSlotStartUtc)).ToArray();
+        var timedOut = other.RequestStop("Tôi không thể tiếp tục lịch tập cũ.", otherSessions, Now);
+        Action tooEarly = () => timedOut.ApproveAfterTimeout(Now.AddHours(23));
+        tooEarly.Should().Throw<InvalidOperationException>();
+        timedOut.ApproveAfterTimeout(Now.AddHours(24)).Should().BeTrue();
+        timedOut.ApprovalSource.Should().Be(SessionPackageStopApprovalSource.PtResponseTimedOut);
+    }
+
+    [Fact]
+    public void StopRequest_WithdrawnHistoryAllowsNewRequest()
+    {
+        var package = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_000, Slots(4), Now, TimeSpan.FromMinutes(10));
+        var paymentId = Guid.NewGuid();
+        package.AttachPayment(paymentId, Now.AddMinutes(1));
+        package.MarkPaid(paymentId, package.TotalPriceVnd, Now.AddMinutes(2));
+        var sessions = package.Sessions.Select(s =>
+            (s.AppointmentId, AppointmentStatus.Confirmed, s.InitialSlotStartUtc)).ToArray();
+        var first = package.RequestStop("Lịch công tác của tôi thay đổi.", sessions, Now);
+        package.WithdrawStopRequest(first.Id, Now.AddHours(1));
+        first.Status.Should().Be(SessionPackageStopRequestStatus.Withdrawn);
+        package.Status.Should().Be(SessionPackageStatus.Active);
+        var second = package.RequestStop("Tôi lại có lịch công tác khác.", sessions, Now.AddHours(2));
+        second.Id.Should().NotBe(first.Id);
+        package.StopRequests.Should().HaveCount(2);
+    }
 }

@@ -22,7 +22,7 @@ public sealed class SessionPackageConfiguration : IEntityTypeConfiguration<Sessi
         e.HasIndex(x => x.PaymentId).IsUnique().HasFilter("\"PaymentId\" IS NOT NULL");
         e.HasOne<Payment>().WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
         e.HasMany(x => x.Sessions).WithOne().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.Restrict);
-        e.HasOne(x => x.StopRequest).WithOne().HasForeignKey<SessionPackageStopRequest>(x => x.PackageId)
+        e.HasMany(x => x.StopRequests).WithOne().HasForeignKey(x => x.PackageId)
             .OnDelete(DeleteBehavior.Restrict);
     }
 }
@@ -37,9 +37,11 @@ public sealed class SessionPackageStopRequestConfiguration : IEntityTypeConfigur
             t.HasCheckConstraint("chk_package_stop_quote", "\"RefundQuoteVnd\" >= 0");
         });
         e.HasKey(x => x.Id);
-        e.HasIndex(x => x.PackageId).IsUnique();
+        e.HasIndex(x => x.PackageId).IsUnique().HasFilter("\"Status\" IN (0, 1)");
         e.Property(x => x.Id).ValueGeneratedNever();
         e.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+        e.Property(x => x.Status).HasConversion<int>();
+        e.Property(x => x.ApprovalSource).HasConversion<int>();
         e.HasMany(x => x.Sessions).WithOne().HasForeignKey(x => x.StopRequestId)
             .OnDelete(DeleteBehavior.Restrict);
     }

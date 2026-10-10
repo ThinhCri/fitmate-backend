@@ -16,6 +16,18 @@ public sealed class EfSessionPackageStopStore(
     public Task<bool> IsOwnedByAsync(Guid packageId, Guid memberId, CancellationToken ct) =>
         db.SessionPackages.AnyAsync(p => p.Id == packageId && p.MemberId == memberId, ct);
 
+    public Task<bool> IsAssignedPtAsync(Guid packageId, Guid ptUserId, CancellationToken ct) =>
+        db.SessionPackages.AnyAsync(p => p.Id == packageId && p.PtUserId == ptUserId, ct);
+
+    public async Task<IReadOnlyList<Guid>> ListTimedOutPackageIdsAsync(DateTime nowUtc,
+        int limit, CancellationToken ct) => await db.SessionPackageStopRequests.AsNoTracking()
+        .Where(r => r.Status == SessionPackageStopRequestStatus.Pending &&
+                    r.PtResponseDeadlineUtc <= nowUtc &&
+                    db.SessionPackages.Any(p => p.Id == r.PackageId &&
+                        p.Status == SessionPackageStatus.StopRequested))
+        .OrderBy(r => r.PtResponseDeadlineUtc).ThenBy(r => r.Id)
+        .Select(r => r.PackageId).Take(limit).ToArrayAsync(ct);
+
     public Task<SessionPackageStopRequest> RequestAsync(Guid packageId, Guid memberId,
         string reason, CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
     {
@@ -28,13 +40,15 @@ public sealed class EfSessionPackageStopStore(
         var payment = await payments.FindByIdForUpdateAsync(paymentId, ct)
             ?? throw new ConflictException("PACKAGE_PAYMENT_MISSING", "Không tìm thấy giao dịch của gói tập.");
         var package = await db.SessionPackages.Include(p => p.Sessions)
-            .Include(p => p.StopRequest).ThenInclude(r => r!.Sessions)
+            .Include(p => p.StopRequests).ThenInclude(r => r.Sessions)
             .SingleAsync(p => p.Id == packageId && p.MemberId == memberId, ct);
+        var currentRequest = package.StopRequests.SingleOrDefault(r =>
+            r.Status != SessionPackageStopRequestStatus.Withdrawn);
 
-        if (package.Status == SessionPackageStatus.StopRequested && package.StopRequest is not null &&
-            package.StopRequest.Reason == reason)
-            return package.StopRequest;
-        if (package.Status != SessionPackageStatus.Active || package.StopRequest is not null ||
+        if (package.Status == SessionPackageStatus.StopRequested && currentRequest is not null &&
+            currentRequest.Reason == reason)
+            return currentRequest;
+        if (package.Status != SessionPackageStatus.Active || currentRequest is not null ||
             payment.PackageId != packageId || payment.Id != package.PaymentId ||
             payment.AmountVnd != package.TotalPriceVnd ||
             payment.Status is not (PaymentStatus.Paid or PaymentStatus.PartialRefunded))
@@ -77,4 +91,94 @@ public sealed class EfSessionPackageStopStore(
         await db.SaveChangesAsync(ct);
         return request;
     }, ct);
+
+    public Task<SessionPackageStopRequest> AcceptByPtAsync(Guid packageId, Guid ptUserId,
+        CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
+    {
+        var package = await LoadForDecisionAsync(packageId, ct);
+        if (package is null || package.PtUserId != ptUserId)
+            throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy gói tập được phân công.");
+        var request = CurrentRequest(package);
+        if (package.Status != SessionPackageStatus.StopRequested || request is null)
+            throw new ConflictException("PACKAGE_STOP_NOT_PENDING", "Gói tập không có yêu cầu dừng đang chờ.");
+        if (request.Status == SessionPackageStopRequestStatus.Approved) return request;
+        var nowUtc = DateTime.UtcNow;
+        var timedOut = nowUtc >= request.PtResponseDeadlineUtc;
+        if (timedOut)
+            request.ApproveAfterTimeout(nowUtc);
+        else
+            request.ApproveByPt(nowUtc);
+        db.AuditLogs.Add(AuditLog.Record(timedOut ? Refund.SystemUserId : ptUserId,
+            timedOut ? "System" : "PT",
+            timedOut ? "booking.package_stop_timeout_approved" : "booking.package_stop_approved",
+            "SessionPackageStopRequest", request.Id));
+        EnqueueApproved(package, request);
+        await db.SaveChangesAsync(ct);
+        return request;
+    }, ct);
+
+    public Task<SessionPackageStopRequest> WithdrawAsync(Guid packageId, Guid memberId,
+        Guid requestId, CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
+    {
+        var package = await LoadForDecisionAsync(packageId, ct);
+        if (package is null || package.MemberId != memberId)
+            throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy yêu cầu dừng gói.");
+        var request = package.StopRequests.SingleOrDefault(r => r.Id == requestId)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, "Không tìm thấy yêu cầu dừng gói.");
+        if (request.Status == SessionPackageStopRequestStatus.Withdrawn) return request;
+        if (request.Status != SessionPackageStopRequestStatus.Pending ||
+            package.Status != SessionPackageStatus.StopRequested ||
+            DateTime.UtcNow >= request.PtResponseDeadlineUtc)
+            throw new ConflictException("PACKAGE_STOP_WITHDRAWAL_CLOSED",
+                "Yêu cầu đã được duyệt hoặc hết thời gian rút.");
+        package.WithdrawStopRequest(requestId, DateTime.UtcNow);
+        db.AuditLogs.Add(AuditLog.Record(memberId, "Member", "booking.package_stop_withdrawn",
+            "SessionPackageStopRequest", request.Id));
+        outbox.Enqueue("booking.package_stop_withdrawn", new
+        {
+            packageId, stopRequestId = request.Id, memberId, ptUserId = package.PtUserId
+        });
+        await db.SaveChangesAsync(ct);
+        return request;
+    }, ct);
+
+    public Task<bool> ApproveTimedOutAsync(Guid packageId, DateTime nowUtc,
+        CancellationToken ct) => payments.ExecuteInTransactionAsync(async () =>
+    {
+        var package = await LoadForDecisionAsync(packageId, ct);
+        if (package is null || package.Status != SessionPackageStatus.StopRequested)
+            return false;
+        var request = CurrentRequest(package);
+        if (request?.Status != SessionPackageStopRequestStatus.Pending ||
+            nowUtc < request.PtResponseDeadlineUtc)
+            return false;
+        request.ApproveAfterTimeout(nowUtc);
+        db.AuditLogs.Add(AuditLog.Record(Refund.SystemUserId, "System",
+            "booking.package_stop_timeout_approved", "SessionPackageStopRequest", request.Id));
+        EnqueueApproved(package, request);
+        await db.SaveChangesAsync(ct);
+        return true;
+    }, ct);
+
+    private async Task<SessionPackage?> LoadForDecisionAsync(Guid packageId, CancellationToken ct)
+    {
+        var paymentId = await db.SessionPackages.Where(p => p.Id == packageId)
+            .Select(p => p.PaymentId).SingleOrDefaultAsync(ct);
+        if (!paymentId.HasValue) return null;
+        _ = await payments.FindByIdForUpdateAsync(paymentId.Value, ct)
+            ?? throw new ConflictException("PACKAGE_PAYMENT_MISSING", "Không tìm thấy giao dịch của gói tập.");
+        return await db.SessionPackages.Include(p => p.StopRequests)
+            .SingleOrDefaultAsync(p => p.Id == packageId, ct);
+    }
+
+    private static SessionPackageStopRequest? CurrentRequest(SessionPackage package) =>
+        package.StopRequests.SingleOrDefault(r => r.Status != SessionPackageStopRequestStatus.Withdrawn);
+
+    private void EnqueueApproved(SessionPackage package, SessionPackageStopRequest request) =>
+        outbox.Enqueue("booking.package_stop_approved", new
+        {
+            packageId = package.Id, stopRequestId = request.Id, memberId = package.MemberId,
+            ptUserId = package.PtUserId, approvalSource = request.ApprovalSource.ToString(),
+            refundQuoteVnd = request.RefundQuoteVnd
+        });
 }

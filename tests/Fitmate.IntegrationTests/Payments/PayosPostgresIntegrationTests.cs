@@ -74,6 +74,26 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         return (package.Id, payment.Id, order.OrderCode);
     }
 
+    private async Task<(Guid PackageId, Guid MemberId, Guid PtUserId)> SeedActivePackageForStopAsync()
+    {
+        var (packageId, paymentId, _) = await SeedPackageAsync();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var package = await db.SessionPackages.Include(p => p.Sessions)
+            .SingleAsync(p => p.Id == packageId);
+        package.MarkPaid(paymentId, package.TotalPriceVnd, DateTime.UtcNow);
+        (await db.Payments.SingleAsync(p => p.Id == paymentId)).MarkPaid("stop-decision-" + Guid.NewGuid());
+        foreach (var session in package.Sessions)
+        {
+            var appointment = await db.Appointments.SingleAsync(a => a.Id == session.AppointmentId);
+            appointment.AttachPayment(paymentId, session.PaidAllocationVnd, 0, 0.10m,
+                session.PlatformFeeAllocationVnd, session.TrainerShareAllocationVnd, "v1");
+            appointment.ForceStatusForTesting(AppointmentStatus.Confirmed);
+        }
+        await db.SaveChangesAsync();
+        return (packageId, package.MemberId, package.PtUserId);
+    }
+
     [Fact]
     public async Task PackageStopRequest_PersistsImmutableSessionQuote()
     {
@@ -98,12 +118,13 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         {
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
             var saved = await db.SessionPackages.AsNoTracking()
-                .Include(p => p.StopRequest!).ThenInclude(r => r.Sessions)
+                .Include(p => p.StopRequests).ThenInclude(r => r.Sessions)
                 .SingleAsync(p => p.Id == packageId);
             saved.Status.Should().Be(SessionPackageStatus.StopRequested);
-            saved.StopRequest!.Sessions.Should().HaveCount(4);
-            saved.StopRequest.RefundQuoteVnd.Should().Be(
-                saved.StopRequest.Sessions.Where(s => s.EligibleForRefund).Sum(s => s.PaidAllocationVnd));
+            var stopRequest = saved.StopRequests.Should().ContainSingle().Which;
+            stopRequest.Sessions.Should().HaveCount(4);
+            stopRequest.RefundQuoteVnd.Should().Be(
+                stopRequest.Sessions.Where(s => s.EligibleForRefund).Sum(s => s.PaidAllocationVnd));
         }
     }
 
@@ -189,6 +210,105 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
                 .Where(e => e.Code == "PACKAGE_STOP_FINANCE_REVIEW_REQUIRED");
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
             (await db.SessionPackageStopRequests.CountAsync(r => r.PackageId == packageId)).Should().Be(0);
+        }
+    }
+
+    [Fact]
+    public async Task StopDecision_PtAcceptsOnlyOwnPackage_AndDoesNotDuplicateEvent()
+    {
+        var (packageId, memberId, ptUserId) = await SeedActivePackageForStopAsync();
+        using var scope = _factory.Services.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+        await service.RequestAsync(memberId, packageId,
+            "Tôi phải chuyển nơi làm việc dài ngày.", CancellationToken.None);
+        Func<Task> stranger = () => service.AcceptByPtAsync(Guid.NewGuid(), packageId, CancellationToken.None);
+        await stranger.Should().ThrowAsync<NotFoundException>();
+        var accepted = await service.AcceptByPtAsync(ptUserId, packageId, CancellationToken.None);
+        accepted.Status.Should().Be(SessionPackageStopRequestStatus.Approved);
+        accepted.ApprovalSource.Should().Be(SessionPackageStopApprovalSource.PtAccepted);
+        (await service.AcceptByPtAsync(ptUserId, packageId, CancellationToken.None)).Id.Should().Be(accepted.Id);
+
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var events = await db.OutboxMessages.Where(o => o.Type == "booking.package_stop_approved")
+            .Select(o => o.PayloadJson).ToListAsync();
+        events.Count(payload => payload.Contains(packageId.ToString(), StringComparison.OrdinalIgnoreCase))
+            .Should().Be(1);
+    }
+
+    [Fact]
+    public async Task StopDecision_WithdrawalPreservesHistory_AndTimeoutApprovesNextRequest()
+    {
+        var (packageId, memberId, ptUserId) = await SeedActivePackageForStopAsync();
+        Guid firstId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+            var first = await service.RequestAsync(memberId, packageId,
+                "Tôi đang đổi nơi làm việc và chưa thể tập.", CancellationToken.None);
+            firstId = first.Id;
+            (await service.WithdrawAsync(memberId, packageId, firstId, CancellationToken.None))
+                .Status.Should().Be(SessionPackageStopRequestStatus.Withdrawn);
+            (await service.WithdrawAsync(memberId, packageId, firstId, CancellationToken.None))
+                .Id.Should().Be(firstId);
+            var second = await service.RequestAsync(memberId, packageId,
+                "Tôi lại phải chuyển chỗ làm trong tháng này.", CancellationToken.None);
+            second.Id.Should().NotBe(firstId);
+            (await service.ApproveTimedOutAsync(packageId,
+                second.PtResponseDeadlineUtc.AddTicks(-1), CancellationToken.None)).Should().BeFalse();
+            (await service.ApproveTimedOutAsync(packageId,
+                second.PtResponseDeadlineUtc, CancellationToken.None)).Should().BeTrue();
+            (await service.ApproveTimedOutAsync(packageId,
+                second.PtResponseDeadlineUtc.AddMinutes(1), CancellationToken.None)).Should().BeFalse();
+            (await service.AcceptByPtAsync(ptUserId, packageId, CancellationToken.None))
+                .ApprovalSource.Should().Be(SessionPackageStopApprovalSource.PtResponseTimedOut);
+        }
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var requests = await db.SessionPackageStopRequests.AsNoTracking()
+                .Where(r => r.PackageId == packageId).OrderBy(r => r.RequestedAtUtc).ToListAsync();
+            requests.Should().HaveCount(2);
+            requests.Single(r => r.Id == firstId).Status.Should().Be(SessionPackageStopRequestStatus.Withdrawn);
+            requests.Single(r => r.Id != firstId).ApprovalSource.Should()
+                .Be(SessionPackageStopApprovalSource.PtResponseTimedOut);
+        }
+    }
+
+    [Fact]
+    public async Task StopDecision_ConcurrentPtAcceptanceAndMemberWithdrawal_HasOneWinner()
+    {
+        var (packageId, memberId, ptUserId) = await SeedActivePackageForStopAsync();
+        Guid requestId;
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+            requestId = (await service.RequestAsync(memberId, packageId,
+                "Tôi phải đổi lịch làm việc trong thời gian tới.", CancellationToken.None)).Id;
+        }
+
+        using var ptScope = _factory.Services.CreateScope();
+        using var memberScope = _factory.Services.CreateScope();
+        var ptService = ptScope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+        var memberService = memberScope.ServiceProvider.GetRequiredService<SessionPackageStopService>();
+        var accepted = Record.ExceptionAsync(() => ptService.AcceptByPtAsync(ptUserId, packageId,
+            CancellationToken.None));
+        var withdrawn = Record.ExceptionAsync(() => memberService.WithdrawAsync(memberId, packageId,
+            requestId, CancellationToken.None));
+        var results = await Task.WhenAll(accepted, withdrawn);
+        results.Count(error => error is null).Should().Be(1);
+        results.Single(error => error is not null).Should().BeOfType<ConflictException>();
+
+        using var checkScope = _factory.Services.CreateScope();
+        var db = checkScope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var request = await db.SessionPackageStopRequests.AsNoTracking()
+            .SingleAsync(r => r.Id == requestId);
+        var package = await db.SessionPackages.AsNoTracking().SingleAsync(p => p.Id == packageId);
+        if (request.Status == SessionPackageStopRequestStatus.Approved)
+            package.Status.Should().Be(SessionPackageStatus.StopRequested);
+        else
+        {
+            request.Status.Should().Be(SessionPackageStopRequestStatus.Withdrawn);
+            package.Status.Should().Be(SessionPackageStatus.Active);
         }
     }
 
