@@ -395,6 +395,77 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageStopRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PackageId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("PtResponseDeadlineUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<long>("RefundQuoteVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("RequestedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PackageId")
+                        .IsUnique();
+
+                    b.ToTable("session_package_stop_requests", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_package_stop_quote", "\"RefundQuoteVnd\" >= 0");
+
+                            t.HasCheckConstraint("chk_package_stop_reason", "length(\"Reason\") BETWEEN 10 AND 1000");
+                        });
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageStopSession", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("AppointmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("EligibleForRefund")
+                        .HasColumnType("boolean");
+
+                    b.Property<long>("PaidAllocationVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("SlotStartAtRequestUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("StatusAtRequest")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("StopRequestId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId");
+
+                    b.HasIndex("StopRequestId", "AppointmentId")
+                        .IsUnique();
+
+                    b.ToTable("session_package_stop_sessions", null, t =>
+                        {
+                            t.HasCheckConstraint("chk_package_stop_session_money", "\"PaidAllocationVnd\" > 0");
+                        });
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Chat.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3920,6 +3991,30 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageStopRequest", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Booking.SessionPackage", null)
+                        .WithOne("StopRequest")
+                        .HasForeignKey("Fitmate.Domain.Booking.SessionPackageStopRequest", "PackageId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageStopSession", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Booking.Appointment", null)
+                        .WithMany()
+                        .HasForeignKey("AppointmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Fitmate.Domain.Booking.SessionPackageStopRequest", null)
+                        .WithMany("Sessions")
+                        .HasForeignKey("StopRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Chat.ChatMessageReaction", b =>
                 {
                     b.HasOne("Fitmate.Domain.Chat.ChatMessage", null)
@@ -4097,6 +4192,13 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackage", b =>
+                {
+                    b.Navigation("Sessions");
+
+                    b.Navigation("StopRequest");
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Booking.SessionPackageStopRequest", b =>
                 {
                     b.Navigation("Sessions");
                 });

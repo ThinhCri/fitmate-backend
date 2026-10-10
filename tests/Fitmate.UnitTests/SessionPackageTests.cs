@@ -96,4 +96,49 @@ public sealed class SessionPackageTests
         singleBookingPath.Should().Throw<ConflictException>()
             .Where(e => e.Code == "PACKAGE_PAYMENT_FLOW_REQUIRED");
     }
+
+    [Fact]
+    public void StopRequest_FreezesRefundEligibilityAtRequestTime()
+    {
+        var package = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_001, Slots(4), Now, TimeSpan.FromMinutes(10));
+        var paymentId = Guid.NewGuid();
+        package.AttachPayment(paymentId, Now.AddMinutes(1));
+        package.MarkPaid(paymentId, package.TotalPriceVnd, Now.AddMinutes(2));
+
+        var requestedAt = Now.AddHours(1);
+        var sessions = package.Sessions.OrderBy(s => s.Sequence).Select((s, i) =>
+            (s.AppointmentId,
+             Status: i == 3 ? AppointmentStatus.Completed : AppointmentStatus.Confirmed,
+             SlotStartUtc: i == 0 ? requestedAt.AddHours(47) : requestedAt.AddHours(48 + i)))
+            .ToArray();
+        var stop = package.RequestStop("Tôi cần tạm dừng vì lịch công tác thay đổi.", sessions, requestedAt);
+
+        package.Status.Should().Be(SessionPackageStatus.StopRequested);
+        stop.PtResponseDeadlineUtc.Should().Be(requestedAt.AddHours(24));
+        stop.Sessions.Should().HaveCount(4);
+        stop.Sessions.Select(s => s.EligibleForRefund).Should().Equal(false, true, true, false);
+        stop.RefundQuoteVnd.Should().Be(package.Sessions.Skip(1).Take(2).Sum(s => s.PaidAllocationVnd));
+        stop.Sessions.Should().OnlyContain(s => s.StopRequestId == stop.Id);
+        Action duplicate = () => package.RequestStop("Lý do hợp lệ nhưng lặp lại.", sessions, requestedAt);
+        duplicate.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void StopRequest_RejectsIncompleteOrUnpaidSnapshot()
+    {
+        var package = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_000, Slots(4), Now, TimeSpan.FromMinutes(10));
+        var sessions = package.Sessions.Select(s =>
+            (s.AppointmentId, AppointmentStatus.Confirmed, s.InitialSlotStartUtc)).ToArray();
+        Action unpaid = () => package.RequestStop("Lý do hợp lệ để dừng gói.", sessions, Now);
+        unpaid.Should().Throw<InvalidOperationException>();
+
+        var paymentId = Guid.NewGuid();
+        package.AttachPayment(paymentId, Now.AddMinutes(1));
+        package.MarkPaid(paymentId, package.TotalPriceVnd, Now.AddMinutes(2));
+        Action incomplete = () => package.RequestStop("Lý do hợp lệ để dừng gói.", sessions[..3], Now);
+        incomplete.Should().Throw<ArgumentException>();
+        package.Status.Should().Be(SessionPackageStatus.Active);
+    }
 }

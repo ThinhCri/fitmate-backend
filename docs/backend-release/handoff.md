@@ -1,5 +1,12 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-10 — PT package stop request snapshot foundation [BE-807/809]
+- Thêm snapshot bền vững cho yêu cầu dừng gói: lý do, thời điểm gửi, hạn PT phản hồi sau 24 giờ, số tiền dự kiến hoàn theo từng buổi; xét cửa sổ 48 giờ đúng lúc hội viên gửi yêu cầu, không tính lại sau khi PT chờ phản hồi.
+- `SessionPackage.RequestStop` chỉ nhận gói Active, đủ ảnh chụp trạng thái/slot của toàn bộ buổi; Completed và buổi dưới 48 giờ không tự đủ điều kiện hoàn. Migration chỉ thêm `session_package_stop_requests` và `session_package_stop_sessions`, `Down` chặn xóa bản ghi tài chính chưa đối soát.
+- Chưa có public API/UI để gửi yêu cầu: cần tiếp tục store transaction/idempotency, PT accept/24h timeout, kiểm tra refund/payout từng buổi, admin manual transfer và thông báo. Không coi tính năng dừng gói đã sẵn sàng hoặc mở checkout gói production.
+- Test domain + PostgreSQL persistence đã qua; không apply migration vào DB ứng dụng hoặc deploy production.
+- EF `has-pending-model-changes` vẫn báo khác biệt seed `exercise_catalog` không ổn định (probe chỉ sinh `UpdateData` cho seed, không sinh thay đổi schema); migration của phiên này đã bỏ toàn bộ `UpdateData` ngoài phạm vi. Cần xử lý seed diff ở task riêng, không trộn vào nghiệp vụ PT.
+
 ## 2026-10-03 — Bổ sung tài liệu luồng nghiệp vụ xuyên ba repository
 - Thêm `docs/backend-release/business-flows.md` mô tả bằng tiếng Việt các luồng đăng ký Member/PT, duyệt PT, dịch vụ/slot, hold và PayOS, state machine booking, hủy trước 24 giờ, xác nhận/khiếu nại, doanh thu, refund và payout thủ công.
 - Tài liệu giải thích trách nhiệm riêng của Backend, Mobile App và Admin Web, đồng thời liệt kê các trường hợp UAT quan trọng để tránh frontend tự suy đoán trạng thái hoặc tiền.

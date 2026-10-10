@@ -74,6 +74,39 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         return (package.Id, payment.Id, order.OrderCode);
     }
 
+    [Fact]
+    public async Task PackageStopRequest_PersistsImmutableSessionQuote()
+    {
+        var (packageId, paymentId, _) = await SeedPackageAsync();
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var package = await db.SessionPackages.Include(p => p.Sessions)
+                .SingleAsync(p => p.Id == packageId);
+            package.MarkPaid(paymentId, package.TotalPriceVnd, DateTime.UtcNow);
+            var appointments = await db.Appointments
+                .Where(a => package.Sessions.Select(s => s.AppointmentId).Contains(a.Id))
+                .ToListAsync();
+            foreach (var appointment in appointments)
+                appointment.ForceStatusForTesting(AppointmentStatus.Confirmed);
+            var snapshot = appointments.Select(a => (a.Id, a.Status, a.SlotStartUtc)).ToArray();
+            package.RequestStop("Lịch công tác của tôi đã thay đổi dài ngày.", snapshot, DateTime.UtcNow);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var saved = await db.SessionPackages.AsNoTracking()
+                .Include(p => p.StopRequest!).ThenInclude(r => r.Sessions)
+                .SingleAsync(p => p.Id == packageId);
+            saved.Status.Should().Be(SessionPackageStatus.StopRequested);
+            saved.StopRequest!.Sessions.Should().HaveCount(4);
+            saved.StopRequest.RefundQuoteVnd.Should().Be(
+                saved.StopRequest.Sessions.Where(s => s.EligibleForRefund).Sum(s => s.PaidAllocationVnd));
+        }
+    }
+
     private JsonElement Webhook(long code, long amount = 100000, string account = "00000000", bool tamper = false)
     {
         var values = new SortedDictionary<string, object>(StringComparer.Ordinal)

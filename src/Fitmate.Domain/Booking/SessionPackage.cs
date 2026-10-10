@@ -35,6 +35,7 @@ public sealed class SessionPackage : AuditableEntity
     public Guid? PaymentId { get; private set; }
     public SessionPackageStatus Status { get; private set; }
     public List<SessionPackageSession> Sessions { get; private set; } = [];
+    public SessionPackageStopRequest? StopRequest { get; private set; }
 
     public static SessionPackage CreateHold(Guid memberId, Guid ptUserId, Guid serviceId,
         long pricePerSessionVnd, IReadOnlyList<(Guid HoldId, Guid AppointmentId, DateTime SlotStartUtc)> slots,
@@ -120,6 +121,88 @@ public sealed class SessionPackage : AuditableEntity
         Status = SessionPackageStatus.Expired;
         UpdatedAt = nowUtc;
     }
+
+    public SessionPackageStopRequest RequestStop(string reason,
+        IReadOnlyList<(Guid AppointmentId, AppointmentStatus Status, DateTime SlotStartUtc)> currentSessions,
+        DateTime nowUtc)
+    {
+        if (Status != SessionPackageStatus.Active || StopRequest is not null ||
+            nowUtc.Kind != DateTimeKind.Utc)
+            throw new InvalidOperationException("Only an active package without a stop request can be stopped.");
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length < 10 || reason.Trim().Length > 1000)
+            throw new ArgumentException("A stop reason of 10 to 1000 characters is required.", nameof(reason));
+        if (currentSessions.Count != Sessions.Count ||
+            currentSessions.Select(s => s.AppointmentId).Distinct().Count() != Sessions.Count ||
+            currentSessions.Any(s => s.SlotStartUtc.Kind != DateTimeKind.Utc) ||
+            currentSessions.Select(s => s.AppointmentId).ToHashSet()
+                .SetEquals(Sessions.Select(s => s.AppointmentId)) is false)
+            throw new ArgumentException("A current UTC snapshot of every package session is required.", nameof(currentSessions));
+
+        var byAppointment = currentSessions.ToDictionary(s => s.AppointmentId);
+        var snapshots = Sessions.OrderBy(s => s.Sequence).Select(s =>
+        {
+            var current = byAppointment[s.AppointmentId];
+            return SessionPackageStopSession.Create(s.AppointmentId, current.Status,
+                current.SlotStartUtc, s.PaidAllocationVnd,
+                current.Status == AppointmentStatus.Confirmed &&
+                current.SlotStartUtc >= nowUtc.AddHours(48));
+        }).ToList();
+
+        StopRequest = SessionPackageStopRequest.Create(Id, reason.Trim(), nowUtc, snapshots);
+        Status = SessionPackageStatus.StopRequested;
+        UpdatedAt = nowUtc;
+        return StopRequest;
+    }
+}
+
+public sealed class SessionPackageStopRequest
+{
+    private SessionPackageStopRequest() { }
+
+    public Guid Id { get; private set; }
+    public Guid PackageId { get; private set; }
+    public string Reason { get; private set; } = string.Empty;
+    public DateTime RequestedAtUtc { get; private set; }
+    public DateTime PtResponseDeadlineUtc { get; private set; }
+    public long RefundQuoteVnd { get; private set; }
+    public List<SessionPackageStopSession> Sessions { get; private set; } = [];
+
+    internal static SessionPackageStopRequest Create(Guid packageId, string reason,
+        DateTime nowUtc, List<SessionPackageStopSession> sessions)
+    {
+        var request = new SessionPackageStopRequest
+        {
+            Id = Guid.NewGuid(), PackageId = packageId, Reason = reason,
+            RequestedAtUtc = nowUtc, PtResponseDeadlineUtc = nowUtc.AddHours(24),
+            RefundQuoteVnd = sessions.Where(s => s.EligibleForRefund).Sum(s => s.PaidAllocationVnd),
+            Sessions = sessions
+        };
+        foreach (var session in sessions) session.Attach(request.Id);
+        return request;
+    }
+}
+
+public sealed class SessionPackageStopSession
+{
+    private SessionPackageStopSession() { }
+
+    public Guid Id { get; private set; }
+    public Guid StopRequestId { get; private set; }
+    public Guid AppointmentId { get; private set; }
+    public AppointmentStatus StatusAtRequest { get; private set; }
+    public DateTime SlotStartAtRequestUtc { get; private set; }
+    public long PaidAllocationVnd { get; private set; }
+    public bool EligibleForRefund { get; private set; }
+
+    internal static SessionPackageStopSession Create(Guid appointmentId, AppointmentStatus status,
+        DateTime slotStartUtc, long paidAllocationVnd, bool eligible) => new()
+        {
+            Id = Guid.NewGuid(), AppointmentId = appointmentId, StatusAtRequest = status,
+            SlotStartAtRequestUtc = slotStartUtc, PaidAllocationVnd = paidAllocationVnd,
+            EligibleForRefund = eligible
+        };
+
+    internal void Attach(Guid stopRequestId) => StopRequestId = stopRequestId;
 }
 
 public sealed class SessionPackageSession

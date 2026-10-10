@@ -22,6 +22,43 @@ public sealed class SessionPackageConfiguration : IEntityTypeConfiguration<Sessi
         e.HasIndex(x => x.PaymentId).IsUnique().HasFilter("\"PaymentId\" IS NOT NULL");
         e.HasOne<Payment>().WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
         e.HasMany(x => x.Sessions).WithOne().HasForeignKey(x => x.PackageId).OnDelete(DeleteBehavior.Restrict);
+        e.HasOne(x => x.StopRequest).WithOne().HasForeignKey<SessionPackageStopRequest>(x => x.PackageId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class SessionPackageStopRequestConfiguration : IEntityTypeConfiguration<SessionPackageStopRequest>
+{
+    public void Configure(EntityTypeBuilder<SessionPackageStopRequest> e)
+    {
+        e.ToTable("session_package_stop_requests", t =>
+        {
+            t.HasCheckConstraint("chk_package_stop_reason", "length(\"Reason\") BETWEEN 10 AND 1000");
+            t.HasCheckConstraint("chk_package_stop_quote", "\"RefundQuoteVnd\" >= 0");
+        });
+        e.HasKey(x => x.Id);
+        e.HasIndex(x => x.PackageId).IsUnique();
+        e.Property(x => x.Id).ValueGeneratedNever();
+        e.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
+        e.HasMany(x => x.Sessions).WithOne().HasForeignKey(x => x.StopRequestId)
+            .OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class SessionPackageStopSessionConfiguration : IEntityTypeConfiguration<SessionPackageStopSession>
+{
+    public void Configure(EntityTypeBuilder<SessionPackageStopSession> e)
+    {
+        e.ToTable("session_package_stop_sessions", t =>
+        {
+            t.HasCheckConstraint("chk_package_stop_session_money", "\"PaidAllocationVnd\" > 0");
+        });
+        e.HasKey(x => x.Id);
+        e.HasIndex(x => new { x.StopRequestId, x.AppointmentId }).IsUnique();
+        e.Property(x => x.Id).ValueGeneratedNever();
+        e.Property(x => x.StatusAtRequest).HasConversion<int>();
+        e.HasOne<Appointment>().WithMany().HasForeignKey(x => x.AppointmentId)
+            .OnDelete(DeleteBehavior.Restrict);
     }
 }
 

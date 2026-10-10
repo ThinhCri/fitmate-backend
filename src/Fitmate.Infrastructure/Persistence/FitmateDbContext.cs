@@ -50,6 +50,8 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<BookingRescheduleRequest> BookingRescheduleRequests => Set<BookingRescheduleRequest>();
     public DbSet<SessionPackage> SessionPackages => Set<SessionPackage>();
     public DbSet<SessionPackageSession> SessionPackageSessions => Set<SessionPackageSession>();
+    public DbSet<SessionPackageStopRequest> SessionPackageStopRequests => Set<SessionPackageStopRequest>();
+    public DbSet<SessionPackageStopSession> SessionPackageStopSessions => Set<SessionPackageStopSession>();
 
     // Payment & Finance
     public DbSet<Payment> Payments => Set<Payment>();
