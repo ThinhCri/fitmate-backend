@@ -35,6 +35,11 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
                 a.Status,
                 PaidOutVnd = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id && s.Status == "paid").Select(s => (long?)s.AmountVnd).FirstOrDefault() ?? 0L,
                 SettlementStatus = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.Status).FirstOrDefault() ?? "pending_review",
+                TransferredAtUtc = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.TransferredAt).FirstOrDefault(),
+                BankReference = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.BankReference).FirstOrDefault(),
+                PayeeBankName = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.PayeeBankName).FirstOrDefault(),
+                PayeeAccountNumber = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.PayeeAccountNumber).FirstOrDefault(),
+                PayeeAccountName = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.PayeeAccountName).FirstOrDefault(),
                 RefundedVnd = a.ActualPaidVnd > 0
                     ? _db.Refunds.Where(r => r.AppointmentId == a.Id && r.PaymentId == a.PaymentId &&
                         r.Status == RefundStatus.Succeeded).Sum(r => (long?)r.AmountVnd) ?? 0L
@@ -51,7 +56,10 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
             PlatformFeeVnd: a.PlatformFeeVnd,
             TrainerShareVnd: a.TrainerShareVnd,
             RefundedVnd: a.RefundedVnd,
-            Status: a.Status, PaidOutVnd: a.PaidOutVnd, SettlementStatus: a.SettlementStatus)).ToList();
+            Status: a.Status, PaidOutVnd: a.PaidOutVnd, SettlementStatus: a.SettlementStatus,
+            TransferredAtUtc: a.TransferredAtUtc, BankReference: a.BankReference,
+            PayeeBankName: a.PayeeBankName, PayeeAccountNumber: a.PayeeAccountNumber,
+            PayeeAccountName: a.PayeeAccountName)).ToList();
     }
 
     public async Task<(IReadOnlyList<TrainerBookingRevenueRow> Items, int Total)> ListHistoryPagedAsync(
@@ -78,6 +86,11 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
                 a.Status,
                 PaidOutVnd = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id && s.Status == "paid").Select(s => (long?)s.AmountVnd).FirstOrDefault() ?? 0L,
                 SettlementStatus = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.Status).FirstOrDefault() ?? "pending_review",
+                TransferredAtUtc = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.TransferredAt).FirstOrDefault(),
+                BankReference = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.BankReference).FirstOrDefault(),
+                PayeeBankName = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.PayeeBankName).FirstOrDefault(),
+                PayeeAccountNumber = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.PayeeAccountNumber).FirstOrDefault(),
+                PayeeAccountName = _db.Set<ManualPtSettlement>().Where(s => s.AppointmentId == a.Id).Select(s => s.PayeeAccountName).FirstOrDefault(),
                 RefundedVnd = a.ActualPaidVnd > 0
                     ? _db.Refunds.Where(r => r.AppointmentId == a.Id && r.PaymentId == a.PaymentId &&
                         r.Status == RefundStatus.Succeeded).Sum(r => (long?)r.AmountVnd) ?? 0L
@@ -94,7 +107,10 @@ public class EfTrainerRevenueStore : ITrainerRevenueStore
             PlatformFeeVnd: a.PlatformFeeVnd,
             TrainerShareVnd: a.TrainerShareVnd,
             RefundedVnd: a.RefundedVnd,
-            Status: a.Status, PaidOutVnd: a.PaidOutVnd, SettlementStatus: a.SettlementStatus)).ToList();
+            Status: a.Status, PaidOutVnd: a.PaidOutVnd, SettlementStatus: a.SettlementStatus,
+            TransferredAtUtc: a.TransferredAtUtc, BankReference: a.BankReference,
+            PayeeBankName: a.PayeeBankName, PayeeAccountNumber: a.PayeeAccountNumber,
+            PayeeAccountName: a.PayeeAccountName)).ToList();
 
         return (items, total);
     }

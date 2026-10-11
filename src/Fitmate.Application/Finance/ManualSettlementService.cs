@@ -13,7 +13,8 @@ public sealed record RecordTransferRequest(string BankReference, string Evidence
 public sealed record SettlementHoldRequest(string Reason);
 public sealed record SettlementContext(Appointment Appointment, Payment Payment, ManualPtSettlement Settlement,
     bool HasPendingRefund, bool HasOpenDispute = false,
-    bool PackageSessionVerified = false, long? PackageSessionRefundedVnd = null);
+    bool PackageSessionVerified = false, long? PackageSessionRefundedVnd = null,
+    Fitmate.Domain.Trainers.PtPayoutAccount? PayoutAccount = null);
 public sealed record SettlementPage(IReadOnlyList<ManualPtSettlement> Items, int Total, int Page, int PageSize);
 public sealed record ConfirmManualRefundRequest(string BankReference, string EvidenceReference, DateTime TransferredAt);
 public sealed record ManualRefundPage(IReadOnlyList<RefundView> Items, int Total, int Page, int PageSize);
@@ -114,9 +115,12 @@ public sealed class ManualSettlementService(IManualSettlementStore store, IAutho
         return await store.UpdateAsync(appointmentId, adminId, "finance.settlement_approved", context =>
         {
             var amount = EligibleAmount(context);
+            var payee = context.PayoutAccount ?? throw new ConflictException("PAYOUT_ACCOUNT_REQUIRED",
+                "The PT needs a verified payout account before approval.");
             context.Settlement.Approve(adminId, amount, request.CustomerConfirmedAt, request.TrainerConfirmedAt,
                 context.Appointment.SlotStartUtc.AddMinutes(context.Appointment.DurationMinutes),
-                request.SessionEvidenceReference, request.PayeeEvidenceReference, request.NoOpenDisputeConfirmed, DateTime.UtcNow);
+                request.SessionEvidenceReference, request.PayeeEvidenceReference, request.NoOpenDisputeConfirmed, DateTime.UtcNow,
+                payee.BankCode, payee.BankName, payee.AccountNumber, payee.AccountName, payee.VerifiedAtUtc);
         }, ct);
     }
 

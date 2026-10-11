@@ -13,7 +13,12 @@ public sealed record TrainerBookingRevenueRow(
     long RefundedVnd,
     AppointmentStatus Status,
     long PaidOutVnd = 0,
-    string SettlementStatus = "pending_review");
+    string SettlementStatus = "pending_review",
+    DateTime? TransferredAtUtc = null,
+    string? BankReference = null,
+    string? PayeeBankName = null,
+    string? PayeeAccountNumber = null,
+    string? PayeeAccountName = null);
 
 public interface ITrainerRevenueStore
 {

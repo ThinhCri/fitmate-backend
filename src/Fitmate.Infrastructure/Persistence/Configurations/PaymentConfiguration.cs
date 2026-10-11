@@ -1,5 +1,6 @@
 using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
+using Fitmate.Domain.Trainers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -79,10 +80,33 @@ public sealed class ManualPtSettlementConfiguration : IEntityTypeConfiguration<M
         e.Property(x => x.TransferEvidenceReference).HasMaxLength(200);
         e.Property(x => x.HoldReason).HasMaxLength(200);
         e.Property(x => x.BankReference).HasMaxLength(200);
+        e.Property(x => x.PayeeBankCode).HasMaxLength(20);
+        e.Property(x => x.PayeeBankName).HasMaxLength(120);
+        e.Property(x => x.PayeeAccountNumber).HasMaxLength(32);
+        e.Property(x => x.PayeeAccountName).HasMaxLength(160);
         e.HasIndex(x => x.BankReference).IsUnique();
         e.HasIndex(x => x.PtUserId);
         e.HasOne<Fitmate.Domain.Booking.Appointment>().WithMany().HasForeignKey(x => x.AppointmentId).OnDelete(DeleteBehavior.Restrict);
         e.HasOne<Payment>().WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+public sealed class PtPayoutAccountConfiguration : IEntityTypeConfiguration<PtPayoutAccount>
+{
+    public void Configure(EntityTypeBuilder<PtPayoutAccount> e)
+    {
+        e.ToTable("pt_payout_accounts");
+        e.HasKey(x => x.PtUserId);
+        e.Property(x => x.PtUserId).ValueGeneratedNever();
+        e.Property(x => x.BankCode).HasMaxLength(20).IsRequired();
+        e.Property(x => x.BankName).HasMaxLength(120).IsRequired();
+        e.Property(x => x.AccountNumber).HasMaxLength(32).IsRequired();
+        e.Property(x => x.AccountName).HasMaxLength(160).IsRequired();
+        e.Property(x => x.VerificationProvider).HasMaxLength(40).IsRequired();
+        e.Property(x => x.VerificationReference).HasMaxLength(128).IsRequired();
+        e.HasIndex(x => new { x.BankCode, x.AccountNumber });
+        e.HasOne<Fitmate.Domain.Identity.ApplicationUser>().WithOne()
+            .HasForeignKey<PtPayoutAccount>(x => x.PtUserId).OnDelete(DeleteBehavior.Restrict);
     }
 }
 

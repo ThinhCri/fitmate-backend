@@ -90,7 +90,12 @@ public class RevenueContractTests
             "net_vnd",
             "status",
             "paid_out_vnd",
-            "settlement_status"
+            "settlement_status",
+            "transferred_at_utc",
+            "bank_reference",
+            "payee_bank_name",
+            "payee_account_number_masked",
+            "payee_account_name"
         };
 
         root.EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(expectedKeys);
@@ -168,7 +173,12 @@ public class RevenueContractTests
             "net_vnd",
             "status",
             "paid_out_vnd",
-            "settlement_status"
+            "settlement_status",
+            "transferred_at_utc",
+            "bank_reference",
+            "payee_bank_name",
+            "payee_account_number_masked",
+            "payee_account_name"
         };
         itemSchema.Properties.Keys.Should().BeEquivalentTo(expectedItemProps);
     }

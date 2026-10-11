@@ -282,6 +282,14 @@ builder.Services.AddScoped<ITrainerRevenueService, Fitmate.Application.Finance.T
 builder.Services.AddScoped<IManualSettlementStore, Fitmate.Infrastructure.Finance.EfManualSettlementStore>();
 builder.Services.AddScoped<ManualSettlementService>();
 builder.Services.AddScoped<IFinanceStepUp, Fitmate.Api.Admin.FinanceStepUp>();
+builder.Services.Configure<Fitmate.Infrastructure.Finance.VietQrLookupOptions>(
+    builder.Configuration.GetSection(Fitmate.Infrastructure.Finance.VietQrLookupOptions.SectionName));
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Finance.VietQrBankAccountLookup>(client =>
+    client.Timeout = TimeSpan.FromSeconds(10));
+builder.Services.AddScoped<IBankAccountLookup>(sp =>
+    sp.GetRequiredService<Fitmate.Infrastructure.Finance.VietQrBankAccountLookup>());
+builder.Services.AddScoped<IPtPayoutAccountStore, Fitmate.Infrastructure.Finance.EfPtPayoutAccountStore>();
+builder.Services.AddScoped<PtPayoutAccountService>();
 
 // BE-151: Platform policy (read-only).
 builder.Services.AddScoped<IPlatformPolicyService, Fitmate.Application.Finance.PlatformPolicyService>();

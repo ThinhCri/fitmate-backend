@@ -20,12 +20,19 @@ public sealed class ManualPtSettlement
     public DateTime? TransferredAt { get; private set; }
     public string? BankReference { get; private set; }
     public string? TransferEvidenceReference { get; private set; }
+    public string? PayeeBankCode { get; private set; }
+    public string? PayeeBankName { get; private set; }
+    public string? PayeeAccountNumber { get; private set; }
+    public string? PayeeAccountName { get; private set; }
+    public DateTime? PayeeVerifiedAtUtc { get; private set; }
     private ManualPtSettlement() { }
     public static ManualPtSettlement Create(Guid appointmentId, Guid ptId, Guid paymentId) => new()
     { AppointmentId = appointmentId, PtUserId = ptId, PaymentId = paymentId };
 
     public void Approve(Guid adminId, long amount, DateTime customerConfirmedAt, DateTime trainerConfirmedAt,
-        DateTime sessionEnd, string sessionEvidence, string payeeEvidence, bool noOpenDispute, DateTime now)
+        DateTime sessionEnd, string sessionEvidence, string payeeEvidence, bool noOpenDispute, DateTime now,
+        string payeeBankCode, string payeeBankName, string payeeAccountNumber, string payeeAccountName,
+        DateTime payeeVerifiedAtUtc)
     {
         EnsureNotPaid();
         if (adminId == Guid.Empty || amount <= 0 || !noOpenDispute || sessionEnd > now ||
@@ -35,11 +42,20 @@ public sealed class ManualPtSettlement
             throw new DomainException("SETTLEMENT_NOT_VERIFIED", "Confirm both participants after the session, resolve disputes and verify the payee before approval.", 400);
         ValidateReference(sessionEvidence);
         ValidateReference(payeeEvidence);
+        if (string.IsNullOrWhiteSpace(payeeBankCode) || string.IsNullOrWhiteSpace(payeeBankName) ||
+            string.IsNullOrWhiteSpace(payeeAccountNumber) || string.IsNullOrWhiteSpace(payeeAccountName) ||
+            payeeVerifiedAtUtc.Kind != DateTimeKind.Utc || payeeVerifiedAtUtc > now)
+            throw new ConflictException("PAYOUT_ACCOUNT_REQUIRED", "The PT needs a verified payout account before approval.");
         AmountVnd = amount;
         CustomerConfirmedAt = customerConfirmedAt;
         TrainerConfirmedAt = trainerConfirmedAt;
         SessionEvidenceReference = sessionEvidence.Trim();
         PayeeEvidenceReference = payeeEvidence.Trim();
+        PayeeBankCode = payeeBankCode.Trim();
+        PayeeBankName = payeeBankName.Trim();
+        PayeeAccountNumber = payeeAccountNumber.Trim();
+        PayeeAccountName = payeeAccountName.Trim();
+        PayeeVerifiedAtUtc = payeeVerifiedAtUtc;
         ReviewedBy = adminId;
         ApprovedAt = now;
         HoldReason = null;

@@ -8,12 +8,15 @@ using Fitmate.Domain.Finance;
 using Fitmate.Domain.Payment;
 using Fitmate.Domain.Support;
 using Fitmate.Domain.Trainers;
+using Fitmate.Application.Notifications;
+using Fitmate.Domain.Notifications;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace Fitmate.Infrastructure.Finance;
 
-public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore payments, IOutboxDispatcher outbox) : IManualSettlementStore
+public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore payments,
+    IOutboxDispatcher outbox, IPushDeliveryDispatcher notifications) : IManualSettlementStore
 {
     public async Task<BookingIncidentDecisionView> ResolveIncidentAsync(Guid adminId, Guid ticketId,
         BookingIncidentOutcome outcome, string reason, string evidenceReference, CancellationToken ct)
@@ -396,8 +399,10 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
             var pending = await db.Refunds.AnyAsync(r => r.PaymentId == paymentId && r.Status == RefundStatus.Pending, ct);
             var dispute = await db.SupportTickets.AnyAsync(t => t.BookingId == appointmentId &&
                 t.Status != Fitmate.Domain.Support.SupportTicketStatus.Resolved && t.Status != Fitmate.Domain.Support.SupportTicketStatus.Closed, ct);
+            var payoutAccount = await db.PtPayoutAccounts.AsNoTracking()
+                .SingleOrDefaultAsync(x => x.PtUserId == appointment.PtUserId, ct);
             update(new SettlementContext(appointment, payment, settlement, pending, dispute,
-                packageSessionVerified, packageSessionRefundedVnd));
+                packageSessionVerified, packageSessionRefundedVnd, payoutAccount));
             if (wasPaid) return settlement; // Do not emit duplicate receipts/audits.
             if (settlement.BankReference != null)
             {
@@ -412,7 +417,9 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                     settlement.Status, settlement.AmountVnd, settlement.CustomerConfirmedAt,
                     settlement.TrainerConfirmedAt, settlement.SessionEvidenceReference,
                     settlement.PayeeEvidenceReference, settlement.HoldReason, settlement.ApprovedAt,
-                    settlement.TransferredAt, settlement.TransferEvidenceReference
+                    settlement.TransferredAt, settlement.TransferEvidenceReference,
+                    settlement.PayeeBankCode, settlement.PayeeBankName,
+                    maskedPayeeAccount = settlement.PayeeAccountNumber == null ? null : "***" + settlement.PayeeAccountNumber[^Math.Min(4, settlement.PayeeAccountNumber.Length)..]
                 })));
             if (settlement.Status == "paid")
             {
@@ -426,7 +433,11 @@ public sealed class EfManualSettlementStore(FitmateDbContext db, IPaymentStore p
                     settlementId: settlement.AppointmentId,
                     sourceEventId: $"settlement.transferred:{appointmentId}");
                 db.FinancialLedgerEntries.Add(payoutEntry);
-                outbox.Enqueue("finance.trainer_settled", new { appointmentId, ptUserId = settlement.PtUserId, amountVnd = settlement.AmountVnd });
+                await notifications.DispatchAsync(new NotificationPayload(
+                    settlement.PtUserId, NotificationType.Payment,
+                    "Fitmate đã chuyển khoản thu nhập PT",
+                    $"{settlement.AmountVnd:N0} ₫ · Mã ngân hàng {settlement.BankReference}",
+                    new { paymentId = settlement.PaymentId }, appointmentId, "trainer_settlement"), ct);
             }
             await db.SaveChangesAsync(ct);
             return settlement;

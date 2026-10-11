@@ -2033,9 +2033,28 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("PayeeAccountName")
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("PayeeAccountNumber")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("PayeeBankCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("PayeeBankName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
                     b.Property<string>("PayeeEvidenceReference")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("PayeeVerifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("PaymentId")
                         .HasColumnType("uuid");
@@ -2771,6 +2790,60 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasIndex("PtUserId", "Status");
 
                     b.ToTable("certificates", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Trainers.PtPayoutAccount", b =>
+                {
+                    b.Property<Guid>("PtUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AccountName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("BankCode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("BankName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("VerificationProvider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("VerificationReference")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("VerifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("PtUserId");
+
+                    b.HasIndex("BankCode", "AccountNumber");
+
+                    b.ToTable("pt_payout_accounts", (string)null);
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Trainers.PtProfile", b =>
@@ -4253,6 +4326,15 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .WithMany("Messages")
                         .HasForeignKey("TicketId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Trainers.PtPayoutAccount", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Identity.ApplicationUser", null)
+                        .WithOne()
+                        .HasForeignKey("Fitmate.Domain.Trainers.PtPayoutAccount", "PtUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
 

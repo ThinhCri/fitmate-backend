@@ -26,7 +26,12 @@ public sealed record TrainerRevenueItem(
     [property: JsonPropertyName("net_vnd")] long NetVnd,
     [property: JsonPropertyName("status")] [property: JsonConverter(typeof(JsonStringEnumConverter))] AppointmentStatus Status,
     [property: JsonPropertyName("paid_out_vnd")] long PaidOutVnd = 0,
-    [property: JsonPropertyName("settlement_status")] string SettlementStatus = "pending_review");
+    [property: JsonPropertyName("settlement_status")] string SettlementStatus = "pending_review",
+    [property: JsonPropertyName("transferred_at_utc")] DateTime? TransferredAtUtc = null,
+    [property: JsonPropertyName("bank_reference")] string? BankReference = null,
+    [property: JsonPropertyName("payee_bank_name")] string? PayeeBankName = null,
+    [property: JsonPropertyName("payee_account_number_masked")] string? PayeeAccountNumberMasked = null,
+    [property: JsonPropertyName("payee_account_name")] string? PayeeAccountName = null);
 
 public sealed record TrainerRevenueHistoryPage(
     [property: JsonPropertyName("items")] IReadOnlyList<TrainerRevenueItem> Items,

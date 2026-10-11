@@ -2223,6 +2223,47 @@ paths:
               schema:
                 $ref: '#/components/schemas/TrainerRevenueHistoryPage'
 
+  /me/payout-account:
+    get:
+      tags: [Finance]
+      summary: PT reads the verified bank account used for future manual settlements
+      operationId: getMyPayoutAccount
+      responses:
+        '200':
+          description: Verified payout account
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PtPayoutAccount'}
+        '204': {description: No payout account configured}
+    put:
+      tags: [Finance]
+      summary: Verify and replace the PT payout account through the configured lookup provider
+      operationId: saveMyPayoutAccount
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bank_bin, bank_name, account_number]
+              properties:
+                bank_bin: {type: string, pattern: '^[0-9]{6}$'}
+                bank_name: {type: string, minLength: 2, maxLength: 120}
+                account_number: {type: string, pattern: '^[0-9]{6,32}$'}
+      responses:
+        '200':
+          description: Provider-verified payout account
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/PtPayoutAccount'}
+        '409':
+          description: Verified phone or another payout-account prerequisite is missing
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ProblemDetails'}
+        '422': {$ref: '#/components/responses/ValidationError'}
+        '429': {$ref: '#/components/responses/RateLimited'}
+
   /exercises:
     get:
       tags: [Workout]
@@ -5407,6 +5448,21 @@ components:
         transferredAt: {type: string, format: date-time, nullable: true}
         bankReference: {type: string, nullable: true}
         transferEvidenceReference: {type: string, nullable: true}
+        payeeBankCode: {type: string, nullable: true}
+        payeeBankName: {type: string, nullable: true}
+        payeeAccountNumber: {type: string, nullable: true}
+        payeeAccountName: {type: string, nullable: true}
+        payeeVerifiedAtUtc: {type: string, format: date-time, nullable: true}
+    PtPayoutAccount:
+      type: object
+      required: [bank_code, bank_name, account_number, masked_account_number, account_name, verified_at_utc]
+      properties:
+        bank_code: {type: string, description: Six-digit bank BIN used by the lookup provider}
+        bank_name: {type: string}
+        account_number: {type: string, description: Owner-only; never expose publicly}
+        masked_account_number: {type: string}
+        account_name: {type: string}
+        verified_at_utc: {type: string, format: date-time}
     ProblemDetails:
       type: object
       required: [type, title, status, code, traceId]
@@ -6542,6 +6598,11 @@ components:
         status: { $ref: '#/components/schemas/AppointmentStatus' }
         paid_out_vnd: { type: integer }
         settlement_status: { type: string }
+        transferred_at_utc: { type: string, format: date-time, nullable: true }
+        bank_reference: { type: string, nullable: true }
+        payee_bank_name: { type: string, nullable: true }
+        payee_account_number_masked: { type: string, nullable: true }
+        payee_account_name: { type: string, nullable: true }
 
     CreateSupportTicketRequest:
       type: object

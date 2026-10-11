@@ -1,5 +1,12 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-11 — Hoàn thiện tài khoản nhận tiền và chi thủ công PT [BE-810]
+- PT đã có API đọc/lưu tài khoản nhận tiền; chỉ PT đã xác minh số điện thoại mới được lưu. Backend kiểm tra BIN/ngân hàng, gọi VietQR Lookup để lấy tên chủ tài khoản và fail-closed nếu provider chưa cấu hình.
+- Khi Admin duyệt khoản chi, hệ thống bắt buộc tài khoản đã xác minh và chụp bất biến ngân hàng, số tài khoản, tên chủ tài khoản vào settlement. Admin chuyển khoản thủ công theo snapshot, nhập mã giao dịch/chứng từ/thời gian; ledger chỉ ghi payout sau khi xác nhận và PT nhận thông báo thanh toán.
+- Mobile có màn quản lý tài khoản nhận tiền và chi tiết doanh thu thật; Admin hiển thị đúng snapshot thụ hưởng, không dùng dữ liệu nhập lại. Revenue API trả trạng thái, thời gian chuyển, mã ngân hàng và tài khoản đã che.
+- Migration `AddPtPayoutAccounts` chỉ thêm schema thuộc phạm vi payout; không trộn cập nhật seed bài tập. Cấu hình cần `BankLookup__Provider=VietQr`, `BankLookup__ClientId`, `BankLookup__ApiKey`.
+- Verification: Unit 970/970; integration PostgreSQL 96/96 (trong đó PayOS/manual settlement + UAT Journey 09 là 25/25); Mobile type-check và 208/208 test PASS; Admin production build và 127/127 test PASS. Chưa gọi provider thật hoặc chuyển tiền thật trong test tự động.
+
 ## 2026-10-11 — Kết luận tranh chấp buổi PT có chứng cứ [BE-807/809/819]
 - Admin có endpoint riêng `POST /api/v1/admin/finance/booking-incidents/{ticketId}/resolve`, bắt buộc Admin role, Idempotency-Key, finance TOTP, lý do 20–1000 ký tự và tham chiếu chứng cứ nội bộ. Không thể đóng phiếu liên kết buổi tập theo đường trạng thái chung khi chưa có kết luận.
 - Trong một transaction khóa payment/appointment/ticket, PT vắng được hủy buổi và tạo yêu cầu hoàn tiền thủ công đúng phân bổ của buổi; tiền vẫn Paid cho tới khi Admin duyệt và ghi nhận chuyển khoản thật. Buổi đã diễn ra hoặc hội viên vắng được ghi nhận Completed và ledger 10%/90%; không tạo payout trực tiếp. Gói 4 buổi giữ nguyên các buổi không liên quan.

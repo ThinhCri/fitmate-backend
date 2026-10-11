@@ -81,7 +81,11 @@ public class TrainerRevenueService : ITrainerRevenueService
             GrossVnd: r.ActualPaidVnd,
             PlatformFeeVnd: r.PlatformFeeVnd,
             NetVnd: NetRevenue(r),
-            Status: r.Status, PaidOutVnd: r.PaidOutVnd, SettlementStatus: r.SettlementStatus)).ToList();
+            Status: r.Status, PaidOutVnd: r.PaidOutVnd, SettlementStatus: r.SettlementStatus,
+            TransferredAtUtc: r.TransferredAtUtc, BankReference: r.BankReference,
+            PayeeBankName: r.PayeeBankName,
+            PayeeAccountNumberMasked: Mask(r.PayeeAccountNumber),
+            PayeeAccountName: r.PayeeAccountName)).ToList();
 
         return new TrainerRevenueHistoryPage(items, total, page, pageSize);
     }
@@ -105,6 +109,9 @@ public class TrainerRevenueService : ITrainerRevenueService
     private static long NetRevenue(TrainerBookingRevenueRow row) => row.ActualPaidVnd <= 0 ? 0 :
         row.TrainerShareVnd - row.RefundedVnd + (long)Math.Round(
             row.PlatformFeeVnd * (decimal)row.RefundedVnd / row.ActualPaidVnd, MidpointRounding.AwayFromZero);
+
+    private static string? Mask(string? value) => string.IsNullOrEmpty(value) ? null :
+        value.Length <= 4 ? value : new string('•', value.Length - 4) + value[^4..];
 
     private static readonly TimeSpan ZoneOffset = TimeSpan.FromHours(7); // Asia/Ho_Chi_Minh
 

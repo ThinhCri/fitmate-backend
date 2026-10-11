@@ -63,10 +63,12 @@ public class PayosAndManualSettlementTests
         var now = DateTime.UtcNow;
         var settlement = ManualPtSettlement.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         var act = () => settlement.Approve(Guid.NewGuid(), 90000, now.AddHours(-3), now.AddMinutes(-5),
-            now.AddHours(-1), "case:session", "case:payee", true, now);
+            now.AddHours(-1), "case:session", "case:payee", true, now,
+            "970422", "MB", "123456789", "NGUYEN VAN A", now.AddDays(-1));
         act.Should().Throw<DomainException>();
         act = () => settlement.Approve(Guid.NewGuid(), 90000, now.AddMinutes(-5), now.AddMinutes(-5),
-            now.AddHours(-1), "case:session", "case:payee", false, now);
+            now.AddHours(-1), "case:session", "case:payee", false, now,
+            "970422", "MB", "123456789", "NGUYEN VAN A", now.AddDays(-1));
         act.Should().Throw<DomainException>();
     }
 
@@ -77,9 +79,11 @@ public class PayosAndManualSettlementTests
         var admin = Guid.NewGuid();
         var settlement = ManualPtSettlement.Create(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid());
         settlement.Approve(admin, 90000, now.AddMinutes(-5), now.AddMinutes(-4), now.AddHours(-1),
-            "case:session", "case:payee", true, now);
+            "case:session", "case:payee", true, now,
+            "970422", "MB", "123456789", "NGUYEN VAN A", now.AddDays(-1));
         settlement.Status.Should().Be("approved");
         settlement.TransferredAt.Should().BeNull();
+        settlement.PayeeAccountName.Should().Be("NGUYEN VAN A");
         settlement.RecordTransfer(admin, 90000, "bank:one", "case:transfer", now, now);
         settlement.RecordTransfer(admin, 90000, "bank:one", "case:transfer", now, now);
         settlement.Status.Should().Be("paid");

@@ -839,9 +839,11 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
     {
         using var scope = _factory.Services.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IManualSettlementStore>();
+        var now = DateTime.UtcNow;
         await store.UpdateAsync(id, admin, "finance.settlement_approved", c => c.Settlement.Approve(admin,
-            ManualSettlementService.EligibleAmount(c), DateTime.UtcNow.AddMinutes(-5), DateTime.UtcNow.AddMinutes(-4),
-            c.Appointment.SlotStartUtc.AddMinutes(c.Appointment.DurationMinutes), "test:session", "test:payee", true, DateTime.UtcNow), default);
+            ManualSettlementService.EligibleAmount(c), now.AddMinutes(-5), now.AddMinutes(-4),
+            c.Appointment.SlotStartUtc.AddMinutes(c.Appointment.DurationMinutes), "test:session", "test:payee", true,
+            now, "970422", "MB Bank", "0123456789", "NGUYEN VAN A", now), default);
     }
 
     [Fact]

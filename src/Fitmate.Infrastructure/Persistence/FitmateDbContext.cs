@@ -43,6 +43,7 @@ public class FitmateDbContext : IdentityDbContext<ApplicationUser, IdentityRole<
     public DbSet<Certificate> Certificates => Set<Certificate>();
     public DbSet<Service> Services => Set<Service>();
     public DbSet<AvailabilitySlot> AvailabilitySlots => Set<AvailabilitySlot>();
+    public DbSet<PtPayoutAccount> PtPayoutAccounts => Set<PtPayoutAccount>();
 
     // Booking
     public DbSet<Appointment> Appointments => Set<Appointment>();

@@ -400,11 +400,28 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
             payment.MarkPaid($"PAYOS-UAT-{Guid.NewGuid():N}");
             appointment.AttachPayment(payment.Id, 400_000, 0, 0.10m, 40_000, 360_000, "v1");
             appointment.ForceStatusForTesting(AppointmentStatus.Completed, DateTime.UtcNow.AddHours(-25));
+            var ptUser = new ApplicationUser
+            {
+                Id = ptId,
+                UserName = $"pt_{ptId:N}@fitmate.local",
+                NormalizedUserName = $"PT_{ptId:N}@FITMATE.LOCAL",
+                Email = $"pt_{ptId:N}@fitmate.local",
+                NormalizedEmail = $"PT_{ptId:N}@FITMATE.LOCAL",
+                EmailConfirmed = true,
+                PhoneNumberConfirmed = false,
+                FullName = "Trainer UAT Settlement",
+                Status = UserStatus.Active,
+                Timezone = "Asia/Ho_Chi_Minh",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            var payoutAccount = PtPayoutAccount.CreateVerified(ptId, "970422", "MB Bank",
+                "0123456789", "NGUYEN VAN A", "VietQr", "lookup:uat", DateTime.UtcNow.AddMinutes(-1));
             // session started
             // session completed
 
             appointmentId = appointment.Id;
-            db.AddRange(appointment, payment);
+            db.AddRange(ptUser, appointment, payment, payoutAccount);
             await db.SaveChangesAsync();
         }
 
