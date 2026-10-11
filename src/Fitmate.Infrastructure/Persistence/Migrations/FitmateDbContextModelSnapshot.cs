@@ -23,6 +23,93 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Fitmate.Domain.Ai.AiSubscriptionRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BasePlanId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ProductId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("ProtectedPurchaseToken")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PurchaseTokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("VerifiedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PurchaseTokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ExpiresAtUtc");
+
+                    b.ToTable("ai_subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Ai.AiUsageReservationRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateOnly>("LocalDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "LocalDate", "Kind", "State");
+
+                    b.ToTable("ai_usage_reservations", (string)null);
+                });
+
             modelBuilder.Entity("Fitmate.Domain.Booking.Appointment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2460,6 +2547,11 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("BookingEvidenceReference")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("booking_evidence_reference");
+
                     b.Property<Guid?>("BookingId")
                         .HasColumnType("uuid");
 
@@ -2468,23 +2560,18 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("booking_resolution");
 
-                    b.Property<Guid?>("BookingResolvedByAdminId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("booking_resolved_by_admin_id");
-
-                    b.Property<DateTime?>("BookingResolvedAtUtc")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("booking_resolved_at_utc");
-
                     b.Property<string>("BookingResolutionReason")
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("booking_resolution_reason");
 
-                    b.Property<string>("BookingEvidenceReference")
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("booking_evidence_reference");
+                    b.Property<DateTime?>("BookingResolvedAtUtc")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("booking_resolved_at_utc");
+
+                    b.Property<Guid?>("BookingResolvedByAdminId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_resolved_by_admin_id");
 
                     b.Property<string>("Category")
                         .IsRequired()
@@ -2688,21 +2775,6 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Fitmate.Domain.Trainers.PtProfile", b =>
                 {
-                    b.Property<int>("VerifiedNoShowStrikes")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("PenaltyFlags")
-                        .HasColumnType("integer");
-
-                    b.Property<DateTime?>("SuspendedUntilUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTime?>("SecondFlagAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("PermanentlyBanned")
-                        .HasColumnType("boolean");
-
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
@@ -2720,6 +2792,12 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int?>("ExperienceYears")
                         .HasColumnType("integer");
 
+                    b.Property<int>("PenaltyFlags")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("PermanentlyBanned")
+                        .HasColumnType("boolean");
+
                     b.Property<long?>("PricePerSessionVnd")
                         .HasColumnType("bigint");
 
@@ -2729,9 +2807,15 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<int>("ReviewsCount")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime?>("SecondFlagAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Specialty")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("SuspendedUntilUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -2750,6 +2834,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid");
 
                     b.Property<int>("VerificationStatus")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("VerifiedNoShowStrikes")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");

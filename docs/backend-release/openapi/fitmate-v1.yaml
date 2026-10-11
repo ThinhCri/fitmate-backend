@@ -2636,6 +2636,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/ProblemDetails'
 
+  /me/ai-usage:
+    get:
+      tags: [Nutrition]
+      summary: Read current account AI usage and verified plan
+      operationId: getMyAiUsage
+      responses:
+        '200':
+          description: Current day usage and server-side enforcement state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [plan, enforcement_enabled, resets_at_utc, chat, scan]
+                properties:
+                  plan:
+                    type: string
+                    enum: [free, plus]
+                  enforcement_enabled:
+                    type: boolean
+                  resets_at_utc:
+                    type: string
+                    format: date-time
+                  chat:
+                    $ref: '#/components/schemas/AiUsageItem'
+                  scan:
+                    $ref: '#/components/schemas/AiUsageItem'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /me/ai-subscription:
+    get:
+      tags: [Nutrition]
+      summary: Read server-verified Google Play AI subscription status
+      operationId: getMyAiSubscription
+      responses:
+        '200':
+          description: Subscription status; only plan plus grants extra AI quota
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSubscriptionStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /me/ai-subscription/verify:
+    post:
+      tags: [Nutrition]
+      summary: Verify an Android Play purchase token on the server and bind it to the current account
+      operationId: verifyMyAiSubscription
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purchase_token]
+              properties:
+                purchase_token:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+      responses:
+        '200':
+          description: Google-verified status (may still be pending or expired)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSubscriptionStatus'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Purchase token already belongs to another account or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          description: Google Play verification unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
   /me/nutrition/weekly-plan:
     get:
       tags: [Nutrition]
@@ -5251,6 +5338,23 @@ components:
             $ref: '#/components/schemas/ProblemDetails'
 
   schemas:
+    AiUsageItem:
+      type: object
+      required: [limit, used, remaining]
+      properties:
+        limit: {type: integer, minimum: 0}
+        used: {type: integer, minimum: 0}
+        remaining: {type: integer, minimum: 0}
+    AiSubscriptionStatus:
+      type: object
+      required: [plan, billing_available, product_id, base_plan_id, state, expires_at_utc]
+      properties:
+        plan: {type: string, enum: [free, plus]}
+        billing_available: {type: boolean}
+        product_id: {type: string}
+        base_plan_id: {type: string}
+        state: {type: string}
+        expires_at_utc: {type: string, format: date-time, nullable: true}
     LegacyAppointmentReconciliationView:
       type: object
       properties:

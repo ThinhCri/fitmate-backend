@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using System.Text;
 using Fitmate.Domain.Chat;
 using Fitmate.Domain.Common;
+using Fitmate.Application.Ai;
 
 namespace Fitmate.Application.Chat;
 
@@ -36,11 +37,13 @@ public sealed class AiChatService : IAiChatService
         "Hiện tại Fitmate AI chỉ hỗ trợ tiếng Việt và tiếng Anh. Please continue in Vietnamese or English.";
     private readonly IAiChatStore _store;
     private readonly IAiCompanionAdapter _adapter;
+    private readonly IAiUsageService? _usage;
 
-    public AiChatService(IAiChatStore store, IAiCompanionAdapter adapter)
+    public AiChatService(IAiChatStore store, IAiCompanionAdapter adapter, IAiUsageService? usage = null)
     {
         _store = store;
         _adapter = adapter;
+        _usage = usage;
     }
 
     public async Task<IReadOnlyList<AiThreadView>> ListThreadsAsync(Guid userId, CancellationToken ct)
@@ -104,18 +107,31 @@ public sealed class AiChatService : IAiChatService
         var historyRows = await _store.ListMessagesAsync(threadId, 40, ct);
         var history = historyRows.Select(m => new CompanionChatMessageView(
             m.Sender == Fitmate.Domain.Chat.ChatMessageSender.Ai ? "model" : "user", m.Text, m.CreatedAt)).ToList();
-        var replyText = ContainsClearlyUnsupportedScript(normalized)
-            ? UnsupportedLanguageReply
-            : (await _adapter.GenerateReplyAsync(
-                new CompanionChatRequest(userId, threadId, normalized, history, images), ct)).ReplyText;
+        var unsupported = ContainsClearlyUnsupportedScript(normalized);
+        var reservation = !unsupported && _usage is not null
+            ? await _usage.ReserveAsync(userId, "chat", ct)
+            : new AiUsageReservation(Guid.Empty, false);
+        try
+        {
+            var replyText = unsupported
+                ? UnsupportedLanguageReply
+                : (await _adapter.GenerateReplyAsync(
+                    new CompanionChatRequest(userId, threadId, normalized, history, images), ct)).ReplyText;
 
-        var userMessage = ChatMessage.CreateUser(threadId, userId, normalized);
-        var aiMessage = ChatMessage.CreateAi(threadId, replyText, null);
-        await _store.AddMessageAsync(userMessage, ct);
-        await _store.AddMessageAsync(aiMessage, ct);
-        thread.TouchLastMessage();
-        await _store.SaveChangesAsync(ct);
-        return MapMessage(aiMessage);
+            var userMessage = ChatMessage.CreateUser(threadId, userId, normalized);
+            var aiMessage = ChatMessage.CreateAi(threadId, replyText, null);
+            await _store.AddMessageAsync(userMessage, ct);
+            await _store.AddMessageAsync(aiMessage, ct);
+            thread.TouchLastMessage();
+            await _store.SaveChangesAsync(ct);
+            if (_usage is not null) await _usage.CommitAsync(reservation, ct);
+            return MapMessage(aiMessage);
+        }
+        catch
+        {
+            if (_usage is not null) await _usage.ReleaseAsync(reservation, CancellationToken.None);
+            throw;
+        }
     }
 
     private async Task<ChatThread> RequireOwnedThread(Guid userId, Guid threadId, CancellationToken ct)

@@ -21,7 +21,7 @@ BE-801 xuất inventory từng operation/schema. Spec không chứng minh implem
 | 14 | Không admin trên app | 7 modules | C subsets; S admin audit/bookings/payments/overview | BE-818 |
 | 15 | Support/settings/drawer | Settings/support | P ticket/capabilities/preferences/system safe | BE-819 |
 | 16 | Media/offline/errors | Auth/errors/audit | C upload mới/health; evidence còn thiếu | BE-816/820..828 |
-| 17 | VIP/withdraw/rewards | Legacy premium inactive | P entitlement/reward real, capability disabled | BE-829 |
+| 17 | AI usage + Google Play AI Plus | Legacy premium inactive | C `/me/ai-usage`, `/me/ai-subscription`, token verification/binding, encrypted entitlement and reconciliation; native checkout implemented in Mobile but Play UAT/RTDN external gate remains; legacy VIP/rewards disabled | BE-829 |
 
 ## Inventory không bị xóa
 Mobile FP-001..040 vẫn ở repo app (FP-034 đang trùng nhãn trong tài liệu cũ); dùng BR IDs cross-repo, không renumber lịch sử âm thầm.

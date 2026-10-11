@@ -306,6 +306,22 @@ builder.Services.AddScoped<IChatStore, Fitmate.Infrastructure.Persistence.Chat.E
 builder.Services.AddScoped<IChatService, Fitmate.Application.Chat.ChatService>();
 builder.Services.AddScoped<IAiChatStore, Fitmate.Infrastructure.Persistence.Chat.EfAiChatStore>();
 builder.Services.AddScoped<IAiChatService, Fitmate.Application.Chat.AiChatService>();
+builder.Services.Configure<Fitmate.Application.Ai.AiUsageOptions>(
+    builder.Configuration.GetSection(Fitmate.Application.Ai.AiUsageOptions.SectionName));
+builder.Services.AddScoped<Fitmate.Application.Ai.IAiUsageService, Fitmate.Infrastructure.Ai.EfAiUsageService>();
+builder.Services.AddOptions<Fitmate.Application.Ai.GooglePlayBillingOptions>()
+    .Bind(builder.Configuration.GetSection(Fitmate.Application.Ai.GooglePlayBillingOptions.SectionName))
+    .Validate(x => !x.Enabled ||
+        (x.PackageName == "vn.fitmate.app" && x.ProductId == "fitmate_ai_plus" &&
+         x.BasePlanId == "monthly" && !string.IsNullOrWhiteSpace(x.ServiceAccountJsonBase64)),
+        "Google Play billing is enabled without the approved Android product or credentials.")
+    .ValidateOnStart();
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>(client =>
+    client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddScoped<Fitmate.Application.Ai.IGooglePlaySubscriptionVerifier>(sp =>
+    sp.GetRequiredService<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>());
+builder.Services.AddScoped<Fitmate.Application.Ai.IAiSubscriptionService, Fitmate.Infrastructure.Ai.EfAiSubscriptionService>();
+builder.Services.AddHostedService<Fitmate.Api.Ai.AiSubscriptionReconcileWorker>();
 
 // BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();

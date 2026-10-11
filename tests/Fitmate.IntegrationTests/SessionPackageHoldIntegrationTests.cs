@@ -253,7 +253,7 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
             adminList.RootElement.GetProperty("items").EnumerateArray()
                 .Should().ContainSingle(item => item.GetProperty("id").GetGuid() == first.Id);
             using var filteredOut = JsonDocument.Parse(await (
-                await adminClient.GetAsync("/api/v1/admin/session-packages?status=Active"))
+                await adminClient.GetAsync($"/api/v1/admin/session-packages?status=Active&memberId={memberId}&ptUserId={ptId}"))
                 .Content.ReadAsStringAsync());
             filteredOut.RootElement.GetProperty("items").GetArrayLength().Should().Be(0);
             var adminDetailResponse = await adminClient.GetAsync(

@@ -1,6 +1,7 @@
 using Fitmate.Application.Outbox;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Nutrition;
+using Fitmate.Application.Ai;
 
 namespace Fitmate.Application.Nutrition;
 
@@ -9,12 +10,14 @@ public class NutritionService : INutritionService
     private readonly INutritionStore _store;
     private readonly IAiNutritionAdapter _ai;
     private readonly IOutboxDispatcher _outbox;
+    private readonly IAiUsageService? _usage;
 
-    public NutritionService(INutritionStore store, IAiNutritionAdapter ai, IOutboxDispatcher outbox)
+    public NutritionService(INutritionStore store, IAiNutritionAdapter ai, IOutboxDispatcher outbox, IAiUsageService? usage = null)
     {
         _store = store;
         _ai = ai;
         _outbox = outbox;
+        _usage = usage;
     }
 
     public async Task<IReadOnlyList<MealLogView>> ListMealsAsync(
@@ -264,7 +267,20 @@ public class NutritionService : INutritionService
     public async Task<NutritionScanResultView> ScanMealAsync(
         Guid userId, Stream imageStream, string contentType, CancellationToken ct = default)
     {
-        return await _ai.EstimateFromImageAsync(imageStream, contentType, ct);
+        var reservation = _usage is null
+            ? new AiUsageReservation(Guid.Empty, false)
+            : await _usage.ReserveAsync(userId, "scan", ct);
+        try
+        {
+            var result = await _ai.EstimateFromImageAsync(imageStream, contentType, ct);
+            if (_usage is not null) await _usage.CommitAsync(reservation, ct);
+            return result;
+        }
+        catch
+        {
+            if (_usage is not null) await _usage.ReleaseAsync(reservation, CancellationToken.None);
+            throw;
+        }
     }
 
     private static void ValidateWeekStart(DateOnly weekStart)

@@ -66,3 +66,9 @@ public class AiRateLimitedException : DomainException
         : base(ErrorCodes.AI.RateLimited, message, 429) { }
 }
 
+public sealed class AiQuotaExceededException : DomainException
+{
+    public AiQuotaExceededException()
+        : base(ErrorCodes.AI.QuotaExceeded, "Bạn đã dùng hết lượt AI hôm nay. Hãy thử lại sau khi hạn mức được làm mới.", 429) { }
+}
+
