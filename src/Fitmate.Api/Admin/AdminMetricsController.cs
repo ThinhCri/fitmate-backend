@@ -84,6 +84,12 @@ public class AdminMetricsController : ControllerBase
         [FromQuery] string range = "30d", CancellationToken ct = default)
         => Ok(await service.GetAsync(_current.GetUserIdOrThrow(), range, ct));
 
+    [HttpGet("analytics/overview")]
+    public async Task<IActionResult> GetAnalyticsOverview(
+        [FromServices] AdminAnalyticsService service,
+        [FromQuery] string range = "30d", CancellationToken ct = default)
+        => Ok(await service.GetAsync(_current.GetUserIdOrThrow(), range, ct));
+
     /// <summary>
     /// BE-824: Prometheus exposition format endpoint cho internal scraper / collector, bảo vệ bởi quyền AdminOnly.
     /// </summary>

@@ -168,6 +168,25 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
     }
 
     [Fact]
+    public async Task Admin_analytics_reports_unconfigured_without_fake_zero_metrics()
+    {
+        var admin = _factory.CreateAuthenticatedClient(role: "Admin", userId: Guid.NewGuid());
+        var response = await admin.GetAsync("/api/v1/admin/analytics/overview?range=30d");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("configured").GetBoolean().Should().BeFalse();
+        root.GetProperty("activeUsers").ValueKind.Should().Be(JsonValueKind.Null);
+        (await admin.GetAsync("/api/v1/admin/analytics/overview?range=all"))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var member = _factory.CreateAuthenticatedClient(role: "Member", userId: Guid.NewGuid());
+        (await member.GetAsync("/api/v1/admin/analytics/overview"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _factory.CreateClient().GetAsync("/api/v1/admin/analytics/overview"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Journey01_Auth_Lifecycle_Preferences_And_CrossAccount_Denied()
     {
         var memberId = Guid.NewGuid();

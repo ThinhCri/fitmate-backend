@@ -305,6 +305,13 @@ builder.Services.AddScoped<IAdminRevenueReportStore, Fitmate.Infrastructure.Admi
 builder.Services.AddScoped<AdminRevenueReportService>();
 builder.Services.AddScoped<IAdminTrainerReviewsStore, Fitmate.Infrastructure.Admin.EfAdminTrainerReviewsStore>();
 builder.Services.AddScoped<AdminTrainerReviewsService>();
+builder.Services.AddOptions<Ga4Options>().Bind(builder.Configuration.GetSection(Ga4Options.SectionName));
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Admin.Ga4ReportProvider>(client =>
+    client.Timeout = TimeSpan.FromSeconds(15));
+builder.Services.AddScoped<IGa4ReportProvider>(sp =>
+    sp.GetRequiredService<Fitmate.Infrastructure.Admin.Ga4ReportProvider>());
+builder.Services.AddScoped<AdminAnalyticsService>();
 builder.Services.AddScoped<Fitmate.Application.Admin.IAdminOutboxService, Fitmate.Application.Admin.AdminOutboxService>();
 
 // BE-180: Social (post + comment + reaction + report).

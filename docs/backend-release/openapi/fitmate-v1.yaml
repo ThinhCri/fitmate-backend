@@ -5120,6 +5120,26 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Review already has the requested visibility }
 
+  /admin/analytics/overview:
+    get:
+      tags: [Admin]
+      summary: Read-only GA4 app usage metrics; returns configured=false without fabricated zeros
+      operationId: adminAnalyticsOverview
+      parameters:
+        - in: query
+          name: range
+          schema: { type: string, enum: [7d, 30d, 90d], default: 30d }
+      responses:
+        '200':
+          description: GA4 overview or explicit unconfigured state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsOverview' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { description: GA4 provider or credentials unavailable }
+
   /admin/action-required:
     get:
       tags: [Admin]
@@ -6946,6 +6966,28 @@ components:
         pendingPayoutVnd: { type: integer, format: int64 }
         reviewsCount: { type: integer }
         averageRating: { type: number }
+
+    AnalyticsDay:
+      type: object
+      required: [date, activeUsers, views]
+      properties:
+        date: { type: string, format: date }
+        activeUsers: { type: integer, format: int64 }
+        views: { type: integer, format: int64 }
+
+    AnalyticsOverview:
+      type: object
+      required: [configured, range, activeUsers, newUsers, views, eventCount, days]
+      properties:
+        configured: { type: boolean }
+        range: { type: string, enum: [7d, 30d, 90d] }
+        activeUsers: { type: integer, format: int64, nullable: true }
+        newUsers: { type: integer, format: int64, nullable: true }
+        views: { type: integer, format: int64, nullable: true }
+        eventCount: { type: integer, format: int64, nullable: true }
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/AnalyticsDay' }
 
     ModerateTrainerReviewRequest:
       type: object
