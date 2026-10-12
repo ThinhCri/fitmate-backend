@@ -5075,6 +5075,51 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/trainer-reviews:
+    get:
+      tags: [Admin]
+      summary: Paged PT reviews including hidden moderation state
+      operationId: adminTrainerReviews
+      parameters:
+        - { in: query, name: ptUserId, schema: { type: string, format: uuid } }
+        - { in: query, name: rating, schema: { type: integer, minimum: 1, maximum: 5 } }
+        - { in: query, name: hidden, schema: { type: boolean } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200':
+          description: PT reviews
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminTrainerReviewPage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/trainer-reviews/{id}/moderation:
+    post:
+      tags: [Admin]
+      summary: Hide or restore a PT review, recalculate public rating and write audit log
+      operationId: moderateTrainerReview
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ModerateTrainerReviewRequest' }
+      responses:
+        '200':
+          description: Updated review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminTrainerReview' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Review already has the requested visibility }
+
   /admin/action-required:
     get:
       tags: [Admin]
@@ -6901,6 +6946,39 @@ components:
         pendingPayoutVnd: { type: integer, format: int64 }
         reviewsCount: { type: integer }
         averageRating: { type: number }
+
+    ModerateTrainerReviewRequest:
+      type: object
+      required: [hidden, reason]
+      properties:
+        hidden: { type: boolean }
+        reason: { type: string, minLength: 5, maxLength: 500 }
+
+    AdminTrainerReview:
+      type: object
+      required: [id, fromUserId, ptUserId, rating, text, createdAtUtc, isHidden]
+      properties:
+        id: { type: string, format: uuid }
+        fromUserId: { type: string, format: uuid }
+        ptUserId: { type: string, format: uuid }
+        rating: { type: integer, minimum: 1, maximum: 5 }
+        text: { type: string }
+        createdAtUtc: { type: string, format: date-time }
+        isHidden: { type: boolean }
+        moderationReason: { type: string, nullable: true }
+        moderatedByAdminId: { type: string, format: uuid, nullable: true }
+        moderatedAtUtc: { type: string, format: date-time, nullable: true }
+
+    AdminTrainerReviewPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminTrainerReview' }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
 
     RevenueDay:
       type: object

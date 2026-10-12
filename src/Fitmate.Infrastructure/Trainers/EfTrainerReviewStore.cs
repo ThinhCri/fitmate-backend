@@ -45,7 +45,7 @@ public class EfTrainerReviewStore : ITrainerReviewStore
             from r in _db.Reviews
             join u in _db.Users on r.FromUserId equals u.Id into users
             from u in users.DefaultIfEmpty()
-            where r.PtUserId == ptUserId
+            where r.PtUserId == ptUserId && !r.IsHidden
             orderby r.CreatedAt descending
             select new
             {
@@ -64,11 +64,11 @@ public class EfTrainerReviewStore : ITrainerReviewStore
 
     public async Task<(decimal AverageRating, int TotalReviews)> ComputeRatingStatsAsync(Guid ptUserId, CancellationToken ct)
     {
-        var count = await _db.Reviews.CountAsync(r => r.PtUserId == ptUserId, ct);
+        var count = await _db.Reviews.CountAsync(r => r.PtUserId == ptUserId && !r.IsHidden, ct);
         if (count == 0) return (0m, 0);
 
         var avg = (decimal)await _db.Reviews
-            .Where(r => r.PtUserId == ptUserId)
+            .Where(r => r.PtUserId == ptUserId && !r.IsHidden)
             .AverageAsync(r => r.Rating, ct);
 
         return (Math.Round(avg, 1), count);

@@ -2034,3 +2034,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Added `/api/v1/admin/finance/revenue-report`, grouping each money event by its own Vietnam calendar date: payment completion, successful manual refund, earned platform fee and PT share from the ledger, and actual manual payout. Paid but uncompleted bookings are not booked as fee revenue. Financial figures remain integer VND. Admin Web finance cards/chart use this report and offer a client-side CSV export of the server-filtered report.
 - PostgreSQL integration covered 200/400/401/403 and translated daily grouping. Web type-check and 127/127 tests passed. This is a read-only report; not a replacement for reconciliation or bank statements. Review moderation and GA4 setup are the remaining requested areas.
 
+# PT review management — 2026-10-12
+
+- Added Admin-paged PT review list with trainer/rating/visibility filters, and hide/restore action requiring a reason. Public review lists and PT rating aggregates exclude hidden reviews; the Admin action recalculates public PT rating and writes an audit log in the same EF SaveChanges operation. Repeated state returns 409 and nonexistent review 404. Web exposes this under Huấn luyện viên → Quản lý đánh giá PT.
+- Additive `20261012062007_ModerateTrainerReviews` migration has explicit Up/Down, four review columns only; generated unrelated exercise-seed updates were removed. It ran on isolated PostgreSQL via integration tests, **not the application database**. Focused HTTP test covers list, hide/restore, public visibility, audit and status codes; 973 unit tests and 127 Web tests passed. GA4/Firebase remains to wire; no provider keys yet.
+

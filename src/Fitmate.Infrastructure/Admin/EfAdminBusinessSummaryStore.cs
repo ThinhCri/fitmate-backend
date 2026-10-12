@@ -55,7 +55,7 @@ public sealed class EfAdminBusinessSummaryStore(FitmateDbContext db) : IAdminBus
         var allTimePayoutEntries = await ledger.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayout)
             .SumAsync(e => (long?)e.AmountVnd, ct) ?? 0L;
 
-        var reviews = db.Reviews.Where(r => r.CreatedAt >= fromUtc && r.CreatedAt < toUtc);
+        var reviews = db.Reviews.Where(r => !r.IsHidden && r.CreatedAt >= fromUtc && r.CreatedAt < toUtc);
         var reviewCount = await reviews.CountAsync(ct);
         var average = await reviews.AverageAsync(r => (double?)r.Rating, ct) ?? 0d;
         return new BusinessSummary(range, fromUtc, toUtc, totalUsers, newUsers, members,

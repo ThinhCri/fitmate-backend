@@ -15,6 +15,8 @@ public class ReviewConfiguration : IEntityTypeConfiguration<Review>
         e.Property(x => x.PtUserId).IsRequired();
         e.Property(x => x.Rating).IsRequired();
         e.Property(x => x.Text).HasMaxLength(2000).IsRequired();
+        e.Property(x => x.IsHidden).HasDefaultValue(false);
+        e.Property(x => x.ModerationReason).HasMaxLength(500);
         e.HasIndex(x => new { x.PtUserId, x.CreatedAt });
     }
 }

@@ -15,6 +15,7 @@ using Fitmate.Domain.Identity;
 using Fitmate.Domain.Notifications;
 using Fitmate.Domain.Nutrition;
 using Fitmate.Domain.Payment;
+using Fitmate.Domain.Review;
 using Fitmate.Domain.Social;
 using Fitmate.Domain.Trainers;
 using Fitmate.Domain.Workout;
@@ -110,6 +111,59 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
         (await member.GetAsync("/api/v1/admin/finance/revenue-report"))
             .StatusCode.Should().Be(HttpStatusCode.Forbidden);
         (await _factory.CreateClient().GetAsync("/api/v1/admin/finance/revenue-report"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Admin_can_hide_and_restore_a_trainer_review_with_public_rating_recalculation()
+    {
+        var admin = _factory.CreateAuthenticatedClient(role: "Admin", userId: Guid.NewGuid());
+        var ptId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        _factory.CreateAuthenticatedClient(role: "PT", userId: ptId);
+        _factory.CreateAuthenticatedClient(role: "Member", userId: memberId);
+        var review = Review.Create(memberId, ptId, 5, "Huấn luyện rất tận tình");
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var profile = PtProfile.CreateDraft(ptId, "Strength", 3, 200000, "Test PT");
+            profile.ApplyRating(5, 1);
+            db.PtProfiles.Add(profile);
+            db.Reviews.Add(review);
+            await db.SaveChangesAsync();
+        }
+        var listed = await admin.GetAsync($"/api/v1/admin/trainer-reviews?ptUserId={ptId}");
+        listed.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var document = JsonDocument.Parse(await listed.Content.ReadAsStringAsync()))
+            document.RootElement.GetProperty("total").GetInt32().Should().Be(1);
+
+        var hide = await admin.PostAsJsonAsync($"/api/v1/admin/trainer-reviews/{review.Id}/moderation",
+            new { hidden = true, reason = "Nội dung vi phạm quy định cộng đồng" });
+        hide.StatusCode.Should().Be(HttpStatusCode.OK);
+        var publicReviews = await _factory.CreateClient().GetAsync($"/api/v1/trainers/{ptId}/reviews");
+        publicReviews.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var document = JsonDocument.Parse(await publicReviews.Content.ReadAsStringAsync()))
+            document.RootElement.GetProperty("total_reviews").GetInt32().Should().Be(0);
+
+        (await admin.PostAsJsonAsync($"/api/v1/admin/trainer-reviews/{review.Id}/moderation",
+            new { hidden = true, reason = "Lặp lại quyết định" }))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var restore = await admin.PostAsJsonAsync($"/api/v1/admin/trainer-reviews/{review.Id}/moderation",
+            new { hidden = false, reason = "Đã xử lý khiếu nại hợp lệ" });
+        restore.StatusCode.Should().Be(HttpStatusCode.OK);
+        var auditResponse = await admin.GetAsync($"/api/v1/admin/audit?targetId={review.Id}");
+        auditResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        using (var document = JsonDocument.Parse(await auditResponse.Content.ReadAsStringAsync()))
+            document.RootElement.GetProperty("total").GetInt32().Should().Be(2);
+        (await admin.GetAsync("/api/v1/admin/trainer-reviews?rating=9"))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await admin.PostAsJsonAsync($"/api/v1/admin/trainer-reviews/{Guid.NewGuid()}/moderation",
+            new { hidden = true, reason = "Không tìm thấy đánh giá" }))
+            .StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var member = _factory.CreateAuthenticatedClient(role: "Member", userId: Guid.NewGuid());
+        (await member.GetAsync("/api/v1/admin/trainer-reviews"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _factory.CreateClient().GetAsync("/api/v1/admin/trainer-reviews"))
             .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 

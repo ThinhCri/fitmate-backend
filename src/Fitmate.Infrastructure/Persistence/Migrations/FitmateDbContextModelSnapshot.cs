@@ -2264,6 +2264,21 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("FromUserId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("IsHidden")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
+                    b.Property<DateTime?>("ModeratedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("ModeratedByAdminId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ModerationReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
                     b.Property<Guid>("PtUserId")
                         .HasColumnType("uuid");
 
