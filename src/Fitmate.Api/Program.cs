@@ -301,6 +301,8 @@ builder.Services.AddScoped<IAdminBusinessSummaryStore, Fitmate.Infrastructure.Ad
 builder.Services.AddScoped<AdminBusinessSummaryService>();
 builder.Services.AddScoped<IAdminTransactionsStore, Fitmate.Infrastructure.Admin.EfAdminTransactionsStore>();
 builder.Services.AddScoped<AdminTransactionsService>();
+builder.Services.AddScoped<IAdminRevenueReportStore, Fitmate.Infrastructure.Admin.EfAdminRevenueReportStore>();
+builder.Services.AddScoped<AdminRevenueReportService>();
 builder.Services.AddScoped<Fitmate.Application.Admin.IAdminOutboxService, Fitmate.Application.Admin.AdminOutboxService>();
 
 // BE-180: Social (post + comment + reaction + report).

@@ -2029,3 +2029,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Added server-paged `/api/v1/admin/finance/transactions` for payments, refunds, and actual PT payout ledger entries. Filters are allowlisted by type/status, UUID reference, UTC time, page and max 100 page size; auth is enforced in Application as well as HTTP. Payout amount is displayed as positive from a signed negative ledger debit. The Admin Web has a matching transaction tab. Existing manual settlement/refund panels remain separate operator workflows.
 - Verified the query translation against isolated PostgreSQL and covered 200/400/401/403. Web type-check passed after removing nonexistent refund payee fields from its table; the refund entity has no payee bank fields, so the UI does not imply bank verification. No live provider operation or deploy.
 
+# Admin recognized revenue report — 2026-10-12
+
+- Added `/api/v1/admin/finance/revenue-report`, grouping each money event by its own Vietnam calendar date: payment completion, successful manual refund, earned platform fee and PT share from the ledger, and actual manual payout. Paid but uncompleted bookings are not booked as fee revenue. Financial figures remain integer VND. Admin Web finance cards/chart use this report and offer a client-side CSV export of the server-filtered report.
+- PostgreSQL integration covered 200/400/401/403 and translated daily grouping. Web type-check and 127/127 tests passed. This is a read-only report; not a replacement for reconciliation or bank statements. Review moderation and GA4 setup are the remaining requested areas.
+

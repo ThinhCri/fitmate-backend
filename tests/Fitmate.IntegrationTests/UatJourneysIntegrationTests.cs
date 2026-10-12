@@ -93,6 +93,27 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
     }
 
     [Fact]
+    public async Task Admin_revenue_report_separates_collection_refunds_and_earned_fee()
+    {
+        var admin = _factory.CreateAuthenticatedClient(role: "Admin", userId: Guid.NewGuid());
+        var response = await admin.GetAsync("/api/v1/admin/finance/revenue-report?range=30d");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("range").GetString().Should().Be("30d");
+        root.GetProperty("collectedVnd").GetInt64().Should().BeGreaterThanOrEqualTo(0);
+        root.GetProperty("refundedVnd").GetInt64().Should().BeGreaterThanOrEqualTo(0);
+        root.GetProperty("days").ValueKind.Should().Be(JsonValueKind.Array);
+        (await admin.GetAsync("/api/v1/admin/finance/revenue-report?range=wrong"))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var member = _factory.CreateAuthenticatedClient(role: "Member", userId: Guid.NewGuid());
+        (await member.GetAsync("/api/v1/admin/finance/revenue-report"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _factory.CreateClient().GetAsync("/api/v1/admin/finance/revenue-report"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Journey01_Auth_Lifecycle_Preferences_And_CrossAccount_Denied()
     {
         var memberId = Guid.NewGuid();

@@ -5056,6 +5056,25 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/finance/revenue-report:
+    get:
+      tags: [Admin]
+      summary: Collected money, actual refunds and earned platform/PT revenue by Vietnam calendar day
+      operationId: adminRevenueReport
+      parameters:
+        - in: query
+          name: range
+          schema: { type: string, enum: [7d, 30d, 90d, all], default: 30d }
+      responses:
+        '200':
+          description: Event-time revenue report
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RevenueReport' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/action-required:
     get:
       tags: [Admin]
@@ -6882,6 +6901,34 @@ components:
         pendingPayoutVnd: { type: integer, format: int64 }
         reviewsCount: { type: integer }
         averageRating: { type: number }
+
+    RevenueDay:
+      type: object
+      required: [date, collectedVnd, refundedVnd, platformFeeVnd, trainerShareVnd, paidOutVnd]
+      properties:
+        date: { type: string, format: date }
+        collectedVnd: { type: integer, format: int64 }
+        refundedVnd: { type: integer, format: int64 }
+        platformFeeVnd: { type: integer, format: int64 }
+        trainerShareVnd: { type: integer, format: int64 }
+        paidOutVnd: { type: integer, format: int64 }
+
+    RevenueReport:
+      type: object
+      required: [range, fromUtc, toUtc, collectedVnd, refundedVnd, platformFeeVnd,
+        trainerShareVnd, paidOutVnd, days]
+      properties:
+        range: { type: string, enum: [7d, 30d, 90d, all] }
+        fromUtc: { type: string, format: date-time }
+        toUtc: { type: string, format: date-time }
+        collectedVnd: { type: integer, format: int64 }
+        refundedVnd: { type: integer, format: int64 }
+        platformFeeVnd: { type: integer, format: int64 }
+        trainerShareVnd: { type: integer, format: int64 }
+        paidOutVnd: { type: integer, format: int64 }
+        days:
+          type: array
+          items: { $ref: '#/components/schemas/RevenueDay' }
 
     AdminTransactionPage:
       type: object
