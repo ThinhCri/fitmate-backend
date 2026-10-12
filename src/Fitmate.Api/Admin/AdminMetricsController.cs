@@ -61,6 +61,12 @@ public class AdminMetricsController : ControllerBase
         });
     }
 
+    [HttpGet("business-summary")]
+    public async Task<IActionResult> GetBusinessSummary(
+        [FromServices] AdminBusinessSummaryService service,
+        [FromQuery] string range = "30d", CancellationToken ct = default)
+        => Ok(await service.GetAsync(_current.GetUserIdOrThrow(), range, ct));
+
     /// <summary>
     /// BE-824: Prometheus exposition format endpoint cho internal scraper / collector, bảo vệ bởi quyền AdminOnly.
     /// </summary>

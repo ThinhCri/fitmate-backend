@@ -45,6 +45,28 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
     }
 
     [Fact]
+    public async Task Admin_business_summary_exposes_real_aggregate_and_enforces_role()
+    {
+        var admin = _factory.CreateAuthenticatedClient(role: "Admin", userId: Guid.NewGuid());
+        var response = await admin.GetAsync("/api/v1/admin/business-summary?range=30d");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("range").GetString().Should().Be("30d");
+        root.GetProperty("totalUsers").GetInt32().Should().BeGreaterThanOrEqualTo(0);
+        root.GetProperty("collectedVnd").GetInt64().Should().BeGreaterThanOrEqualTo(0);
+        root.GetProperty("reviewsCount").GetInt32().Should().BeGreaterThanOrEqualTo(0);
+
+        (await admin.GetAsync("/api/v1/admin/business-summary?range=invalid"))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var member = _factory.CreateAuthenticatedClient(role: "Member", userId: Guid.NewGuid());
+        (await member.GetAsync("/api/v1/admin/business-summary?range=30d"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _factory.CreateClient().GetAsync("/api/v1/admin/business-summary?range=30d"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Journey01_Auth_Lifecycle_Preferences_And_CrossAccount_Denied()
     {
         var memberId = Guid.NewGuid();

@@ -297,6 +297,8 @@ builder.Services.AddScoped<IPlatformPolicyService, Fitmate.Application.Finance.P
 // BE-220: Admin metrics + action-required.
 builder.Services.AddScoped<IAdminMetricsStore, Fitmate.Infrastructure.Admin.EfAdminMetricsStore>();
 builder.Services.AddScoped<IAdminMetricsService, Fitmate.Application.Admin.AdminMetricsService>();
+builder.Services.AddScoped<IAdminBusinessSummaryStore, Fitmate.Infrastructure.Admin.EfAdminBusinessSummaryStore>();
+builder.Services.AddScoped<AdminBusinessSummaryService>();
 builder.Services.AddScoped<Fitmate.Application.Admin.IAdminOutboxService, Fitmate.Application.Admin.AdminOutboxService>();
 
 // BE-180: Social (post + comment + reaction + report).

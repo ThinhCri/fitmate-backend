@@ -5014,6 +5014,25 @@ paths:
               schema:
                 $ref: '#/components/schemas/FinanceOverview'
 
+  /admin/business-summary:
+    get:
+      tags: [Admin]
+      summary: User, payment, recognized revenue and PT review KPIs
+      operationId: adminBusinessSummary
+      parameters:
+        - in: query
+          name: range
+          schema: { type: string, enum: [7d, 30d, 90d, all], default: 30d }
+      responses:
+        '200':
+          description: Business KPIs for the selected UTC interval
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BusinessSummary' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/action-required:
     get:
       tags: [Admin]
@@ -6813,6 +6832,33 @@ components:
           type: integer
         status:
           $ref: '#/components/schemas/AppointmentStatus'
+
+    BusinessSummary:
+      type: object
+      required: [range, fromUtc, toUtc, totalUsers, newUsers, members, verifiedPts,
+        pendingPts, paidTransactions, failedTransactions, pendingTransactions,
+        collectedVnd, refundedVnd, recognizedPlatformFeeVnd, recognizedTrainerShareVnd,
+        paidOutVnd, pendingPayoutVnd, reviewsCount, averageRating]
+      properties:
+        range: { type: string, enum: [7d, 30d, 90d, all] }
+        fromUtc: { type: string, format: date-time }
+        toUtc: { type: string, format: date-time }
+        totalUsers: { type: integer }
+        newUsers: { type: integer }
+        members: { type: integer }
+        verifiedPts: { type: integer }
+        pendingPts: { type: integer }
+        paidTransactions: { type: integer }
+        failedTransactions: { type: integer }
+        pendingTransactions: { type: integer }
+        collectedVnd: { type: integer, format: int64 }
+        refundedVnd: { type: integer, format: int64 }
+        recognizedPlatformFeeVnd: { type: integer, format: int64 }
+        recognizedTrainerShareVnd: { type: integer, format: int64 }
+        paidOutVnd: { type: integer, format: int64 }
+        pendingPayoutVnd: { type: integer, format: int64 }
+        reviewsCount: { type: integer }
+        averageRating: { type: number }
 
     FinanceOverview:
       type: object
