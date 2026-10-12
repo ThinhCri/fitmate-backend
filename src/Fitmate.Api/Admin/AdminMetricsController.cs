@@ -67,6 +67,17 @@ public class AdminMetricsController : ControllerBase
         [FromQuery] string range = "30d", CancellationToken ct = default)
         => Ok(await service.GetAsync(_current.GetUserIdOrThrow(), range, ct));
 
+    [HttpGet("finance/transactions")]
+    public async Task<IActionResult> GetTransactions(
+        [FromServices] AdminTransactionsService service,
+        [FromQuery] string? type = null, [FromQuery] string? status = null,
+        [FromQuery] Guid? referenceId = null,
+        [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 25,
+        CancellationToken ct = default)
+        => Ok(await service.GetAsync(_current.GetUserIdOrThrow(), type, status, referenceId,
+            fromUtc, toUtc, page, pageSize, ct));
+
     /// <summary>
     /// BE-824: Prometheus exposition format endpoint cho internal scraper / collector, bảo vệ bởi quyền AdminOnly.
     /// </summary>

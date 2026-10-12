@@ -5033,6 +5033,29 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /admin/finance/transactions:
+    get:
+      tags: [Admin]
+      summary: Paged payment, refund and actual PT payout transactions
+      operationId: adminTransactions
+      parameters:
+        - { in: query, name: type, schema: { type: string, enum: [payment, refund, payout] } }
+        - { in: query, name: status, schema: { type: string, enum: [pending, paid, failed, refunded, partial_refunded, succeeded] } }
+        - { in: query, name: referenceId, schema: { type: string, format: uuid } }
+        - { in: query, name: fromUtc, schema: { type: string, format: date-time } }
+        - { in: query, name: toUtc, schema: { type: string, format: date-time } }
+        - { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+        - { in: query, name: pageSize, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+      responses:
+        '200':
+          description: Transactions ordered by UTC event time, newest first
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminTransactionPage' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /admin/action-required:
     get:
       tags: [Admin]
@@ -6859,6 +6882,31 @@ components:
         pendingPayoutVnd: { type: integer, format: int64 }
         reviewsCount: { type: integer }
         averageRating: { type: number }
+
+    AdminTransactionPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminTransaction' }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    AdminTransaction:
+      type: object
+      required: [id, type, status, amountVnd, occurredAtUtc]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [payment, refund, payout] }
+        status: { type: string }
+        amountVnd: { type: integer, format: int64 }
+        occurredAtUtc: { type: string, format: date-time }
+        paymentId: { type: string, format: uuid, nullable: true }
+        appointmentId: { type: string, format: uuid, nullable: true }
+        packageId: { type: string, format: uuid, nullable: true }
+        providerReference: { type: string, nullable: true }
 
     FinanceOverview:
       type: object

@@ -2024,3 +2024,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - Added Admin-only `/api/v1/admin/business-summary` with bounded date ranges and independently labeled user, PT, payment, refund, ledger-fee, payout-balance, and PT-review counts. Payout ledger entries are negative, so paid-out amount is reported as positive and remaining payable uses the signed balance. No payment mutation is introduced.
 - Contract, authorization, and PostgreSQL integration coverage include success, invalid range, unauthorized, and forbidden cases. Admin Web now shows these business KPIs instead of using booking volume as paid transactions. Targeted unit/integration tests and Web build passed. This is the first of the requested Admin reporting sections; unified transactions, revenue detail, review moderation, and GA4 wiring remain in progress. No deploy or push.
 
+# Admin transaction list — 2026-10-12
+
+- Added server-paged `/api/v1/admin/finance/transactions` for payments, refunds, and actual PT payout ledger entries. Filters are allowlisted by type/status, UUID reference, UTC time, page and max 100 page size; auth is enforced in Application as well as HTTP. Payout amount is displayed as positive from a signed negative ledger debit. The Admin Web has a matching transaction tab. Existing manual settlement/refund panels remain separate operator workflows.
+- Verified the query translation against isolated PostgreSQL and covered 200/400/401/403. Web type-check passed after removing nonexistent refund payee fields from its table; the refund entity has no payee bank fields, so the UI does not imply bank verification. No live provider operation or deploy.
+

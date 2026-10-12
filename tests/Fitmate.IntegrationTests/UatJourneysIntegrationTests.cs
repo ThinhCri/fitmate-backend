@@ -67,6 +67,32 @@ public class UatJourneysIntegrationTests : IClassFixture<FitmateTestAppFactory>
     }
 
     [Fact]
+    public async Task Admin_transactions_page_filters_and_enforces_role()
+    {
+        var admin = _factory.CreateAuthenticatedClient(role: "Admin", userId: Guid.NewGuid());
+        var response = await admin.GetAsync("/api/v1/admin/finance/transactions?type=payment&page=1&pageSize=5");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        root.GetProperty("page").GetInt32().Should().Be(1);
+        root.GetProperty("pageSize").GetInt32().Should().Be(5);
+        foreach (var item in root.GetProperty("items").EnumerateArray())
+            item.GetProperty("type").GetString().Should().Be("payment");
+        (await admin.GetAsync("/api/v1/admin/finance/transactions?pageSize=5"))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await admin.GetAsync("/api/v1/admin/finance/transactions?type=unknown"))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await admin.GetAsync("/api/v1/admin/finance/transactions?pageSize=101"))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var member = _factory.CreateAuthenticatedClient(role: "Member", userId: Guid.NewGuid());
+        (await member.GetAsync("/api/v1/admin/finance/transactions"))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await _factory.CreateClient().GetAsync("/api/v1/admin/finance/transactions"))
+            .StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
     public async Task Journey01_Auth_Lifecycle_Preferences_And_CrossAccount_Denied()
     {
         var memberId = Guid.NewGuid();
