@@ -17,8 +17,8 @@ public sealed class PayosWebhookHandler(FitmateDbContext db, IPaymentStore store
     public async Task HandleAsync(JsonElement body, CancellationToken ct)
     {
         var config = options.Value;
-        if (!config.Enabled || !config.IsValid())
-            throw new DomainException("PAYMENT_PROVIDER_UNAVAILABLE", "payOS webhook is disabled.", 503);
+        if (!config.CanVerifyWebhook())
+            throw new DomainException("PAYMENT_PROVIDER_UNAVAILABLE", "payOS webhook verification is not configured.", 503);
         if (body.ValueKind != JsonValueKind.Object || !body.TryGetProperty("data", out var data) ||
             !body.TryGetProperty("signature", out var sig) || sig.ValueKind != JsonValueKind.String ||
             !PayosSignature.Verify(data, sig.GetString(), config.ChecksumKey))
@@ -30,6 +30,9 @@ public sealed class PayosWebhookHandler(FitmateDbContext db, IPaymentStore store
         var order = await db.Set<PayosOrder>().SingleOrDefaultAsync(o => o.OrderCode == orderCode, ct);
         // Signed registration probes and unknown orders are acknowledged without a mutation.
         if (order == null) return;
+        // Registration may precede merchant approval; never settle a real order while checkout is disabled.
+        if (!config.Enabled || !config.IsValid())
+            throw new DomainException("PAYMENT_PROVIDER_UNAVAILABLE", "payOS checkout is disabled.", 503);
         if (!data.TryGetProperty("amount", out var amount) || amount.ValueKind != JsonValueKind.Number || !amount.TryGetInt64(out var amountVnd) || amountVnd <= 0 ||
             Text(data, "currency") != "VND" || Text(data, "accountNumber") != config.AccountNumber ||
             string.IsNullOrWhiteSpace(Text(data, "reference")) || Text(data, "reference")!.Length > 128)

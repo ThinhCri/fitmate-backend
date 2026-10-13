@@ -26,12 +26,14 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
             throw new ConflictException("HOLD_EXPIRED", "The payment hold has expired.");
         var code = order.OrderCode.ToString(CultureInfo.InvariantCulture);
         const string description = "FITMATE"; // Fits the strictest 9-character bank limit.
-        var canonical = $"amount={request.AmountVnd.ToString(CultureInfo.InvariantCulture)}&cancelUrl={_options.CancelUrl}&description={description}&orderCode={code}&returnUrl={_options.ReturnUrl}";
+        var cancelUrl = BrowserReturnUrl(_options.CancelUrl, request.PaymentId);
+        var returnUrl = BrowserReturnUrl(_options.ReturnUrl, request.PaymentId);
+        var canonical = $"amount={request.AmountVnd.ToString(CultureInfo.InvariantCulture)}&cancelUrl={cancelUrl}&description={description}&orderCode={code}&returnUrl={returnUrl}";
         using var message = Request(HttpMethod.Post, "v2/payment-requests");
         message.Content = JsonContent.Create(new
         {
             orderCode = order.OrderCode, amount = request.AmountVnd, description,
-            cancelUrl = _options.CancelUrl, returnUrl = _options.ReturnUrl,
+            cancelUrl, returnUrl,
             expiredAt = new DateTimeOffset(order.ExpiresAt).ToUnixTimeSeconds(),
             signature = PayosSignature.Sign(canonical, _options.ChecksumKey)
         });
@@ -83,6 +85,15 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
 
     private Task<PayosOrder> FindOrderAsync(Guid paymentId, CancellationToken ct) =>
         db.Set<PayosOrder>().SingleAsync(o => o.PaymentId == paymentId, ct);
+
+    private static string BrowserReturnUrl(string configuredUrl, Guid paymentId)
+    {
+        var uri = new UriBuilder(configuredUrl);
+        var existingQuery = uri.Query.TrimStart('?');
+        uri.Query = (existingQuery.Length == 0 ? "" : existingQuery + "&") +
+            "paymentId=" + paymentId.ToString("D");
+        return uri.Uri.AbsoluteUri;
+    }
 
     private async Task<JsonElement> QueryOrderAsync(PayosOrder order, CancellationToken ct)
     {

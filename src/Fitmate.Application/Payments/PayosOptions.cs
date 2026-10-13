@@ -15,9 +15,11 @@ public sealed class PayosOptions
     public string ReturnUrl { get; set; } = "";
     public string CancelUrl { get; set; } = "";
 
-    public bool IsValid() => MerchantApproved &&
+    public bool CanVerifyWebhook() =>
         new[] { ClientId, ApiKey, ChecksumKey, AccountNumber }.All(s =>
-            !string.IsNullOrWhiteSpace(s) && !s.Contains("__SET_", StringComparison.Ordinal)) &&
+            !string.IsNullOrWhiteSpace(s) && !s.Contains("__SET_", StringComparison.Ordinal));
+
+    public bool IsValid() => MerchantApproved && CanVerifyWebhook() &&
         IsHttps(ReturnUrl) && IsHttps(CancelUrl);
 
     private static bool IsHttps(string value) => !string.IsNullOrWhiteSpace(value) && !value.Contains("__SET_", StringComparison.Ordinal) && Uri.TryCreate(value, UriKind.Absolute, out var uri) &&

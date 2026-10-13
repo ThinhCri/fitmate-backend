@@ -33,6 +33,20 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
     public PayosPostgresIntegrationTests(FitmateTestAppFactory factory)
     { _factory = factory; factory.EnsureDatabaseInitialized(); }
 
+    [Theory]
+    [InlineData("return")]
+    [InlineData("cancel")]
+    public async Task Browser_handoff_is_public_and_does_not_claim_payment(string path)
+    {
+        using var client = _factory.CreateClient();
+        using var response = await client.GetAsync($"/api/v1/payments/payos/{path}?status=PAID&orderCode=123");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.Content.Headers.ContentType?.MediaType.Should().Be("text/html");
+        var html = await response.Content.ReadAsStringAsync();
+        html.Should().Contain("fitmate:///booking/my-appointments");
+        html.Should().NotContain("orderCode=123").And.NotContain("Thanh toán thành công");
+    }
+
     private async Task<(Guid PaymentId, long OrderCode)> SeedAsync(bool expired = false)
     {
         using var scope = _factory.Services.CreateScope();
@@ -543,13 +557,44 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         return JsonSerializer.SerializeToElement(new { data = values, signature, success = true, code = "00" });
     }
 
-    private async Task DeliverAsync(JsonElement body)
+    private async Task DeliverAsync(JsonElement body, PayosOptions? options = null)
     {
         using var scope = _factory.Services.CreateScope();
         var handler = new PayosWebhookHandler(scope.ServiceProvider.GetRequiredService<FitmateDbContext>(),
             scope.ServiceProvider.GetRequiredService<IPaymentStore>(), scope.ServiceProvider.GetRequiredService<IAppointmentStore>(),
-            scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>(), Options.Create(_options));
+            scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>(), Options.Create(options ?? _options));
         await handler.HandleAsync(body, default);
+    }
+
+    [Fact]
+    public async Task Signed_registration_probe_is_accepted_while_checkout_is_disabled()
+    {
+        var disabled = new PayosOptions
+        {
+            ClientId = _options.ClientId, ApiKey = _options.ApiKey,
+            ChecksumKey = _options.ChecksumKey, AccountNumber = _options.AccountNumber
+        };
+        await DeliverAsync(Webhook(long.MaxValue), disabled);
+        var invalid = () => DeliverAsync(Webhook(long.MaxValue, tamper: true), disabled);
+        await invalid.Should().ThrowAsync<DomainException>()
+            .Where(ex => ex.Code == "PAYMENT_SIGNATURE_INVALID");
+    }
+
+    [Fact]
+    public async Task Known_order_cannot_settle_while_checkout_is_disabled()
+    {
+        var seed = await SeedAsync();
+        var disabled = new PayosOptions
+        {
+            ClientId = _options.ClientId, ApiKey = _options.ApiKey,
+            ChecksumKey = _options.ChecksumKey, AccountNumber = _options.AccountNumber
+        };
+        var action = () => DeliverAsync(Webhook(seed.OrderCode), disabled);
+        await action.Should().ThrowAsync<DomainException>()
+            .Where(ex => ex.Code == "PAYMENT_PROVIDER_UNAVAILABLE");
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        (await db.Payments.SingleAsync(p => p.Id == seed.PaymentId)).Status.Should().Be(PaymentStatus.Pending);
     }
 
     [Fact]
@@ -931,7 +976,11 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
                 using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
                 body.RootElement.GetProperty("orderCode").GetInt64().Should().Be(seed.OrderCode);
                 body.RootElement.GetProperty("amount").GetInt64().Should().Be(100000);
-                var canonical = $"amount=100000&cancelUrl={_options.CancelUrl}&description=FITMATE&orderCode={seed.OrderCode}&returnUrl={_options.ReturnUrl}";
+                var expectedCancelUrl = $"{_options.CancelUrl}?paymentId={seed.PaymentId:D}";
+                var expectedReturnUrl = $"{_options.ReturnUrl}?paymentId={seed.PaymentId:D}";
+                body.RootElement.GetProperty("cancelUrl").GetString().Should().Be(expectedCancelUrl);
+                body.RootElement.GetProperty("returnUrl").GetString().Should().Be(expectedReturnUrl);
+                var canonical = $"amount=100000&cancelUrl={expectedCancelUrl}&description=FITMATE&orderCode={seed.OrderCode}&returnUrl={expectedReturnUrl}";
                 body.RootElement.GetProperty("signature").GetString().Should().Be(PayosSignature.Sign(canonical, _options.ChecksumKey));
                 return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"code\":\"231\"}") };
             }

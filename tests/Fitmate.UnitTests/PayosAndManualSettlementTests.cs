@@ -6,6 +6,7 @@ using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Payment;
 using Fitmate.Infrastructure.Payments.Payos;
+using Fitmate.Api.Payments;
 using FluentAssertions;
 using Moq;
 
@@ -38,14 +39,37 @@ public class PayosAndManualSettlementTests
     public void Merchant_configuration_is_fail_closed()
     {
         var config = new PayosOptions();
+        config.CanVerifyWebhook().Should().BeFalse();
         config.IsValid().Should().BeFalse();
         config.ClientId = "test-client"; config.ApiKey = "test-api"; config.ChecksumKey = "test-checksum";
         config.AccountNumber = "test-account"; config.ReturnUrl = "https://example.test/return"; config.CancelUrl = "https://example.test/cancel";
+        config.CanVerifyWebhook().Should().BeTrue();
         config.IsValid().Should().BeFalse();
         config.MerchantApproved = true;
         config.IsValid().Should().BeTrue();
         config.ReturnUrl = "http://example.test/return";
         config.IsValid().Should().BeFalse();
+    }
+
+    [Fact]
+    public void Payos_browser_returns_are_navigation_only()
+    {
+        var controller = new PayosBrowserReturnController
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext
+            {
+                HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext()
+            }
+        };
+        var returned = controller.Return(null).Should().BeOfType<Microsoft.AspNetCore.Mvc.ContentResult>().Subject;
+        returned.Content.Should().Contain("Mở ứng dụng Fitmate").And.Contain("Không dùng trang này làm xác nhận đã trả tiền");
+        returned.Content.Should().Contain("fitmate:///booking/my-appointments");
+        var paymentId = Guid.NewGuid();
+        var linked = controller.Return(paymentId.ToString("D")).Should().BeOfType<Microsoft.AspNetCore.Mvc.ContentResult>().Subject;
+        linked.Content.Should().Contain($"fitmate:///booking/payment-return?paymentId={paymentId:D}");
+        var canceled = controller.Cancel(null).Should().BeOfType<Microsoft.AspNetCore.Mvc.ContentResult>().Subject;
+        canceled.Content.Should().Contain("Đã rời trang thanh toán");
+        canceled.Content.Should().NotContain("Thanh toán thành công");
     }
 
     [Fact]

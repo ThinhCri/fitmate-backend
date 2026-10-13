@@ -5184,7 +5184,7 @@ paths:
     post:
       tags: [Payments]
       operationId: payosWebhook
-      summary: Verify payOS payment signature and settle once
+      summary: Verify payOS signature; acknowledge unknown registration probes, settle known orders only when checkout is enabled
       security: []
       requestBody:
         required: true
@@ -5200,7 +5200,29 @@ paths:
         '200': {description: Acknowledged; unknown signed registration probes do not mutate payments}
         '400': {description: Invalid signature or data}
         '409': {description: Order amount or state mismatch; reconcile manually}
-        '503': {description: Provider disabled}
+        '503': {description: "Webhook credentials missing, or known order while checkout is disabled"}
+
+  /payments/payos/return:
+    get:
+      tags: [Payments]
+      operationId: payosBrowserReturn
+      summary: Browser handoff back to Fitmate; never confirms payment
+      security: []
+      parameters:
+        - {in: query, name: paymentId, required: false, schema: {type: string, format: uuid}, description: "Navigation hint only; the app re-authorizes and queries payment state"}
+      responses:
+        '200': {description: "Static HTML with an app link; payment state must be queried by the authenticated app"}
+
+  /payments/payos/cancel:
+    get:
+      tags: [Payments]
+      operationId: payosBrowserCancel
+      summary: Browser cancel handoff back to Fitmate; never initiates a refund
+      security: []
+      parameters:
+        - {in: query, name: paymentId, required: false, schema: {type: string, format: uuid}, description: "Navigation hint only; never evidence of payment or refund"}
+      responses:
+        '200': {description: "Static HTML with an app link; payment state must be queried by the authenticated app"}
 
   /admin/finance/payments/{paymentId}/provider-status:
     get:
