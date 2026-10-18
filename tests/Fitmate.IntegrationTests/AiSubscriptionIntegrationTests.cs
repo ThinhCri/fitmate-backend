@@ -31,6 +31,7 @@ public sealed class AiSubscriptionIntegrationTests : IClassFixture<FitmateTestAp
         var status = await client.GetFromJsonAsync<AiSubscriptionView>("/api/v1/me/ai-subscription");
         status.Should().NotBeNull();
         status!.BillingAvailable.Should().BeFalse();
+        status.RestoreAvailable.Should().BeFalse();
         status.Plan.Should().Be("free");
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/v1/me/ai-subscription/verify")
         {
@@ -55,15 +56,19 @@ public sealed class AiSubscriptionIntegrationTests : IClassFixture<FitmateTestAp
         google.Result = new VerifiedGoogleSubscription("fitmate_ai_plus", "monthly",
             "SUBSCRIPTION_STATE_ACTIVE", DateTime.UtcNow.AddDays(20), null, false);
         (await service.VerifyAsync(owner, token, CancellationToken.None)).Plan.Should().Be("plus");
+        var ownerStatus = await service.GetAsync(owner, CancellationToken.None);
+        ownerStatus.RestoreAvailable.Should().BeTrue();
+        ownerStatus.BillingAvailable.Should().BeFalse();
         google.AcknowledgeCount.Should().Be(1);
         (await service.VerifyAsync(owner, token, CancellationToken.None)).Plan.Should().Be("plus");
         await FluentActions.Invoking(() => service.VerifyAsync(other, token, CancellationToken.None))
             .Should().ThrowAsync<DomainException>().Where(x => x.HttpStatus == 409);
+        google.AcknowledgeCount.Should().Be(2);
 
         google.Result = google.Result with { State = "SUBSCRIPTION_STATE_ON_HOLD" };
         (await service.VerifyAsync(owner, token, CancellationToken.None)).Plan.Should().Be("free");
         google.Result = google.Result with { State = "SUBSCRIPTION_STATE_CANCELED" };
-        (await service.VerifyAsync(owner, token, CancellationToken.None)).Plan.Should().Be("plus");
+        (await service.VerifyAsync(owner, token, CancellationToken.None)).Plan.Should().Be("free");
         google.Result = google.Result with { ExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1) };
         (await service.VerifyAsync(owner, token, CancellationToken.None)).Plan.Should().Be("free");
     }

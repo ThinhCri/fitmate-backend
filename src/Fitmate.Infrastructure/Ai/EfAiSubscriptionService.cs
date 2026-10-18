@@ -48,7 +48,7 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
                 throw new DomainException("AI_BILLING_TOKEN_UNREADABLE",
                     "Không thể kiểm tra gói AI. Vui lòng liên hệ hỗ trợ.", 503);
             }
-            // Google is the authority for renewal, revocation and refunds; no client-side flag is trusted.
+            // Google is the authority for prepaid expiry, revocation and refunds; no client-side flag is trusted.
             try { await VerifyAsync(userId, token, ct); }
             catch (DomainException ex) when (ex.Code == "AI_SUBSCRIPTION_INVALID")
             {
@@ -76,8 +76,6 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
             throw new DomainException("AI_SUBSCRIPTION_INVALID", "Mã giao dịch không hợp lệ.", 400);
         var hash = Hash(purchaseToken);
         var verified = await _google.VerifyAsync(purchaseToken, ct);
-        if (!verified.Acknowledged && verified.State == "SUBSCRIPTION_STATE_ACTIVE")
-            await _google.AcknowledgeAsync(purchaseToken, ct);
 
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -103,6 +101,9 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
                         "Giao dịch gia hạn đã gắn với tài khoản khác.", 409);
                 if (linked is not null) linked.State = "SUBSCRIPTION_STATE_REPLACED";
             }
+            // Do not acknowledge a token already bound to another Fitmate account.
+            if (!verified.Acknowledged && verified.State == "SUBSCRIPTION_STATE_ACTIVE")
+                await _google.AcknowledgeAsync(purchaseToken, ct);
             var now = DateTime.UtcNow;
             existing ??= new AiSubscriptionRecord
             {
@@ -124,9 +125,9 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
     private AiSubscriptionView ToView(AiSubscriptionRecord? row)
     {
         var entitled = row is not null && row.ExpiresAtUtc > DateTime.UtcNow &&
-            row.State is "SUBSCRIPTION_STATE_ACTIVE" or "SUBSCRIPTION_STATE_IN_GRACE_PERIOD" or
-                "SUBSCRIPTION_STATE_CANCELED";
-        return new AiSubscriptionView(entitled ? "plus" : "free", _options.Enabled,
+            row.State == "SUBSCRIPTION_STATE_ACTIVE";
+        return new AiSubscriptionView(entitled ? "plus" : "free", _options.Enabled && _options.SalesEnabled,
+            _options.Enabled,
             _options.ProductId, _options.BasePlanId, row?.State ?? "none", row?.ExpiresAtUtc);
     }
 

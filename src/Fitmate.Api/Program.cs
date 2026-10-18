@@ -334,6 +334,25 @@ builder.Services.Configure<Fitmate.Application.Ai.AiUsageOptions>(
 builder.Services.AddScoped<Fitmate.Application.Ai.IAiUsageService, Fitmate.Infrastructure.Ai.EfAiUsageService>();
 builder.Services.AddOptions<Fitmate.Application.Ai.GooglePlayBillingOptions>()
     .Bind(builder.Configuration.GetSection(Fitmate.Application.Ai.GooglePlayBillingOptions.SectionName))
+    .Validate(x => !x.SalesEnabled || x.Enabled,
+        "Google Play AI Plus sales cannot open while purchase verification is disabled.")
+    .Validate(x => !x.SalesEnabled ||
+        (builder.Configuration.GetValue<bool>("Ai:Enabled") &&
+         builder.Configuration.GetValue<bool>("Ai:FoodScanEnabled") &&
+         builder.Configuration.GetValue<bool>("Ai:CompanionChatEnabled") &&
+         builder.Configuration.GetValue<bool>("AiUsage:Enabled")),
+        "Google Play AI Plus sales require both AI capabilities and usage enforcement.")
+    .Validate(x => !x.SalesEnabled ||
+        (builder.Configuration["Ai:Provider"] == "python_service" &&
+         Uri.TryCreate(builder.Configuration["Ai:BaseUrl"], UriKind.Absolute, out _) &&
+         !string.IsNullOrWhiteSpace(builder.Configuration["Ai:InternalToken"]) &&
+         ((builder.Configuration["Ai:CompanionProvider"] == "groq" &&
+           builder.Configuration.GetValue<bool>("Groq:Enabled") &&
+           !string.IsNullOrWhiteSpace(builder.Configuration["Groq:ApiKey"])) ||
+          ((builder.Configuration["Ai:CompanionProvider"] is "gemini" or "stub") &&
+           builder.Configuration.GetValue<bool>("Gemini:Enabled") &&
+           !string.IsNullOrWhiteSpace(builder.Configuration["Gemini:ApiKey"])))),
+        "Google Play AI Plus sales require configured real scan and chat providers.")
     .Validate(x => !x.Enabled ||
         (x.PackageName == "vn.fitmate.app" && x.ProductId == "fitmate_ai_plus" &&
          x.BasePlanId == "monthly" && !string.IsNullOrWhiteSpace(x.ServiceAccountJsonBase64)),

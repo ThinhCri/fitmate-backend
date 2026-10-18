@@ -5,6 +5,7 @@ namespace Fitmate.Application.Ai;
 public sealed record AiSubscriptionView(
     [property: JsonPropertyName("plan")] string Plan,
     [property: JsonPropertyName("billing_available")] bool BillingAvailable,
+    [property: JsonPropertyName("restore_available")] bool RestoreAvailable,
     [property: JsonPropertyName("product_id")] string ProductId,
     [property: JsonPropertyName("base_plan_id")] string BasePlanId,
     [property: JsonPropertyName("state")] string State,

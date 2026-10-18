@@ -52,10 +52,11 @@ public sealed class PythonAiNutritionAdapter : IAiNutritionAdapter
         {
             throw new AiUnavailableException("AI inference service URL is not configured.");
         }
+        if (string.IsNullOrWhiteSpace(_options.InternalToken))
+            throw new AiUnavailableException("AI inference service authentication is not configured.");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(baseUri, "/predict"));
-        if (!string.IsNullOrWhiteSpace(_options.InternalToken))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.InternalToken.Trim());
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.InternalToken.Trim());
 
         using var multipart = new MultipartFormDataContent();
         using var imageContent = new StreamContent(imageStream);

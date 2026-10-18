@@ -41,6 +41,14 @@ public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<Goo
             if (ReadString(item, "productId") != config.ProductId) continue;
             if (!item.TryGetProperty("offerDetails", out var offer) ||
                 ReadString(offer, "basePlanId") != config.BasePlanId) continue;
+            // AI Plus is sold only as a non-renewing prepaid Play base plan.
+            // Matching the base plan ID alone does not prove its billing type.
+            if (!item.TryGetProperty("prepaidPlan", out var prepaidPlan) ||
+                prepaidPlan.ValueKind != JsonValueKind.Object ||
+                item.TryGetProperty("autoRenewingPlan", out var autoRenewingPlan) &&
+                autoRenewingPlan.ValueKind != JsonValueKind.Null)
+                throw new DomainException("AI_SUBSCRIPTION_WRONG_PLAN_TYPE",
+                    "Gói AI Plus phải là gói trả trước, không tự gia hạn.", 400);
             matched = true;
             if (DateTime.TryParse(ReadString(item, "expiryTime"),
                     System.Globalization.CultureInfo.InvariantCulture,
