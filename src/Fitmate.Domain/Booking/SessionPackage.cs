@@ -54,7 +54,7 @@ public sealed class SessionPackage : AuditableEntity
 
     public static SessionPackage CreateHold(Guid memberId, Guid ptUserId, Guid serviceId,
         long pricePerSessionVnd, IReadOnlyList<(Guid HoldId, Guid AppointmentId, DateTime SlotStartUtc)> slots,
-        DateTime nowUtc, TimeSpan holdTtl)
+        DateTime nowUtc, TimeSpan holdTtl, long? packageTotalPriceVnd = null)
     {
         if (memberId == Guid.Empty || ptUserId == Guid.Empty || serviceId == Guid.Empty || memberId == ptUserId)
             throw new ArgumentException("Package requires different valid member/PT identities and one service.");
@@ -82,7 +82,9 @@ public sealed class SessionPackage : AuditableEntity
         if (ordered.Select(s => s.HoldId).Distinct().Count() != slots.Count)
             throw new ArgumentException("Hold IDs must be unique.");
 
-        var total = checked(pricePerSessionVnd * slots.Count);
+        var total = packageTotalPriceVnd ?? checked(pricePerSessionVnd * slots.Count);
+        if (total <= 0 || total > (decimal)pricePerSessionVnd * slots.Count)
+            throw new ArgumentOutOfRangeException(nameof(packageTotalPriceVnd));
         var allocations = SessionPackageAllocation.Allocate(total, slots.Count);
         var package = new SessionPackage
         {

@@ -5536,10 +5536,11 @@ components:
         remaining: {type: integer, minimum: 0}
     AiSubscriptionStatus:
       type: object
-      required: [plan, billing_available, product_id, base_plan_id, state, expires_at_utc]
+      required: [plan, billing_available, restore_available, product_id, base_plan_id, state, expires_at_utc]
       properties:
         plan: {type: string, enum: [free, plus]}
         billing_available: {type: boolean}
+        restore_available: {type: boolean, description: Existing purchases can still be verified after new sales close.}
         product_id: {type: string}
         base_plan_id: {type: string}
         state: {type: string}
@@ -6223,6 +6224,14 @@ components:
           type: string
         price_vnd:
           type: integer
+        package_4_price_vnd:
+          type: integer
+          format: int64
+          description: Zero means the PT does not offer a four-session package.
+        package_8_price_vnd:
+          type: integer
+          format: int64
+          description: Zero means the PT does not offer an eight-session package.
         duration_minutes:
           type: integer
         is_active:
@@ -6258,6 +6267,16 @@ components:
         price_vnd:
           type: integer
           minimum: 0
+        package_4_price_vnd:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional on creation; zero disables this package. Must not exceed four single-session prices.
+        package_8_price_vnd:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Optional on creation; zero disables this package. Must not exceed eight single-session prices.
         duration_minutes:
           type: integer
           minimum: 15
@@ -6297,6 +6316,16 @@ components:
         price_vnd:
           type: integer
           minimum: 0
+        package_4_price_vnd:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Omit to keep the price; set zero to stop new sales.
+        package_8_price_vnd:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Omit to keep the price; set zero to stop new sales.
         duration_minutes:
           type: integer
         is_active:

@@ -9,6 +9,8 @@ public class Service : AuditableEntity
     public string Name { get; private set; } = null!;
     public string? Description { get; private set; }
     public long PriceVnd { get; private set; }
+    public long Package4PriceVnd { get; private set; }
+    public long Package8PriceVnd { get; private set; }
     public int DurationMinutes { get; private set; }
     public bool IsActive { get; private set; }
     public ServiceKind Kind { get; private set; } = ServiceKind.OneToOne;
@@ -63,6 +65,18 @@ public class Service : AuditableEntity
     public void Deactivate()
     {
         IsActive = false;
+        Touch();
+    }
+
+    public void SetPackagePrices(long? package4PriceVnd, long? package8PriceVnd)
+    {
+        var four = package4PriceVnd ?? Package4PriceVnd;
+        var eight = package8PriceVnd ?? Package8PriceVnd;
+        if (four < 0 || eight < 0 ||
+            four > (decimal)PriceVnd * 4 || eight > (decimal)PriceVnd * 8)
+            throw new ArgumentException("Package prices must be zero or no greater than buying the sessions separately.");
+        Package4PriceVnd = four;
+        Package8PriceVnd = eight;
         Touch();
     }
 

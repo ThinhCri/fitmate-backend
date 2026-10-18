@@ -22,7 +22,7 @@ public class ServiceOfferingService : IServiceOfferingService
         _discipline = discipline;
     }
 
-    public async Task<Domain.Trainers.Service> CreateAsync(Guid ptUserId, string name, string? description, long priceVnd, int durationMinutes, CancellationToken ct, ServiceOfferingDetails? details = null)
+    public async Task<Domain.Trainers.Service> CreateAsync(Guid ptUserId, string name, string? description, long priceVnd, int durationMinutes, CancellationToken ct, ServiceOfferingDetails? details = null, long package4PriceVnd = 0, long package8PriceVnd = 0)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         if (_discipline is not null) await _discipline.EnsureMayPublishAsync(ptUserId, ct);
@@ -32,6 +32,7 @@ public class ServiceOfferingService : IServiceOfferingService
         try
         {
             entity = Domain.Trainers.Service.Create(ptUserId, name, description, priceVnd, durationMinutes);
+            entity.SetPackagePrices(package4PriceVnd, package8PriceVnd);
             if (details is not null)
             {
                 if (string.IsNullOrWhiteSpace(description) || description.Trim().Length < 20)
@@ -50,7 +51,7 @@ public class ServiceOfferingService : IServiceOfferingService
         return entity;
     }
 
-    public async Task<Domain.Trainers.Service> UpdateAsync(Guid ptUserId, Guid serviceId, string? name, string? description, long? priceVnd, int? durationMinutes, bool? isActive, CancellationToken ct, ServiceOfferingDetails? details = null)
+    public async Task<Domain.Trainers.Service> UpdateAsync(Guid ptUserId, Guid serviceId, string? name, string? description, long? priceVnd, int? durationMinutes, bool? isActive, CancellationToken ct, ServiceOfferingDetails? details = null, long? package4PriceVnd = null, long? package8PriceVnd = null)
     {
         await _authz.EnsureRoleAsync(ptUserId, "PT", ct); // BE-090
         if (_discipline is not null && isActive != false)
@@ -76,6 +77,7 @@ public class ServiceOfferingService : IServiceOfferingService
                     details.RequiredEquipment, details.Deliverable, details.LocationName, details.LocationAddress);
             }
             service.Update(name, description, priceVnd, durationMinutes, isActive);
+            service.SetPackagePrices(package4PriceVnd, package8PriceVnd);
         }
         catch (ArgumentException ex)
         {

@@ -2985,6 +2985,12 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<long>("Package4PriceVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("Package8PriceVnd")
+                        .HasColumnType("bigint");
+
                     b.Property<long>("PriceVnd")
                         .HasColumnType("bigint");
 

@@ -43,7 +43,8 @@ public class ServicesController : ControllerBase
             current.GetUserIdOrThrow(),
             body.Name, body.Description, body.PriceVnd, body.DurationMinutes, ct,
             RequireDetails(body.ServiceKind, body.DeliveryMode, body.TargetAudience,
-                body.RequiredEquipment, body.Deliverable, body.LocationName, body.LocationAddress));
+                body.RequiredEquipment, body.Deliverable, body.LocationName, body.LocationAddress),
+            body.Package4PriceVnd, body.Package8PriceVnd);
         return CreatedAtAction(nameof(Get), new { id = s.Id }, ToResponse(s));
     }
 
@@ -72,7 +73,7 @@ public class ServicesController : ControllerBase
                 body.Deliverable, body.LocationName, body.LocationAddress)
                 ? RequireDetails(body.ServiceKind, body.DeliveryMode, body.TargetAudience,
                     body.RequiredEquipment, body.Deliverable, body.LocationName, body.LocationAddress)
-                : null);
+                : null, body.Package4PriceVnd, body.Package8PriceVnd);
         return Ok(ToResponse(s));
     }
 
@@ -87,7 +88,8 @@ public class ServicesController : ControllerBase
     }
 
     internal static ServiceResponse ToResponse(Service s) =>
-        new(s.Id, s.Name, s.Description, s.PriceVnd, s.DurationMinutes, s.IsActive,
+        new(s.Id, s.Name, s.Description, s.PriceVnd, s.Package4PriceVnd, s.Package8PriceVnd,
+            s.DurationMinutes, s.IsActive,
             s.Kind == ServiceKind.AssessmentAndPlan ? "assessment_and_plan" : "one_to_one",
             s.DeliveryMode == ServiceDeliveryMode.Online ? "online" : "in_person",
             s.TargetAudience, s.RequiredEquipment, s.Deliverable, s.LocationName, s.LocationAddress);
@@ -114,6 +116,8 @@ public sealed record ServiceResponse(
     [property: JsonPropertyName("name")] string Name,
     [property: JsonPropertyName("description")] string? Description,
     [property: JsonPropertyName("price_vnd")] long PriceVnd,
+    [property: JsonPropertyName("package_4_price_vnd")] long Package4PriceVnd,
+    [property: JsonPropertyName("package_8_price_vnd")] long Package8PriceVnd,
     [property: JsonPropertyName("duration_minutes")] int DurationMinutes,
     [property: JsonPropertyName("is_active")] bool IsActive,
     [property: JsonPropertyName("service_kind")] string ServiceKind,
@@ -135,7 +139,9 @@ public sealed record CreateServiceRequest(
     [property: JsonPropertyName("required_equipment")] string? RequiredEquipment = null,
     [property: JsonPropertyName("deliverable")] string? Deliverable = null,
     [property: JsonPropertyName("location_name")] string? LocationName = null,
-    [property: JsonPropertyName("location_address")] string? LocationAddress = null);
+    [property: JsonPropertyName("location_address")] string? LocationAddress = null,
+    [property: JsonPropertyName("package_4_price_vnd")] long Package4PriceVnd = 0,
+    [property: JsonPropertyName("package_8_price_vnd")] long Package8PriceVnd = 0);
 
 public sealed record UpdateServiceRequest(
     [property: JsonPropertyName("name")] string? Name,
@@ -149,4 +155,6 @@ public sealed record UpdateServiceRequest(
     [property: JsonPropertyName("required_equipment")] string? RequiredEquipment = null,
     [property: JsonPropertyName("deliverable")] string? Deliverable = null,
     [property: JsonPropertyName("location_name")] string? LocationName = null,
-    [property: JsonPropertyName("location_address")] string? LocationAddress = null);
+    [property: JsonPropertyName("location_address")] string? LocationAddress = null,
+    [property: JsonPropertyName("package_4_price_vnd")] long? Package4PriceVnd = null,
+    [property: JsonPropertyName("package_8_price_vnd")] long? Package8PriceVnd = null);

@@ -21,6 +21,8 @@ public class PtSerializationContractTests
             Name: "1-on-1 Personal Training",
             Description: "Intensive workout session",
             PriceVnd: 500000,
+            Package4PriceVnd: 1_800_000,
+            Package8PriceVnd: 3_400_000,
             DurationMinutes: 60,
             IsActive: true,
             ServiceKind: "one_to_one",
@@ -37,6 +39,8 @@ public class PtSerializationContractTests
         json.Should().Contain("\"name\":\"1-on-1 Personal Training\"");
         json.Should().Contain("\"description\":\"Intensive workout session\"");
         json.Should().Contain("\"price_vnd\":500000");
+        json.Should().Contain("\"package_4_price_vnd\":1800000");
+        json.Should().Contain("\"package_8_price_vnd\":3400000");
         json.Should().Contain("\"duration_minutes\":60");
         json.Should().Contain("\"is_active\":true");
         json.Should().Contain("\"service_kind\":\"one_to_one\"");

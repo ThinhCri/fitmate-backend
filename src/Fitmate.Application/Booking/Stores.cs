@@ -62,4 +62,6 @@ public sealed record ServiceSnapshot(
     long PriceVnd,
     int DurationMinutes,
     bool IsActive,
-    ServiceDeliveryMode DeliveryMode = ServiceDeliveryMode.InPerson);
+    ServiceDeliveryMode DeliveryMode = ServiceDeliveryMode.InPerson,
+    long Package4PriceVnd = 0,
+    long Package8PriceVnd = 0);

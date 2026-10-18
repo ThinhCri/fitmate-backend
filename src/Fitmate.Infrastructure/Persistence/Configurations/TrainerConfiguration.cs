@@ -58,6 +58,8 @@ public class ServiceConfiguration : IEntityTypeConfiguration<Service>
         e.Property(x => x.Name).HasMaxLength(200).IsRequired();
         e.HasIndex(x => new { x.PtUserId, x.IsActive });
         e.Property(x => x.PriceVnd).IsRequired();
+        e.Property(x => x.Package4PriceVnd).IsRequired();
+        e.Property(x => x.Package8PriceVnd).IsRequired();
         e.Property(x => x.DurationMinutes).IsRequired();
         e.Property(x => x.Kind).HasConversion<int>().HasColumnName("service_kind");
         e.Property(x => x.DeliveryMode).HasConversion<int>().HasColumnName("delivery_mode");

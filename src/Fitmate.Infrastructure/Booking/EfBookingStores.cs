@@ -255,6 +255,7 @@ public class ServiceBookingLookup : IServiceBookingLookup
         if (!bookable || !await _db.AvailabilitySlots.AnyAsync(a => a.PtUserId == s.PtUserId &&
             a.SlotStartUtc == slotStartUtc && a.DurationMinutes >= s.DurationMinutes &&
             a.Status == Fitmate.Domain.Common.AvailabilityStatus.Open, ct)) return null;
-        return new ServiceSnapshot(s.Id, s.PtUserId, s.PriceVnd, s.DurationMinutes, s.IsActive, s.DeliveryMode);
+        return new ServiceSnapshot(s.Id, s.PtUserId, s.PriceVnd, s.DurationMinutes, s.IsActive,
+            s.DeliveryMode, s.Package4PriceVnd, s.Package8PriceVnd);
     }
 }

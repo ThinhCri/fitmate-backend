@@ -37,6 +37,28 @@ public sealed class SessionPackageTests
             s.PlatformFeeAllocationVnd + s.TrainerShareAllocationVnd);
     }
 
+    [Theory]
+    [InlineData(4, 350_001)]
+    [InlineData(8, 650_003)]
+    public void CreateHold_UsesPtPackagePriceAsImmutableAllocation(int count, long packagePrice)
+    {
+        var package = SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            100_000, Slots(count), Now, TimeSpan.FromMinutes(10), packagePrice);
+
+        package.TotalPriceVnd.Should().Be(packagePrice);
+        package.Sessions.Sum(s => s.PaidAllocationVnd).Should().Be(packagePrice);
+        package.Sessions.Sum(s => s.PlatformFeeAllocationVnd).Should().Be(
+            (long)Math.Round(packagePrice * 0.10m, MidpointRounding.AwayFromZero));
+    }
+
+    [Fact]
+    public void CreateHold_RejectsPackagePriceAboveSeparateSessions()
+    {
+        Action attempt = () => SessionPackage.CreateHold(Guid.NewGuid(), Guid.NewGuid(),
+            Guid.NewGuid(), 100_000, Slots(4), Now, TimeSpan.FromMinutes(10), 400_001);
+        attempt.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
     [Fact]
     public void CreateHold_RejectsInvalidSlotSets()
     {

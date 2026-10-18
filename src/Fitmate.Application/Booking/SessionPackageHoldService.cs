@@ -64,6 +64,8 @@ public sealed class SessionPackageHoldService(
                         "Dịch vụ hoặc một khung giờ không còn khả dụng cho gói tập.");
                 if (snapshot is not null &&
                     (snapshot.PriceVnd != candidate.PriceVnd ||
+                     snapshot.Package4PriceVnd != candidate.Package4PriceVnd ||
+                     snapshot.Package8PriceVnd != candidate.Package8PriceVnd ||
                      snapshot.DurationMinutes != candidate.DurationMinutes))
                     throw new ConflictException(ErrorCodes.Booking.SlotTaken,
                         "Giá hoặc thời lượng dịch vụ đã thay đổi. Vui lòng chọn lại lịch.");
@@ -91,10 +93,15 @@ public sealed class SessionPackageHoldService(
                 await appointments.AddAsync(appointment, ct);
             }
 
+            var packageTotalPriceVnd = ordered.Length == 4
+                ? snapshot!.Package4PriceVnd : snapshot!.Package8PriceVnd;
+            if (packageTotalPriceVnd <= 0)
+                throw new ConflictException("PACKAGE_NOT_OFFERED",
+                    "PT chưa mở bán gói số buổi này. Vui lòng chọn dịch vụ khác.");
             var package = SessionPackage.CreateHold(memberId, ptUserId, serviceId,
                 snapshot!.PriceVnd,
                 pairs.Select(p => (p.Hold.Id, p.Appointment.Id, p.Appointment.SlotStartUtc)).ToArray(),
-                DateTime.UtcNow, HoldTtl);
+                DateTime.UtcNow, HoldTtl, packageTotalPriceVnd);
             if (mode == ServiceDeliveryMode.Online)
                 package.BeginOnlinePreparation(DateTime.UtcNow);
             await packages.AddAsync(package, ct);

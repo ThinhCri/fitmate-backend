@@ -23,7 +23,8 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
     {
         public Task<ServiceSnapshot?> FindBookableAsync(Guid requestedId, DateTime startUtc, CancellationToken ct) =>
             Task.FromResult<ServiceSnapshot?>(requestedId == serviceId
-                ? new ServiceSnapshot(serviceId, ptId, 100_000, 60, true, ServiceDeliveryMode.Online)
+                ? new ServiceSnapshot(serviceId, ptId, 100_000, 60, true,
+                    ServiceDeliveryMode.Online, 360_000, 680_000)
                 : null);
     }
 
@@ -94,6 +95,7 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         var service = Service.Create(ptId, "Tập online", "Tập 1–1 qua Google Meet.", 100_000, 60);
         service.ConfigureDetails(ServiceKind.OneToOne, ServiceDeliveryMode.Online,
             "Người mới tập", "Thảm tập", "Hướng dẫn trong buổi", null, null);
+        service.SetPackagePrices(360_000, 680_000);
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
         db.Add(service);
@@ -177,6 +179,7 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
             200_001, 60);
         service.ConfigureDetails(ServiceKind.OneToOne, ServiceDeliveryMode.InPerson,
             "Người mới tập", "Giày thể thao", "Hướng dẫn trong buổi", "Fit Gym", "1 Nguyễn Huệ, TP.HCM");
+        service.SetPackagePrices(750_001, 1_400_003);
         var localStart = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(3).Date.AddHours(8),
             DateTimeKind.Unspecified);
         var slots = Enumerable.Range(0, 8)
@@ -197,7 +200,7 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         var first = await holdService.CreateInPersonHoldAsync(memberId, ptId, service.Id,
             slots.Take(4).Select(s => s.SlotStartUtc).ToArray(), CancellationToken.None);
         first.SessionCount.Should().Be(4);
-        first.Sessions.Sum(s => s.PaidAllocationVnd).Should().Be(800_004);
+        first.Sessions.Sum(s => s.PaidAllocationVnd).Should().Be(750_001);
         first.Sessions.Select(s => s.HoldId).Distinct().Should().HaveCount(4);
         (await db.SessionPackages.CountAsync(p => p.PtUserId == ptId)).Should().Be(1);
         (await db.SessionPackageSessions.CountAsync(s => s.PackageId == first.Id)).Should().Be(4);
@@ -223,7 +226,7 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
             var listed = list.RootElement.GetProperty("items").EnumerateArray()
                 .Single(item => item.GetProperty("id").GetGuid() == first.Id);
             listed.GetProperty("sessions").GetArrayLength().Should().Be(4);
-            listed.GetProperty("total_price_vnd").GetInt64().Should().Be(800_004);
+            listed.GetProperty("total_price_vnd").GetInt64().Should().Be(750_001);
             listed.GetProperty("payment_status").ValueKind.Should().Be(JsonValueKind.Null);
 
             var ptResponse = await ptClient.GetAsync($"/api/v1/me/session-packages/{first.Id}");
@@ -324,7 +327,7 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         var firstCheckout = await checkout.CreateAsync(second.MemberId, second.Id, CancellationToken.None);
         var retriedCheckout = await checkout.CreateAsync(second.MemberId, second.Id, CancellationToken.None);
         firstCheckout.PaymentId.Should().Be(retriedCheckout.PaymentId);
-        firstCheckout.AmountVnd.Should().Be(800_004);
+        firstCheckout.AmountVnd.Should().Be(750_001);
         firstCheckout.RedirectUrl.Should().Be("https://pay.payos.vn/web/test-link");
         testProvider.CreateCalls.Should().Be(1);
         (await db.Payments.CountAsync(p => p.PackageId == second.Id)).Should().Be(1);
@@ -345,5 +348,50 @@ public sealed class SessionPackageHoldIntegrationTests : IClassFixture<FitmateTe
         var firstHoldIds = first.Sessions.Select(s => s.HoldId).ToArray();
         (await db.BookingHolds.Where(h => firstHoldIds.Contains(h.Id)).ToListAsync())
             .Should().OnlyContain(h => h.Status == "released");
+    }
+
+    [Fact]
+    public async Task EightSlotsUsePtPriceAndKeepExactPerSessionAllocations()
+    {
+        var ptId = Guid.NewGuid();
+        var memberId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        _factory.CreateAuthenticatedClient("PT", ptId).Dispose();
+        _factory.CreateAuthenticatedClient("Member", memberId).Dispose();
+        var profile = PtProfile.CreateDraft(ptId, "Sức mạnh", 3, 200_000, "Hướng dẫn tập luyện");
+        profile.Approve(adminId);
+        var cert = Certificate.Submit(ptId, "Chứng chỉ PT", "Trung tâm đào tạo", "PKG-08",
+            new DateOnly(2025, 1, 1), "test-certificate", ptId);
+        cert.Approve(adminId);
+        var service = Service.Create(ptId, "Tập 1–1", "Hướng dẫn kỹ thuật cho từng buổi tập.",
+            200_000, 60);
+        service.ConfigureDetails(ServiceKind.OneToOne, ServiceDeliveryMode.InPerson,
+            "Người mới tập", "Giày thể thao", "Hướng dẫn trong buổi", "Fit Gym", "1 Nguyễn Huệ, TP.HCM");
+        service.SetPackagePrices(750_000, 1_400_003);
+        var localStart = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(3).Date.AddHours(8),
+            DateTimeKind.Unspecified);
+        var slots = Enumerable.Range(0, 8)
+            .Select(i => AvailabilitySlot.Create(ptId, localStart.AddDays(i),
+                "Asia/Ho_Chi_Minh", 60))
+            .ToArray();
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var pt = await db.Users.FindAsync(ptId);
+        pt!.PhoneNumber = "+849" + Random.Shared.Next(10_000_000, 100_000_000);
+        pt.PhoneNumberConfirmed = true;
+        db.AddRange(profile, cert, service);
+        db.AddRange(slots);
+        await db.SaveChangesAsync();
+
+        var held = await scope.ServiceProvider.GetRequiredService<SessionPackageHoldService>()
+            .CreateInPersonHoldAsync(memberId, ptId, service.Id,
+                slots.Select(s => s.SlotStartUtc).ToArray(), CancellationToken.None);
+        held.SessionCount.Should().Be(8);
+        held.TotalPriceVnd.Should().Be(1_400_003);
+        held.Sessions.Sum(s => s.PaidAllocationVnd).Should().Be(1_400_003);
+        held.Sessions.Sum(s => s.PlatformFeeAllocationVnd).Should().Be(140_000);
+        (await db.Appointments.CountAsync(a => a.PtUserId == ptId)).Should().Be(8);
+        (await db.BookingHolds.CountAsync(h => h.PtUserId == ptId)).Should().Be(8);
     }
 }
