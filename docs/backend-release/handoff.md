@@ -1,5 +1,9 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-20 — Restore isolated CI smoke (IMPLEMENTED_UNVERIFIED)
+- Added an isolated Compose migration/readiness job after image builds and aligned the CI runbook. Temporary JWT material exists only in the runner's ignored `.env`; no real deployment or payment test is implied.
+- The separate untracked `docs/deploy/` draft still contains deployment decisions that have not been reviewed or staged. GitHub Actions execution remains to be observed after push.
+
 ## 2026-10-20 — CI and README accuracy pass (IMPLEMENTED_UNVERIFIED)
 - Replaced the misleading staging job (it only printed metadata) with explicit source, PostgreSQL integration, and container build checks. CI has read-only token permissions and no deployment or registry publication.
 - Updated the root README and CI runbook to describe the current .NET 10 project and the actual release boundary. Existing untracked `docs/deploy/` was left untouched.

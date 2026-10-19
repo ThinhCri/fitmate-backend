@@ -20,7 +20,7 @@ BE: ASP.NET Core Identity + EF/Npgsql/PostgreSQL. App: FitmateAI_FE/mobile React
 Cả hai frontend đọc docs/production/ tại repo mình. Đồng bộ baseline version + OpenAPI SHA-256 + generated types khi tích hợp.
 Local DB Compose; production baseline managed PostgreSQL Singapore + standby HA theo DEC-030, không phải read replica.
 Local media persistent; production durability/backup phải qua BE-816/825. Không tự mua cloud.
-.NET8 là stack đang có; vòng support phải qua BE-828 trước release. Identity không mặc định BCrypt riêng như README cũ.
+Code hiện target .NET 10 (xem `global.json` và project files); vòng support vẫn phải qua BE-828 trước release. Identity không mặc định BCrypt riêng như README cũ.
 [Local runbook](runbooks/local-dev.md) là hướng dẫn khởi động; migration bundle không cần SDK host.
 Không fake payment/AI/push trong production, không tự deploy/push/rewrite.
 

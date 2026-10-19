@@ -80,7 +80,7 @@ jobs:
           DB_USER: fitmate
           DB_PASSWORD: ci-ephemeral-db-password
           TEST_DB_NAME: fitmate_integration_test
-          JWT_SIGNING_KEY: ci-only-signing-key-never-used-outside-runner-32bytes
+          JWT_SIGNING_KEY: ci-dummy-signing-key-not-used-by-unit-tests-32bytes
 
   images:
     name: Build container images
@@ -93,3 +93,44 @@ jobs:
         run: docker build --file src/Fitmate.Api/Dockerfile --tag fitmate-api:ci .
       - name: Build migration image
         run: docker build --file Dockerfile.migrate --tag fitmate-migrate:ci .
+
+  smoke:
+    name: Compose migration and readiness smoke
+    runs-on: ubuntu-24.04
+    needs: images
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: fitmate-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      DB_PASSWORD: ci-ephemeral-db-password
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Prepare isolated runtime configuration
+        shell: bash
+        run: |
+          key="$(openssl rand -hex 64)"
+          {
+            printf 'DB_PASSWORD=%s\n' "$DB_PASSWORD"
+            printf 'JWT_SIGNING_KEY=%s\n' "$key"
+            printf 'ASPNETCORE_ENVIRONMENT=Development\n'
+            printf 'FEATURE_PAYMENT_ENABLED=false\nFEATURE_AI_ENABLED=false\nFEATURE_PUSH_ENABLED=false\n'
+          } > .env
+          chmod 600 .env
+      - name: Start database and apply migrations
+        run: |
+          docker compose up -d --wait postgres
+          docker compose --profile migrate run --rm migrate
+      - name: Start API and check health
+        run: |
+          docker compose up -d api
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:8080/health/ready; then
+              curl --fail --silent http://127.0.0.1:8080/health/live
+              exit 0
+            fi
+            sleep 3
+          done
+          docker compose logs --no-color api
+          exit 1
+      - name: Remove isolated CI stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans

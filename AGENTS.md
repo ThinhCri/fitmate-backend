@@ -1,4 +1,4 @@
-# AGENTS.md — Fitmate Backend (.NET 8)
+# AGENTS.md — Fitmate Backend (.NET 10)
 
 ## Production baseline — đọc trước mọi task mới
 Đọc docs/backend-release/README.md và business-requirements.md trước danh sách đọc bên dưới.
@@ -12,7 +12,7 @@ Task tài liệu không tự commit; tuân thủ rule duyệt message. Không đ
 
 ## Vai trò của repo
 
-Repo này là **backend chính** cho cả Android app và Admin Web. Stack: **.NET 8 + ASP.NET Core + EF Core + Npgsql + PostgreSQL**.
+Repo này là **backend chính** cho cả Android app và Admin Web. Stack hiện tại: **.NET 10 + ASP.NET Core + EF Core + Npgsql + PostgreSQL**; kiểm `global.json` và các project file trước khi đổi SDK.
 
 ### Môi trường chạy
 
