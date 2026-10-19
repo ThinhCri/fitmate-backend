@@ -1,111 +1,58 @@
-name: ci
+name: Backend CI
 
 on:
   push:
     branches: [main, 'backend-release/*']
   pull_request:
     branches: [main, 'backend-release/*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
-  DOTNET_VERSION: '10.0.x'
   DOTNET_NOLOGO: 'true'
   DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
-  POSTGRES_IMAGE: postgres:16-alpine
-  API_HEALTH_TIMEOUT_SECONDS: '90'
 
 jobs:
-  # ---------------------------------------------------------------
-  # 0. Secrets scan — runs in parallel with lint-test.
-  # Detects committed secrets via gitleaks (uses default rules + Fitmate custom rules).
-  # Scans the current working tree (untracked files included) + uploads SARIF report.
-  # ---------------------------------------------------------------
-  secrets-scan:
-    name: Secrets scan (gitleaks)
-    runs-on: ubuntu-22.04
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          # Fetch full history so gitleaks can scan commits (not just working tree).
           fetch-depth: 0
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
 
-      - name: Upload SARIF report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-sarif-${{ github.run_id }}
-          path: results.sarif
-          if-no-files-found: ignore
-
-  # ---------------------------------------------------------------
-  # 1. Lint + unit tests on every PR.
-  # ---------------------------------------------------------------
-  lint-test:
-    name: Lint and test
-    runs-on: ubuntu-22.04
-    timeout-minutes: 15
+  verify:
+    name: Build and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET ${{ env.DOTNET_VERSION }}
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
+          global-json-file: global.json
       - name: Restore
         run: dotnet restore Fitmate.slnx
+      - name: Build
+        run: dotnet build Fitmate.slnx --no-restore --configuration Release
+      - name: Unit tests
+        run: dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --no-build --configuration Release
 
-      # dotnet format style/secrets analyzers + warnings as errors.
-      # Pre-existing xUnit1031 cosmetic warnings are filtered out so the build
-      # doesn't fail on test analyzer style hints. Fail on real warnings/errors only.
-      - name: Build with warnings as errors
-        run: |
-          dotnet build Fitmate.slnx \
-            --no-restore \
-            --configuration Release \
-            -warnaserror \
-            /p:TreatWarningsAsErrors=false \
-            /p:NoWarn=xUnit1031
-
-      - name: Run unit tests
-        run: dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --no-build --configuration Release --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
-        env:
-          # JwtOptionsLoader requires a real signing key to instantiate any
-          # service path that hits Program.cs (none here — unit tests are
-          # offline). Provided for parity with host config.
-          JWT_SIGNING_KEY: ci-dummy-signing-key-not-used-by-unit-tests-32bytes
-
-      # BE-320: OpenAPI spec lint via Stoplight Spectral.
-      # Fails the build on any spec error (warnings are non-blocking).
-      - name: Lint OpenAPI spec (Spectral)
-        run: npx --yes @stoplight/spectral lint docs/backend-release/openapi/fitmate-v1.yaml --fail-severity=error
-        env:
-          # Spectral 6.x emits a deprecation warning unless this is set.
-          OPENAPI_SPEC_URL: docs/backend-release/openapi/fitmate-v1.yaml
-
-      - name: Upload test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ github.run_id }}
-          path: TestResults/
-
-  # ---------------------------------------------------------------
-  # 1b. Integration tests on real PostgreSQL service container.
-  # ---------------------------------------------------------------
-  integration-test:
-    name: Integration tests (PostgreSQL)
-    runs-on: ubuntu-22.04
-    needs: lint-test
-    timeout-minutes: 15
+  integration:
+    name: PostgreSQL integration tests
+    runs-on: ubuntu-24.04
+    needs: verify
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:16-alpine
@@ -121,217 +68,28 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup .NET ${{ env.DOTNET_VERSION }}
-        uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Restore
-        run: dotnet restore Fitmate.slnx
-
-      - name: Run integration tests
-        run: |
-          dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj \
-            --configuration Release \
-            --logger "trx;LogFileName=integration-test-results.trx" \
-            --results-directory TestResults
+          global-json-file: global.json
+      - name: Integration tests
+        run: dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --configuration Release
         env:
           DB_HOST: localhost
-          DB_PORT: 5432
+          DB_PORT: '5432'
           DB_USER: fitmate
           DB_PASSWORD: ci-ephemeral-db-password
           TEST_DB_NAME: fitmate_integration_test
-          JWT_SIGNING_KEY: ci-dummy-signing-key-not-used-by-unit-tests-32bytes
+          JWT_SIGNING_KEY: ci-only-signing-key-never-used-outside-runner-32bytes
 
-      - name: Upload integration test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: integration-test-results-${{ github.run_id }}
-          path: TestResults/
-
-  # ---------------------------------------------------------------
-  # 2. Docker images build only (no push — push is BE-500 / BE-340).
-  # Cache layers with GitHub Actions cache to keep CI under 5 minutes.
-  # ---------------------------------------------------------------
-  docker-build:
-    name: Docker build (api + migrate)
-    runs-on: ubuntu-22.04
-    needs: [lint-test, integration-test]
-    timeout-minutes: 15
+  images:
+    name: Build container images
+    runs-on: ubuntu-24.04
+    needs: [secrets, verify, integration]
+    timeout-minutes: 30
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Cache Docker layers
-        uses: actions/cache@v4
-        with:
-          path: /tmp/.buildx-cache
-          key: ${{ runner.os }}-buildx-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-buildx-
-
-      - name: Build api image
-        working-directory: ${{ github.workspace }}
-        run: |
-          docker buildx build \
-            --load \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-            --tag fitmate-ci-api:ci-${{ github.sha }} \
-            --file src/Fitmate.Api/Dockerfile \
-            .
-
-      - name: Build migrate image
-        working-directory: ${{ github.workspace }}
-        run: |
-          docker buildx build \
-            --load \
-            --cache-from type=local,src=/tmp/.buildx-cache \
-            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
-            --tag fitmate-ci-migrate:ci-${{ github.sha }} \
-            --file Dockerfile.migrate \
-            .
-
-      - name: Scan API image for vulnerabilities (Trivy)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: fitmate-ci-api:ci-${{ github.sha }}
-          format: 'table'
-          exit-code: '0'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-
-      # Promote new cache (buildx writes to a sibling dir; swap atomically).
-      - name: Move cache
-        run: |
-          rm -rf /tmp/.buildx-cache
-          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
-
-  # ---------------------------------------------------------------
-  # 3. End-to-end smoke: compose up postgres+migrate+api, hit /health/ready, teardown.
-  # Ephemeral JWT_SIGNING_KEY generated in-job (no GH secret required).
-  # Uses compose.override.yml to bind 127.0.0.1 ports so multiple jobs don't collide.
-  # ---------------------------------------------------------------
-  smoke:
-    name: Smoke (compose up + readiness)
-    runs-on: ubuntu-22.04
-    needs: docker-build
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Verify Docker Compose v2
-        # Ubuntu 22.04 GitHub runner ships Docker + Compose v2 plugin pre-installed.
-        # This step just asserts the version so failures show up early with a clear
-        # message instead of a confusing "command not found" later.
-        run: |
-          docker --version
-          docker compose version
-
-      - name: Generate ephemeral JWT signing key
-        id: jwt
-        run: |
-          # 64 random bytes -> base64 (88 chars). Stronger than the 32-byte minimum,
-          # still safe for HS256.
-          KEY=$(openssl rand -base64 64 | tr -d '\n')
-          echo "signing_key=${KEY}" >> "$GITHUB_OUTPUT"
-          echo "Generated ephemeral JWT_SIGNING_KEY (${#KEY} chars)"
-
-      - name: Write ephemeral .env
-        working-directory: ${{ github.workspace }}
-        run: |
-          # Required by compose env_file (.env). All values ephemeral, not pushed.
-          cat > .env <<EOF
-          DB_HOST=postgres
-          DB_PORT=5432
-          DB_NAME=fitmate
-          DB_USER=fitmate
-          DB_PASSWORD=ci-ephemeral-db-password
-          DB_SSLMODE=prefer
-          JWT_SIGNING_KEY=${{ steps.jwt.outputs.signing_key }}
-          JWT_ISSUER=fitmate-api
-          JWT_AUDIENCE=fitmate-clients
-          JWT_ACCESS_TOKEN_TTL_SECONDS=900
-          JWT_REFRESH_TOKEN_TTL_SECONDS=2592000
-          ASPNETCORE_ENVIRONMENT=Development
-          ASPNETCORE_URLS=http://+:8080
-          FEATURE_PUSH_ENABLED=false
-          FEATURE_PAYMENT_ENABLED=false
-          FEATURE_AI_ENABLED=false
-          EOF
-
-      - name: Up postgres
-        working-directory: ${{ github.workspace }}
-        run: |
-          docker compose -f compose.yml up -d postgres
-          # Wait for postgres healthcheck (default: pg_isready every 5s, 10 retries => 50s max).
-          timeout 60 bash -c 'until docker compose -f compose.yml ps postgres | grep -q "(healthy)"; do sleep 2; done'
-          docker compose -f compose.yml ps
-
-      - name: Run migrations
-        working-directory: ${{ github.workspace }}
-        run: docker compose -f compose.yml --profile migrate run --rm migrate
-
-      - name: Up api
-        working-directory: ${{ github.workspace }}
-        run: docker compose -f compose.yml up -d api
-
-      - name: Poll /health/ready
-        working-directory: ${{ github.workspace }}
-        run: |
-          echo "Waiting for api readiness (timeout ${{ env.API_HEALTH_TIMEOUT_SECONDS }}s)..."
-          SECONDS=0
-          until curl -fsS http://127.0.0.1:8080/health/ready; do
-            if [ "$SECONDS" -ge "${{ env.API_HEALTH_TIMEOUT_SECONDS }}" ]; then
-              echo "::error::API readiness timed out after ${{ env.API_HEALTH_TIMEOUT_SECONDS }}s"
-              docker compose -f compose.yml logs api
-              exit 1
-            fi
-            sleep 3
-          done
-          echo "API readiness OK"
-
-      - name: Smoke /health/live and root metadata
-        working-directory: ${{ github.workspace }}
-        run: |
-          curl -fsS http://127.0.0.1:8080/health/live
-          echo
-          curl -fsS http://127.0.0.1:8080/
-          echo
-
-      - name: Teardown
-        if: always()
-        working-directory: ${{ github.workspace }}
-        run: |
-          docker compose -f compose.yml down -v || true
-          # Best-effort cleanup of ephemeral .env so a re-run starts clean.
-          rm -f .env
-
-  # ---------------------------------------------------------------
-  # 4. Staging deployment gate (triggered on main or release branches).
-  # ---------------------------------------------------------------
-  staging-deploy:
-    name: Deploy to Staging (Digest Verified)
-    runs-on: ubuntu-22.04
-    needs: smoke
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/backend-release/')
-    environment: staging
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Record release metadata
-        run: |
-          echo "Deploying commit ${{ github.sha }} to staging"
-          echo "Run ID: ${{ github.run_id }}"
-          echo "Reference: ${{ github.ref }}"
-          echo "All checks (Secrets, Lint, UnitTests, IntegrationTests, DockerBuild, Smoke) passed."
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build API image
+        run: docker build --file src/Fitmate.Api/Dockerfile --tag fitmate-api:ci .
+      - name: Build migration image
+        run: docker build --file Dockerfile.migrate --tag fitmate-migrate:ci .

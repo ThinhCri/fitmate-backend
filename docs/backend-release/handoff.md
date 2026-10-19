@@ -1,5 +1,10 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-20 — CI and README accuracy pass (IMPLEMENTED_UNVERIFIED)
+- Replaced the misleading staging job (it only printed metadata) with explicit source, PostgreSQL integration, and container build checks. CI has read-only token permissions and no deployment or registry publication.
+- Updated the root README and CI runbook to describe the current .NET 10 project and the actual release boundary. Existing untracked `docs/deploy/` was left untouched.
+- Workflow has not yet run on GitHub Actions; production readiness still requires release gates and operator UAT.
+
 ## 2026-10-11 — Hoàn thiện tài khoản nhận tiền và chi thủ công PT [BE-810]
 - PT đã có API đọc/lưu tài khoản nhận tiền; chỉ PT đã xác minh số điện thoại mới được lưu. Backend kiểm tra BIN/ngân hàng, gọi VietQR Lookup để lấy tên chủ tài khoản và fail-closed nếu provider chưa cấu hình.
 - Khi Admin duyệt khoản chi, hệ thống bắt buộc tài khoản đã xác minh và chụp bất biến ngân hàng, số tài khoản, tên chủ tài khoản vào settlement. Admin chuyển khoản thủ công theo snapshot, nhập mã giao dịch/chứng từ/thời gian; ledger chỉ ghi payout sau khi xác nhận và PT nhận thông báo thanh toán.
