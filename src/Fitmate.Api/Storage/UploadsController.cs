@@ -93,8 +93,7 @@ public sealed class UploadsController : ControllerBase
             storageKey,
             TimeSpan.FromMinutes(_options.SignedUrlTtlMinutes));
 
-        _logger.LogInformation("Upload: user {UserId} uploaded {Key} stored at {Uri}, signed URL expiring in {Minutes} min",
-            uploaderId, storageKey, uri, _options.SignedUrlTtlMinutes);
+        _logger.LogInformation("Upload completed for category {Category}", request.Category);
 
         return Created(uri, new UploadResponse(storageKey, uri.ToString(), signedUrl.ToString()));
     }

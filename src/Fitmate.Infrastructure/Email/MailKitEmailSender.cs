@@ -59,30 +59,28 @@ public class MailKitEmailSender : IEmailSender
             }
 
             await client.SendAsync(mime, ct);
-            _logger.LogDebug("Email sent to {Recipient} via {Host}:{Port}", message.ToEmail, _options.SmtpHost, _options.SmtpPort);
+            _logger.LogDebug("Email dispatched via configured SMTP host");
         }
         catch (SmtpCommandException ex) when (IsTransient(ex))
         {
-            _logger.LogWarning(ex, "Transient SMTP error sending to {Recipient}: {StatusCode}",
-                message.ToEmail, ex.StatusCode);
+            _logger.LogWarning("Transient SMTP error: {StatusCode}", ex.StatusCode);
             throw; // OutboxWorker sẽ retry với backoff
         }
         catch (SmtpCommandException ex)
         {
-            _logger.LogError(ex, "Permanent SMTP error sending to {Recipient}: {StatusCode}",
-                message.ToEmail, ex.StatusCode);
+            _logger.LogError("Permanent SMTP error: {StatusCode}", ex.StatusCode);
             throw new TerminalOutboxException(
                 $"SMTP_PERMANENT: {ex.StatusCode} - {SanitizeSmtpError(ex.Message)}", ex);
         }
         catch (SmtpProtocolException ex)
         {
-            _logger.LogError(ex, "SMTP protocol error sending to {Recipient}", message.ToEmail);
+            _logger.LogError("SMTP protocol error while sending email");
             throw new TerminalOutboxException(
                 $"SMTP_PROTOCOL_ERROR: {SanitizeSmtpError(ex.Message)}", ex);
         }
         catch (AuthenticationException ex)
         {
-            _logger.LogError(ex, "SMTP authentication failed for {Host}", _options.SmtpHost);
+            _logger.LogError("SMTP authentication failed");
             throw new TerminalOutboxException(
                 "SMTP_AUTH_FAILED: Authentication credentials rejected by server", ex);
         }

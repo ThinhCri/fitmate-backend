@@ -2077,3 +2077,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - The hold transaction snapshots the configured package total, allocates integer VND across all sessions, and keeps the previously implemented all-slots-before-payment reservation. The additive `AddPtPackagePrices` migration has explicit Up/Down and no exercise-seed changes. Existing purchased package totals are not recalculated when a PT later changes prices.
 - Verification: API and integration-test projects build without warnings/errors; focused package/serialization/pricing unit tests pass 20/20. Four- and eight-session integration cases compile, but their execution stops before application logic because this machine cannot provision an isolated PostgreSQL test database. No application database migration, live payOS transaction, mobile build or device UAT was performed. Apply the migration to the intended environment after a backup and run two-account checkout/refund/settlement UAT before release approval.
 
+# Security log minimization — 2026-10-20
+
+- Removed signed upload URL query strings, private storage keys/URIs, recipient email addresses, and raw SMTP exception objects from routine/error logs. The response and error-handling contracts are unchanged.
+- Static review of payOS webhook, checkout adapter, Admin MFA/finance headers, and repository secret filenames found no additional payment mutation to make in this pass. This is not a penetration test or live payment approval. The unrelated untracked `docs/deploy/` was preserved.
+

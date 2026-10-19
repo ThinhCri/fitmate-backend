@@ -41,7 +41,8 @@ public sealed class SignedUrlMiddleware
 
         if (relativePath is null)
         {
-            _logger.LogWarning("Signed URL validation failed for {Path}", raw);
+            // The query includes the signature; never persist it in application logs.
+            _logger.LogWarning("Signed URL validation failed");
             ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
             await ctx.Response.WriteAsJsonAsync(new
             {
