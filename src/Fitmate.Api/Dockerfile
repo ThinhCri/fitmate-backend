@@ -30,8 +30,8 @@ RUN apt-get update \
 # Non-root user. Pre-create DataProtection key ring dir with writable perms so named volume mount preserves keys across recreate.
 RUN groupadd --gid 1001 --system fitmate \
     && useradd --uid 1001 --system --gid fitmate --home /home/fitmate --shell /usr/sbin/nologin fitmate \
-    && mkdir -p /home/fitmate/.aspnet/DataProtection-Keys \
-    && chown -R fitmate:fitmate /home/fitmate /app
+    && mkdir -p /home/fitmate/.aspnet/DataProtection-Keys /data/uploads \
+    && chown -R fitmate:fitmate /home/fitmate /data/uploads /app
 
 COPY --from=build /app/publish .
 
