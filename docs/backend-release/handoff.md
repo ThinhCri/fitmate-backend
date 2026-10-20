@@ -1,5 +1,9 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-20 — Isolate Compose smoke from local override (IMPLEMENTED_UNVERIFIED)
+- The GitHub smoke job failed because Compose automatically loaded tracked `compose.override.yml`, replacing the release-style API image/port with local dev hot reload on 5116. All smoke commands now explicitly use `-f compose.yml` so CI checks the intended image on 8080.
+- Reproduced the wrong image/port in an isolated local Compose project, then explicitly selected `compose.yml`: migrations completed and `/health/ready` plus `/health/live` both returned HTTP 200. No user database volume was touched. GitHub workflow rerun remains to be observed after push.
+
 ## 2026-10-20 — Gitleaks CI false-positive correction (IMPLEMENTED_UNVERIFIED)
 - Secret scan flagged a literal CI-only signing-key placeholder introduced in commit `f907c9f`; it was not a production credential. Integration CI now generates a random key at runtime instead of committing a literal value.
 - `.gitleaksignore` contains one reviewed fingerprint for that historical placeholder only. No broad path/rule exclusion and no history rewrite. Re-run the GitHub secret scan after push to confirm the gate.

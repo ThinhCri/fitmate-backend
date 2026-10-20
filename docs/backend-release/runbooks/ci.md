@@ -8,8 +8,10 @@
 | `verify` | Restore/build with the repository SDK; unit tests | GitHub Actions job result |
 | `integration` | Tests against disposable PostgreSQL 16 | GitHub Actions job result |
 | `images` | Builds API and migration images locally on the runner | GitHub Actions job result |
-| `smoke` | Applies migrations in an isolated Compose project and checks API readiness | GitHub Actions job result |
+| `smoke` | Applies migrations in an isolated Compose project using `compose.yml` only, then checks API readiness | GitHub Actions job result |
 
 The workflow neither pushes images nor deploys staging/production. A green check is code verification, **not** UAT or release approval. Configure branch protection to require all five jobs; only a human operator may approve deployment after the [release checklist](../release-checklist.md), backed-up migration plan, provider checks and device/payment UAT. Add a separately approved CD workflow only when an actual registry, target environment, scoped credentials, rollback procedure and health verification exist. Do not represent a metadata-printing job as a deployment.
 
 CI uses fixed, disposable database credentials only inside its isolated runner. Never reuse them in a real environment or print real keys in logs. Locally, run `dotnet restore Fitmate.slnx`, `dotnet build Fitmate.slnx`, `dotnet test Fitmate.slnx`, then the isolated integration test project with a disposable database. Preserve existing Docker volumes containing user data.
+
+The repository also tracks `compose.override.yml` for local hot reload. Docker Compose loads it automatically when no `-f` is supplied; CI smoke must pass `-f compose.yml` for **every** Compose command, including teardown, to test the release-style API image and port 8080 instead of the development image on port 5116.

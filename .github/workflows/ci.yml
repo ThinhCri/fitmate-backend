@@ -119,11 +119,11 @@ jobs:
           chmod 600 .env
       - name: Start database and apply migrations
         run: |
-          docker compose up -d --wait postgres
-          docker compose --profile migrate run --rm migrate
+          docker compose -f compose.yml up -d --wait postgres
+          docker compose -f compose.yml --profile migrate run --rm migrate
       - name: Start API and check health
         run: |
-          docker compose up -d api
+          docker compose -f compose.yml up -d api
           for attempt in $(seq 1 40); do
             if curl --fail --silent http://127.0.0.1:8080/health/ready; then
               curl --fail --silent http://127.0.0.1:8080/health/live
@@ -131,8 +131,8 @@ jobs:
             fi
             sleep 3
           done
-          docker compose logs --no-color api
+          docker compose -f compose.yml logs --no-color api
           exit 1
       - name: Remove isolated CI stack
         if: always()
-        run: docker compose down --volumes --remove-orphans
+        run: docker compose -f compose.yml down --volumes --remove-orphans
