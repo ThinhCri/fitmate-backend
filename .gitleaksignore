@@ -1,0 +1,3 @@
+# Reviewed false positive: a fixed CI-only placeholder in f907c9f, not a credential.
+# This fingerprint suppresses only that historical finding; all other JWT keys remain scanned.
+f907c9f24f789293cac1c20d8aea979f4bbabf1b:.github/workflows/ci.yml:fitmate-jwt-signing-key:83

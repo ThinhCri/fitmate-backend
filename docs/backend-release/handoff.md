@@ -1,5 +1,9 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-20 — Gitleaks CI false-positive correction (IMPLEMENTED_UNVERIFIED)
+- Secret scan flagged a literal CI-only signing-key placeholder introduced in commit `f907c9f`; it was not a production credential. Integration CI now generates a random key at runtime instead of committing a literal value.
+- `.gitleaksignore` contains one reviewed fingerprint for that historical placeholder only. No broad path/rule exclusion and no history rewrite. Re-run the GitHub secret scan after push to confirm the gate.
+
 ## 2026-10-20 — Restore isolated CI smoke (IMPLEMENTED_UNVERIFIED)
 - Added an isolated Compose migration/readiness job after image builds and aligned the CI runbook. Temporary JWT material exists only in the runner's ignored `.env`; no real deployment or payment test is implied.
 - The separate untracked `docs/deploy/` draft still contains deployment decisions that have not been reviewed or staged. GitHub Actions execution remains to be observed after push.

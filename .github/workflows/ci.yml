@@ -72,6 +72,9 @@ jobs:
       - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
+      - name: Generate disposable integration signing key
+        shell: bash
+        run: printf 'JWT_SIGNING_KEY=%s\n' "$(openssl rand -hex 64)" >> "$GITHUB_ENV"
       - name: Integration tests
         run: dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --configuration Release
         env:
@@ -80,7 +83,6 @@ jobs:
           DB_USER: fitmate
           DB_PASSWORD: ci-ephemeral-db-password
           TEST_DB_NAME: fitmate_integration_test
-          JWT_SIGNING_KEY: ci-dummy-signing-key-not-used-by-unit-tests-32bytes
 
   images:
     name: Build container images
