@@ -24,13 +24,14 @@ public class ApplicationUserConfiguration : IEntityTypeConfiguration<Application
         e.Property(x => x.CreatedAt).IsRequired();
         e.Property(x => x.UpdatedAt).IsRequired();
         e.Property(x => x.DeletedAt);
+        e.Property(x => x.DeletionRequestedAt);
         e.HasIndex(x => x.DeletedAt).HasFilter("\"DeletedAt\" IS NULL");
 
         // Email là định danh (xem domain-rules.md §1).
-        e.HasIndex(x => x.Email).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
-        e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("\"DeletedAt\" IS NULL");
+        e.HasIndex(x => x.Email).IsUnique().HasFilter("\"Status\" <> 3");
+        e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("\"Status\" <> 3");
         e.HasIndex(x => x.PhoneNumber).IsUnique()
-            .HasFilter("\"PhoneNumberConfirmed\" = TRUE AND \"PhoneNumber\" IS NOT NULL AND \"DeletedAt\" IS NULL");
+            .HasFilter("\"PhoneNumberConfirmed\" = TRUE AND \"PhoneNumber\" IS NOT NULL AND \"Status\" <> 3");
 
         // Soft-delete global query filter.
         e.HasQueryFilter(u => u.DeletedAt == null);
@@ -61,6 +62,7 @@ public class UserProfileConfiguration : IEntityTypeConfiguration<UserProfile>
         e.Property(x => x.UserId).IsRequired();
         e.HasIndex(x => x.UserId).IsUnique();
         e.Property(x => x.Phone).HasMaxLength(32);
+        e.HasIndex(x => x.Phone).IsUnique().HasFilter("\"Phone\" IS NOT NULL");
         e.Property(x => x.Bio).HasMaxLength(500);
         e.Property(x => x.Gender).HasConversion<int?>();
         e.Property(x => x.HeightCm).HasColumnType("numeric(5,2)");

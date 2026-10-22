@@ -22,7 +22,10 @@ public sealed class IdentityPhoneVerificationGateway(
     private static readonly TimeSpan ResendCooldown = TimeSpan.FromSeconds(60);
     private sealed record Challenge(string Phone, DateTime ExpiresAtUtc, DateTime SentAtUtc, int Attempts);
 
-    public async Task<PhoneVerificationStartResult> StartAsync(Guid userId, string phoneNumberE164, CancellationToken ct)
+    public Task<PhoneVerificationStartResult> StartAsync(Guid userId, string phoneNumberE164, CancellationToken ct) =>
+        db.Database.CreateExecutionStrategy().ExecuteAsync(() => StartInTransactionAsync(userId, phoneNumberE164, ct));
+
+    private async Task<PhoneVerificationStartResult> StartInTransactionAsync(Guid userId, string phoneNumberE164, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var user = await LockUserAsync(userId, ct);
@@ -58,7 +61,10 @@ public sealed class IdentityPhoneVerificationGateway(
         return new PhoneVerificationStartResult(challenge.ExpiresAtUtc, (int)ResendCooldown.TotalSeconds);
     }
 
-    public async Task<bool> ConfirmAsync(Guid userId, string code, CancellationToken ct)
+    public Task<bool> ConfirmAsync(Guid userId, string code, CancellationToken ct) =>
+        db.Database.CreateExecutionStrategy().ExecuteAsync(() => ConfirmInTransactionAsync(userId, code, ct));
+
+    private async Task<bool> ConfirmInTransactionAsync(Guid userId, string code, CancellationToken ct)
     {
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         var user = await LockUserAsync(userId, ct);

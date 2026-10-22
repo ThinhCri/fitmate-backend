@@ -13,13 +13,23 @@
 param (
     [string]$BackupDir = "",
     [string]$DbContainer = "fitmate-postgres",
-    [string]$RestoreDbName = "fitmate_restore_drill",
+    [string]$RestoreDbName = "",
     [string]$DbUser = "fitmate",
     [string]$StagingKeysDir = "temp_restore_keys",
     [string]$DeletionJournalPath = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($RestoreDbName)) {
+    $RestoreDbName = "fitmate_restore_drill_$([Guid]::NewGuid().ToString('N'))"
+}
+if ($RestoreDbName.Length -gt 63 -or $RestoreDbName -notmatch '^fitmate_restore_drill_[a-z0-9_]+$') {
+    throw "RestoreDbName must be a fresh, isolated fitmate_restore_drill_* database (63 characters maximum)."
+}
+if (-not [string]::IsNullOrWhiteSpace($DeletionJournalPath)) {
+    throw "Deletion journal replay is not implemented safely; do not open traffic from this drill backup."
+}
 
 Write-Host "========================================================" -ForegroundColor Cyan
 Write-Host "  FITMATE DISASTER RECOVERY RESTORE DRILL (BE-825)     " -ForegroundColor Cyan
@@ -74,15 +84,29 @@ if ($actualKeysHash -ne $manifest.key_ring.sha256.ToLowerInvariant()) {
 }
 Write-Host "      -> DataProtection Key Ring SHA-256 OK" -ForegroundColor Green
 
+if (-not $manifest.media_assets -or -not $manifest.media_assets.file_name -or -not $manifest.media_assets.sha256) {
+    throw "Manifest thiếu media_assets; backup không đầy đủ."
+}
+$mediaDumpPath = Join-Path $BackupDir $manifest.media_assets.file_name
+if (-not (Test-Path $mediaDumpPath)) { throw "Thiếu media archive: $mediaDumpPath" }
+$actualMediaHash = (Get-FileHash -Path $mediaDumpPath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualMediaHash -ne $manifest.media_assets.sha256.ToLowerInvariant()) {
+    throw "CRITICAL: Media archive SHA-256 không khớp."
+}
+& tar -tzf $mediaDumpPath | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Media archive không đọc được." }
+Write-Host "      -> Media archive SHA-256 và gzip OK (chưa kiểm tra liên kết DB-media)" -ForegroundColor Green
+
 # 3. Tạo môi trường Database phục hồi cô lập
 Write-Host "[3/7] Chuẩn bị database cô lập ($RestoreDbName) trên container $DbContainer..." -ForegroundColor Yellow
 try {
-    # Ngắt kết nối đang mở tới database restore nếu có
-    & docker exec $DbContainer psql -U $DbUser -d postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$RestoreDbName' AND pid <> pg_backend_pid();" | Out-Null
-    & docker exec $DbContainer psql -U $DbUser -d postgres -c "DROP DATABASE IF EXISTS $RestoreDbName;" | Out-Null
-    & docker exec $DbContainer psql -U $DbUser -d postgres -c "CREATE DATABASE $RestoreDbName;" | Out-Null
+    $existingDb = & docker exec $DbContainer psql -X -v ON_ERROR_STOP=1 -U $DbUser -d postgres -t -A -c "SELECT 1 FROM pg_database WHERE datname = '$RestoreDbName';"
+    if ($LASTEXITCODE -ne 0) { throw "Cannot inspect PostgreSQL databases." }
+    if ($existingDb -eq "1") { throw "Restore target already exists; choose a new fitmate_restore_drill_* name." }
+    & docker exec $DbContainer psql -X -v ON_ERROR_STOP=1 -U $DbUser -d postgres -c "CREATE DATABASE $RestoreDbName;" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "Cannot create isolated restore database." }
 } catch {
-    Write-Error "Lỗi khi tạo database cô lập $RestoreDbName: $_"
+    Write-Error "Lỗi khi tạo database cô lập ${RestoreDbName}: $_"
     exit 1
 }
 Write-Host "      -> Database cô lập $RestoreDbName đã sẵn sàng" -ForegroundColor Green
@@ -92,21 +116,24 @@ Write-Host "[4/7] Khôi phục dữ liệu qua pg_restore..." -ForegroundColor Y
 $containerTmpRestore = "/tmp/restore_drill.dump"
 try {
     & docker cp $dbDumpPath "${DbContainer}:${containerTmpRestore}"
-    & docker exec $DbContainer pg_restore --clean --if-exists --no-owner --no-privileges -U $DbUser -d $RestoreDbName $containerTmpRestore
-    & docker exec $DbContainer rm -f $containerTmpRestore
+    if ($LASTEXITCODE -ne 0) { throw "Cannot copy database archive to the restore container." }
+    & docker exec $DbContainer pg_restore --exit-on-error --no-owner --no-privileges -U $DbUser -d $RestoreDbName $containerTmpRestore
+    if ($LASTEXITCODE -ne 0) { throw "pg_restore failed; the isolated database must not be treated as recovered." }
 } catch {
-    Write-Warning "pg_restore hoàn tất kèm thông báo (bình thường đối với schema role checks): $_"
+    throw
+} finally {
+    & docker exec $DbContainer rm -f $containerTmpRestore | Out-Null
 }
 Write-Host "      -> Dữ liệu đã khôi phục thành công vào $RestoreDbName" -ForegroundColor Green
 
 # 5. Giải nén và kiểm tra DataProtection Key Ring
 Write-Host "[5/7] Giải nén và kiểm tra DataProtection Key Ring..." -ForegroundColor Yellow
-$keysTargetDir = Join-Path $PSScriptRoot "..\$StagingKeysDir"
-if (Test-Path $keysTargetDir) { Remove-Item -Path $keysTargetDir -Recurse -Force | Out-Null }
-New-Item -ItemType Directory -Path $keysTargetDir -Force | Out-Null
+$keysTargetDir = Join-Path ([System.IO.Path]::GetTempPath()) "fitmate-drill-keys-$([Guid]::NewGuid().ToString('N'))"
+New-Item -ItemType Directory -Path $keysTargetDir -ErrorAction Stop | Out-Null
 
 try {
     & tar -xzf $keysDumpPath -C $keysTargetDir
+    if ($LASTEXITCODE -ne 0) { throw "Không thể giải nén DataProtection keys." }
     $xmlKeys = Get-ChildItem -Path $keysTargetDir -Filter "*.xml" -Recurse
     $keyCount = $xmlKeys.Count
     if ($keyCount -eq 0) {
@@ -122,22 +149,32 @@ try {
 # 6. Kiểm tra Bộ 5 Bất Biến Tài Chính Nghiêm Ngặt (Sử dụng đúng schema quoted)
 Write-Host "[6/7] Kiểm tra 5 Bất Biến Tài Chính và Bất Biến Tombstones..." -ForegroundColor Yellow
 
+function Invoke-DrillCountQuery([string]$Sql) {
+    $result = & docker exec $DbContainer psql -X -v ON_ERROR_STOP=1 -U $DbUser -d $RestoreDbName -t -A -c $Sql
+    if ($LASTEXITCODE -ne 0) { throw "PostgreSQL verification query failed; restore drill is NOT verified." }
+    [int64]$parsed = 0
+    if (-not [int64]::TryParse(([string]$result).Trim(), [ref]$parsed)) {
+        throw "PostgreSQL verification did not return a single numeric count."
+    }
+    return $parsed
+}
+
 # Invariant 1: Không có AmountVnd hoặc RefundedSoFarVnd âm
-$negCheck = & docker exec $DbContainer psql -U $DbUser -d $RestoreDbName -t -A -c "
+$negCheck = Invoke-DrillCountQuery "
     SELECT COUNT(*) FROM payments WHERE ""AmountVnd"" < 0 OR ""RefundedSoFarVnd"" < 0;
 "
 if ([int]$negCheck -gt 0) { throw "VIOLATION: Phát hiện $negCheck payment có số tiền âm!" }
 Write-Host "      -> [PASS] Invariant 1: Non-negative amounts (0 vi phạm)" -ForegroundColor Green
 
 # Invariant 2: RefundedSoFarVnd <= AmountVnd
-$capCheck = & docker exec $DbContainer psql -U $DbUser -d $RestoreDbName -t -A -c "
+$capCheck = Invoke-DrillCountQuery "
     SELECT COUNT(*) FROM payments WHERE ""RefundedSoFarVnd"" > ""AmountVnd"";
 "
 if ([int]$capCheck -gt 0) { throw "VIOLATION: Phát hiện $capCheck payment có số tiền hoàn vượt hạn mức!" }
 Write-Host "      -> [PASS] Invariant 2: Refund cap integrity (0 vi phạm)" -ForegroundColor Green
 
 # Invariant 3: Cumulative refunds <= payments.AmountVnd
-$cumCheck = & docker exec $DbContainer psql -U $DbUser -d $RestoreDbName -t -A -c "
+$cumCheck = Invoke-DrillCountQuery "
     SELECT COUNT(*) FROM (
         SELECT p.id, p.""AmountVnd"", COALESCE(SUM(r.""AmountVnd""), 0) AS total_refunded
         FROM payments p
@@ -150,7 +187,7 @@ if ([int]$cumCheck -gt 0) { throw "VIOLATION: Phát hiện $cumCheck payment có
 Write-Host "      -> [PASS] Invariant 3: Cumulative refund integrity (0 vi phạm)" -ForegroundColor Green
 
 # Invariant 4: ProviderTxnRef không được trùng lặp
-$dupProviderCheck = & docker exec $DbContainer psql -U $DbUser -d $RestoreDbName -t -A -c "
+$dupProviderCheck = Invoke-DrillCountQuery "
     SELECT COUNT(*) FROM (
         SELECT ""ProviderTxnRef"", COUNT(*) 
         FROM payments 
@@ -163,7 +200,7 @@ if ([int]$dupProviderCheck -gt 0) { throw "VIOLATION: Phát hiện $dupProviderC
 Write-Host "      -> [PASS] Invariant 4: Unique ProviderTxnRef (0 vi phạm)" -ForegroundColor Green
 
 # Invariant 5: Appointment-Payment referential integrity
-$refCheck = & docker exec $DbContainer psql -U $DbUser -d $RestoreDbName -t -A -c "
+$refCheck = Invoke-DrillCountQuery "
     SELECT COUNT(*) 
     FROM appointments a 
     WHERE a.""PaymentId"" IS NOT NULL 
@@ -173,27 +210,12 @@ if ([int]$refCheck -gt 0) { throw "VIOLATION: Phát hiện $refCheck appointment
 Write-Host "      -> [PASS] Invariant 5: Appointment-Payment referential integrity (0 vi phạm)" -ForegroundColor Green
 
 # Invariant Tombstone: Bảo tồn tài khoản đã xóa
-$deletedCount = & docker exec $DbContainer psql -U $DbUser -d $RestoreDbName -t -A -c "
+$deletedCount = Invoke-DrillCountQuery "
     SELECT COUNT(*) FROM asp_net_users WHERE ""DeletedAt"" IS NOT NULL;
 "
 Write-Host "      -> [PASS] Tombstones in Backup: $deletedCount tài khoản đã xóa trong DB backup" -ForegroundColor Green
 
-# Replay Deletion Journal (Xử lý các yêu cầu xóa phát sinh SAU thời điểm backup)
-if (-not [string]::IsNullOrWhiteSpace($DeletionJournalPath) -and (Test-Path $DeletionJournalPath)) {
-    Write-Host "      -> Replaying Deletion Journal từ $DeletionJournalPath..." -ForegroundColor Yellow
-    # Đọc danh sách userId từ journal và áp dụng DeletedAt
-    $journalEntries = Get-Content $DeletionJournalPath -Raw | ConvertFrom-Json
-    $replayedCount = 0
-    foreach ($entry in $journalEntries) {
-        $uId = $entry.user_id
-        $delTime = $entry.deleted_at
-        & docker exec $DbContainer psql -U $DbUser -d $RestoreDbName -c "UPDATE asp_net_users SET ""DeletedAt"" = '$delTime' WHERE ""Id"" = '$uId';" | Out-Null
-        $replayedCount++
-    }
-    Write-Host "      -> [PASS] Replayed $replayedCount deletion requests phát sinh sau backup thành công" -ForegroundColor Green
-} else {
-    Write-Host "      -> [NOTE] Deletion Journal ngoài: BLOCKED (Operator OPS-06: Independent Deletion Journal Storage)" -ForegroundColor Yellow
-}
+Write-Host "      -> [BLOCKED] Deletion Journal chưa được replay; không dùng drill DB để phục vụ traffic." -ForegroundColor Yellow
 
 # 7. Tính Toán RTO, RPO và Xác Định Ranh Giới Mất Mát (Reconciliation Window)
 Write-Host "[7/7] Xác định Reconciliation Window và đánh giá SLA..." -ForegroundColor Yellow
@@ -208,16 +230,16 @@ $rtoSeconds = [math]::Round($drillTimer.Elapsed.TotalSeconds, 2)
 Write-Host "========================================================" -ForegroundColor Green
 Write-Host "  KET QUA DIEN TAP PHUC HOI THAM HOA (DR DRILL REPORT) " -ForegroundColor Green
 Write-Host "========================================================" -ForegroundColor Green
-Write-Host "  Ket qua tong the       : [PASS] SUCCESSFUL" -ForegroundColor Green
+Write-Host "  Ket qua tong the       : DB/keys restore drill only; production cutover BLOCKED" -ForegroundColor Yellow
 Write-Host "  Database khoi phuc     : $RestoreDbName (Isolated)" -ForegroundColor White
 Write-Host "  Snapshot Baseline      : $($snapshotTime.ToString('o'))" -ForegroundColor White
 Write-Host "  Reconciliation Window  : Tu $($snapshotTime.ToString('o')) den $($currentTime.ToString('o'))" -ForegroundColor Yellow
 Write-Host "  SHA-256 Verification   : [PASS] All components matched" -ForegroundColor Green
-Write-Host "  DataProtection Keys    : [PASS] $keyCount keys verified" -ForegroundColor Green
+Write-Host "  DataProtection Keys    : [CHECKED] $keyCount key files present; canary decrypt chưa thử" -ForegroundColor Yellow
 Write-Host "  Financial Invariants   : [PASS] 5/5 criteria passed (0 violations)" -ForegroundColor Green
 Write-Host "  Tombstones Preserved   : [PASS] $deletedCount users soft-deleted" -ForegroundColor Green
-Write-Host "  RTO dat duoc           : $rtoSeconds giay (Muc tieu RTO <= 14400s / 4 gio) -> [PASS]" -ForegroundColor Green
-Write-Host "  RPO dat duoc           : $rpoHours gio (Muc tieu RPO <= 24 gio) -> [PASS]" -ForegroundColor Green
+Write-Host "  RTO drill             : $rtoSeconds giay (chưa tính media, journal, đối soát và cutover)" -ForegroundColor Yellow
+Write-Host "  Tuoi snapshot         : $rpoHours gio (không phải RPO thực tế khi chưa replay/đối soát)" -ForegroundColor Yellow
 Write-Host "--------------------------------------------------------" -ForegroundColor Cyan
 Write-Host "  CAC RANG BUOC DANG BLOCKED CHO OPERATOR CAP:          " -ForegroundColor Yellow
 Write-Host "  1. Offsite Cold Storage : BLOCKED (OPS-04)" -ForegroundColor Yellow

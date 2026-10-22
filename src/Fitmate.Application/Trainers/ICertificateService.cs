@@ -9,6 +9,7 @@ namespace Fitmate.Application.Trainers;
 /// </summary>
 public interface ICertificateService
 {
+    Task<PtContactForReview> GetContactForAdminAsync(Guid id, Guid adminId, CancellationToken ct) => throw new NotSupportedException();
     Task<Certificate> GetForAdminAsync(Guid id, Guid adminId, CancellationToken ct);
     /// <summary>
     /// Admin list certificate theo PT, phân trang server-side.
@@ -45,6 +46,8 @@ public interface ICertificateService
     Task<Certificate> RejectFraudAsync(Guid certId, Guid adminUserId, string reason, CancellationToken ct) =>
         throw new NotSupportedException();
 }
+
+public sealed record PtContactForReview(string? Phone, bool EmailVerified, bool SmsVerified);
 
 /// <summary>
 /// Audit log cho admin moderation. Application định nghĩa; Infrastructure sẽ có EF Core impl

@@ -63,8 +63,11 @@ public class AuthController : ControllerBase
         if (!validation.IsValid)
             return BadRequest(ValidationProblem(validation));
 
-        var existing = await _users.FindByEmailAsync(request.Email);
-        if (existing is not null)
+        var dbForRegistration = HttpContext.RequestServices.GetRequiredService<FitmateDbContext>();
+        var normalizedEmail = _users.NormalizeEmail(request.Email);
+        var existing = await dbForRegistration.Users.IgnoreQueryFilters()
+            .AnyAsync(u => u.NormalizedEmail == normalizedEmail && u.Status != Fitmate.Domain.Common.UserStatus.Deleted, ct);
+        if (existing)
         {
             var trace = FitmateProblemDetails.ResolveTraceId(HttpContext);
             var prob = FitmateProblemDetails.Create(409, "Email already exists",

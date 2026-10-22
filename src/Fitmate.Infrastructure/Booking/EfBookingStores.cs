@@ -251,7 +251,8 @@ public class ServiceBookingLookup : IServiceBookingLookup
                 c.Status == Fitmate.Domain.Common.CertificateStatus.Approved, ct) &&
             await _db.Users.AnyAsync(u => u.Id == s.PtUserId &&
                 u.Status == Fitmate.Domain.Common.UserStatus.Active &&
-                u.EmailConfirmed && u.PhoneNumberConfirmed, ct);
+                u.EmailConfirmed && (u.PhoneNumberConfirmed ||
+                    _db.UserProfiles.Any(up => up.UserId == u.Id && up.Phone != null && up.Phone != "")), ct);
         if (!bookable || !await _db.AvailabilitySlots.AnyAsync(a => a.PtUserId == s.PtUserId &&
             a.SlotStartUtc == slotStartUtc && a.DurationMinutes >= s.DurationMinutes &&
             a.Status == Fitmate.Domain.Common.AvailabilityStatus.Open, ct)) return null;

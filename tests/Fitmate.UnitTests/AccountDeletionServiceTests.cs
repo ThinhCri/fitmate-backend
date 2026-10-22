@@ -12,7 +12,7 @@ namespace Fitmate.UnitTests;
 public class AccountDeletionServiceTests
 {
     [Fact]
-    public async Task RequestDeletionAsync_MarksPendingDeletion_AndRevokesTokensAndDevices()
+    public async Task RequestDeletionAsync_QueuesForAdminWithoutStartingCountdown()
     {
         var store = new InMemoryAccountDeletionStore();
         var tokenStore = new InMemoryRefreshTokenStore();
@@ -32,13 +32,14 @@ public class AccountDeletionServiceTests
         var res = await svc.RequestDeletionAsync(user.Id, new AccountDeletionRequest("Privacy concerns", null), CancellationToken.None);
 
         res.IsPendingDeletion.Should().BeTrue();
-        res.Status.Should().Be("pendingdeletion");
-        res.RetentionDaysRemaining.Should().Be(30);
-        user.Status.Should().Be(UserStatus.PendingDeletion);
-        user.DeletedAt.Should().NotBeNull();
+        res.Status.Should().Be("active");
+        res.RetentionDaysRemaining.Should().Be(0);
+        user.Status.Should().Be(UserStatus.Active);
+        user.DeletionRequestedAt.Should().NotBeNull();
+        user.DeletedAt.Should().BeNull();
 
-        tokenStore.RevokedUserTokens.Should().Contain(user.Id);
-        store.RevokedDeviceUsers.Should().Contain(user.Id);
+        tokenStore.RevokedUserTokens.Should().NotContain(user.Id);
+        store.RevokedDeviceUsers.Should().NotContain(user.Id);
         outbox.EnqueuedTypes.Should().Contain("user.deletion_requested");
     }
 
@@ -105,8 +106,8 @@ public class AccountDeletionServiceTests
             Id = Guid.NewGuid(),
             Email = "cancelled@example.com",
             FullName = "Cancelled User",
-            Status = UserStatus.PendingDeletion,
-            DeletedAt = DateTime.UtcNow.AddDays(-2)
+            Status = UserStatus.Active,
+            DeletionRequestedAt = DateTime.UtcNow.AddDays(-2)
         };
         store.Users[user.Id] = user;
 
@@ -117,6 +118,7 @@ public class AccountDeletionServiceTests
         status.Status.Should().Be("active");
         user.Status.Should().Be(UserStatus.Active);
         user.DeletedAt.Should().BeNull();
+        user.DeletionRequestedAt.Should().BeNull();
         outbox.EnqueuedTypes.Should().Contain("user.deletion_cancelled");
     }
 
@@ -152,8 +154,9 @@ public class AccountDeletionServiceTests
         // Step 2: Confirm public deletion with token
         var result = await svc.ConfirmPublicDeletionAsync(token, CancellationToken.None);
         result.IsPendingDeletion.Should().BeTrue();
-        user.Status.Should().Be(UserStatus.PendingDeletion);
-        tokenStore.RevokedUserTokens.Should().Contain(user.Id);
+        user.Status.Should().Be(UserStatus.Active);
+        user.DeletionRequestedAt.Should().NotBeNull();
+        tokenStore.RevokedUserTokens.Should().NotContain(user.Id);
     }
 
     [Fact]
@@ -206,6 +209,7 @@ internal class InMemoryDeletionTokenProtector : IDeletionTokenProtector
 
 internal class InMemoryAccountDeletionStore : IAccountDeletionStore
 {
+    public Task<T> WithUserLockAsync<T>(Guid userId, Func<Task<T>> action, CancellationToken ct) => action();
     public Dictionary<Guid, ApplicationUser> Users { get; } = new();
     public Dictionary<Guid, UserProfile> Profiles { get; } = new();
     public Dictionary<Guid, string> Roles { get; } = new();
@@ -216,6 +220,22 @@ internal class InMemoryAccountDeletionStore : IAccountDeletionStore
     {
         return Task.FromResult(Users.TryGetValue(userId, out var u) ? u : null);
     }
+
+    public Task<ApplicationUser?> FindIncludingPendingAsync(Guid userId, CancellationToken ct) =>
+        FindUserByIdAsync(userId, ct);
+
+    public Task<(IReadOnlyList<ApplicationUser> Items, int Total)> ListForAdminAsync(int page, int pageSize, CancellationToken ct)
+    {
+        var matches = Users.Values.Where(u => u.DeletionRequestedAt.HasValue || u.Status == UserStatus.PendingDeletion)
+            .OrderBy(u => u.DeletionRequestedAt).ToList();
+        return Task.FromResult<(IReadOnlyList<ApplicationUser>, int)>(
+            (matches.Skip((page - 1) * pageSize).Take(pageSize).ToList(), matches.Count));
+    }
+
+    public Task<IReadOnlyList<ApplicationUser>> ListDueForFinalizationAsync(DateTime cutoffUtc, int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<ApplicationUser>>(Users.Values
+            .Where(u => u.Status == UserStatus.PendingDeletion && u.DeletedAt <= cutoffUtc)
+            .Take(limit).ToList());
 
     public Task<ApplicationUser?> FindUserByEmailAsync(string email, CancellationToken ct)
     {

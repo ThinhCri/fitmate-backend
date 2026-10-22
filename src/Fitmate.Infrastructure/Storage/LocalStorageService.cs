@@ -18,14 +18,16 @@ namespace Fitmate.Infrastructure.Storage;
 /// Security note: callers are responsible for validating <paramref name="relativePath"/>
 /// against <see cref="StorageOptions.AllowedCategories"/> before calling this service.
 /// </para>
-public sealed class LocalStorageService : IStorageService
+public sealed class LocalStorageService : IStorageService, IOwnedStorageKeyListing
 {
     private readonly string _basePath;
+    private readonly IReadOnlyList<string> _categories;
     private readonly ILogger<LocalStorageService> _logger;
 
     public LocalStorageService(IOptions<StorageOptions> options, ILogger<LocalStorageService> logger)
     {
         _basePath = Path.GetFullPath(options.Value.BasePath);
+        _categories = options.Value.AllowedCategories;
         _logger = logger;
     }
 
@@ -78,6 +80,24 @@ public sealed class LocalStorageService : IStorageService
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<string>> ListOwnedKeysAsync(Guid userId, CancellationToken ct = default)
+    {
+        var result = new List<string>();
+        var prefix = userId.ToString("N") + "_";
+        foreach (var category in _categories)
+        {
+            ct.ThrowIfCancellationRequested();
+            var directory = GetFullPath(category);
+            if (!Directory.Exists(directory)) continue;
+            foreach (var file in Directory.EnumerateFiles(directory, prefix + "*", SearchOption.TopDirectoryOnly))
+            {
+                ct.ThrowIfCancellationRequested();
+                result.Add(category.TrimEnd('/', '\\') + "/" + Path.GetFileName(file));
+            }
+        }
+        return Task.FromResult<IReadOnlyList<string>>(result);
+    }
+
     private string GetFullPath(string relativePath)
     {
         // Normalise to forward-slash so the split is reliable on Windows.
@@ -86,7 +106,8 @@ public sealed class LocalStorageService : IStorageService
         var full = Path.GetFullPath(combined);
 
         // Fail loudly if the resolved path escapes the base directory (path traversal).
-        if (!full.StartsWith(_basePath, StringComparison.OrdinalIgnoreCase))
+        if (!full.StartsWith(_basePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException($"Path traversal attempt detected: {relativePath}");
 
         return full;

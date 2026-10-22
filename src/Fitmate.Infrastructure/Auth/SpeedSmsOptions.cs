@@ -13,5 +13,5 @@ public sealed class SpeedSmsOptions
         Provider.Equals("SpeedSms", StringComparison.OrdinalIgnoreCase) &&
         !string.IsNullOrWhiteSpace(AccessToken) &&
         !AccessToken.StartsWith("__SET_", StringComparison.Ordinal) &&
-        (SmsType == 4 || (SmsType == 3 && !string.IsNullOrWhiteSpace(Sender)));
+        (SmsType is 2 or 4 || (SmsType == 3 && !string.IsNullOrWhiteSpace(Sender)));
 }

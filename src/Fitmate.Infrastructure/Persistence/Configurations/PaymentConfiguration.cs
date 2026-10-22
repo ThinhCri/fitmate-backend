@@ -46,7 +46,7 @@ public class RefundConfiguration : IEntityTypeConfiguration<Refund>
         e.Property(x => x.Status).HasConversion<int>();
         e.Property(x => x.RequestedByAdminId).IsRequired();
         e.Property(x => x.ProviderRefundRef).HasMaxLength(128);
-        e.Property(x => x.SucceededAtUtc);
+        e.Property(x => x.SucceededAtUtc).HasColumnName("succeeded_at_utc");
         e.Property(x => x.ApprovedByAdminId).HasColumnName("approved_by_admin_id");
         e.Property(x => x.ApprovedAtUtc).HasColumnName("approved_at_utc");
         e.Ignore(x => x.TransferDueAtUtc);

@@ -38,6 +38,8 @@ public class ApplicationUser : IdentityUser<Guid>
     public DateTime? LastActiveAt { get; set; }
 
     public DateTime? DeletedAt { get; set; }
+    /// <summary>User requested deletion; the 30-day clock starts only when an admin approves it.</summary>
+    public DateTime? DeletionRequestedAt { get; set; }
 
     /// <summary>
     /// Optimistic concurrency token (IdentityUser đã có ConcurrencyStamp, nhưng giữ alias).

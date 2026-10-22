@@ -8,6 +8,50 @@ namespace Fitmate.UnitTests;
 
 public class UserProfileServiceTests
 {
+    private static UserProfileUpdateRequest ContactOnly(string phone) =>
+        new(null, null, phone, null, null, null, null, null, null, null, null, null, null);
+
+    [Theory]
+    [InlineData("+84901234567", "0901234567")]
+    [InlineData("84901234567", "0901234567")]
+    [InlineData("0901234567", "0901234567")]
+    public async Task UpdateContact_NormalizesVietnamMobile(string input, string expected)
+    {
+        var store = new InMemoryUserProfileStore();
+        var user = new ApplicationUser { Id = Guid.NewGuid(), Email = "phone@example.com", FullName = "Phone" };
+        store.Users[user.Id] = user;
+        var result = await new UserProfileService(store).UpdateMyProfileAsync(user.Id, ContactOnly(input), CancellationToken.None);
+        result.Phone.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("1234567890")]
+    [InlineData("090000000")]
+    [InlineData("0123456789")]
+    public async Task UpdateContact_RejectsInvalidVietnamMobile(string input)
+    {
+        var store = new InMemoryUserProfileStore();
+        var user = new ApplicationUser { Id = Guid.NewGuid(), Email = "phone@example.com", FullName = "Phone" };
+        store.Users[user.Id] = user;
+        await FluentActions.Invoking(() => new UserProfileService(store).UpdateMyProfileAsync(
+            user.Id, ContactOnly(input), CancellationToken.None)).Should().ThrowAsync<ValidationException>();
+    }
+
+    [Fact]
+    public async Task UpdateContact_RejectsNumberAlreadyHeldByAnotherAccount()
+    {
+        var store = new InMemoryUserProfileStore();
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        store.Users[first] = new ApplicationUser { Id = first, Email = "one@example.com", FullName = "One" };
+        store.Users[second] = new ApplicationUser { Id = second, Email = "two@example.com", FullName = "Two" };
+        var firstProfile = UserProfile.Create(first);
+        firstProfile.SetContactPhone("0901234567");
+        store.Profiles[first] = firstProfile;
+
+        await FluentActions.Invoking(() => new UserProfileService(store).UpdateMyProfileAsync(
+            second, ContactOnly("+84901234567"), CancellationToken.None)).Should().ThrowAsync<ConflictException>();
+    }
     [Fact]
     public async Task GetMyProfileAsync_ReturnsFullProfile_AndAutoCreatesIfMissing()
     {
@@ -243,6 +287,9 @@ internal class InMemoryUserProfileStore : IUserProfileStore
     {
         return Task.FromResult(Profiles.TryGetValue(userId, out var p) ? p : null);
     }
+
+    public Task<bool> IsPhoneInUseAsync(Guid userId, string phone, CancellationToken ct) =>
+        Task.FromResult(Profiles.Values.Any(p => p.UserId != userId && p.Phone == phone));
 
     public Task AddProfileAsync(UserProfile profile, CancellationToken ct)
     {

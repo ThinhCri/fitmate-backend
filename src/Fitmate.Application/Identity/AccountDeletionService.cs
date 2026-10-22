@@ -31,7 +31,7 @@ public class AccountDeletionService : IAccountDeletionService
         var user = await _store.FindUserByIdAsync(userId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {userId} not found.");
 
-        if (user.Status == UserStatus.PendingDeletion)
+        if (user.Status == UserStatus.PendingDeletion || user.DeletionRequestedAt.HasValue)
         {
             return BuildStatusDto(user, false);
         }
@@ -43,17 +43,13 @@ public class AccountDeletionService : IAccountDeletionService
                 "Cannot delete account while you have active appointments or pending financial obligations.");
         }
 
-        user.Status = UserStatus.PendingDeletion;
-        user.DeletedAt = DateTime.UtcNow;
+        user.DeletionRequestedAt = DateTime.UtcNow;
         user.UpdatedAt = DateTime.UtcNow;
-
-        await _refreshTokenStore.RevokeAllForUserAsync(userId, ct);
-        await _store.RevokeUserDevicesAsync(userId, ct);
 
         _outbox.Enqueue("user.deletion_requested", new
         {
             UserId = userId,
-            RequestedAt = user.DeletedAt.Value,
+            RequestedAt = user.DeletionRequestedAt.Value,
             Reason = request.Reason
         });
 
@@ -76,13 +72,12 @@ public class AccountDeletionService : IAccountDeletionService
         var user = await _store.FindUserByIdAsync(userId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {userId} not found.");
 
-        if (user.Status != UserStatus.PendingDeletion)
+        if (user.Status != UserStatus.Active || !user.DeletionRequestedAt.HasValue)
         {
             throw new ConflictException(ErrorCodes.Identity.DeletionNotPending, "Account is not pending deletion.");
         }
 
-        user.Status = UserStatus.Active;
-        user.DeletedAt = null;
+        user.DeletionRequestedAt = null;
         user.UpdatedAt = DateTime.UtcNow;
 
         _outbox.Enqueue("user.deletion_cancelled", new
@@ -158,7 +153,7 @@ public class AccountDeletionService : IAccountDeletionService
         var user = await _store.FindUserByIdAsync(userId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {userId} not found.");
 
-        if (user.Status == UserStatus.PendingDeletion)
+        if (user.Status == UserStatus.PendingDeletion || user.DeletionRequestedAt.HasValue)
         {
             return BuildStatusDto(user, false);
         }
@@ -170,17 +165,13 @@ public class AccountDeletionService : IAccountDeletionService
                 "Cannot delete account while you have active appointments or pending financial obligations.");
         }
 
-        user.Status = UserStatus.PendingDeletion;
-        user.DeletedAt = DateTime.UtcNow;
+        user.DeletionRequestedAt = DateTime.UtcNow;
         user.UpdatedAt = DateTime.UtcNow;
-
-        await _refreshTokenStore.RevokeAllForUserAsync(userId, ct);
-        await _store.RevokeUserDevicesAsync(userId, ct);
 
         _outbox.Enqueue("user.deletion_requested", new
         {
             UserId = userId,
-            RequestedAt = user.DeletedAt.Value,
+            RequestedAt = user.DeletionRequestedAt.Value,
             Source = "public_form"
         });
 
@@ -232,9 +223,9 @@ public class AccountDeletionService : IAccountDeletionService
 
     private static AccountDeletionStatusDto BuildStatusDto(ApplicationUser user, bool hasActiveBookings)
     {
-        var isPending = user.Status == UserStatus.PendingDeletion;
-        var requestedAt = user.DeletedAt;
-        var scheduledPermanent = requestedAt?.AddDays(RetentionDays);
+        var isPending = user.DeletionRequestedAt.HasValue || user.Status == UserStatus.PendingDeletion;
+        var requestedAt = user.DeletionRequestedAt;
+        var scheduledPermanent = user.Status == UserStatus.PendingDeletion ? user.DeletedAt?.AddDays(RetentionDays) : null;
         var daysRemaining = isPending && scheduledPermanent.HasValue
             ? Math.Max(0, (int)Math.Ceiling((scheduledPermanent.Value - DateTime.UtcNow).TotalDays))
             : 0;

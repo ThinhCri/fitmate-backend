@@ -22,6 +22,7 @@ public interface ICertificateStore
     Task<Certificate?> FindByIdAsync(Guid certId, CancellationToken ct);
     Task<PtProfile?> FindPtProfileAsync(Guid ptUserId, CancellationToken ct) => Task.FromResult<PtProfile?>(null);
     Task<ApplicationUser?> FindUserAsync(Guid userId, CancellationToken ct) => Task.FromResult<ApplicationUser?>(null);
+    Task<string?> FindContactPhoneAsync(Guid userId, CancellationToken ct) => Task.FromResult<string?>(null);
     Task<bool> HasPermanentlyBannedPhoneAsync(string phoneNumber, Guid excludingUserId,
         CancellationToken ct) => Task.FromResult(false);
     /// <summary>

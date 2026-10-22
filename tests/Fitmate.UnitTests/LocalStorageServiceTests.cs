@@ -67,4 +67,26 @@ public class LocalStorageServiceTests : IDisposable
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*traversal*");
     }
+
+    [Fact]
+    public async Task ListOwnedKeysAsync_IncludesUnattachedUploadsOnlyForOwner()
+    {
+        var owner = Guid.NewGuid();
+        var other = Guid.NewGuid();
+        var ownKey = $"avatars/{owner:N}_portrait_1.png";
+        await _svc.UploadAsync(ownKey, new MemoryStream([1]), "image/png");
+        await _svc.UploadAsync($"avatars/{other:N}_portrait_1.png", new MemoryStream([2]), "image/png");
+        var keys = await _svc.ListOwnedKeysAsync(owner);
+        keys.Should().ContainSingle().Which.Should().Be(ownKey);
+        await _svc.DeleteAsync(ownKey);
+        (await _svc.ListOwnedKeysAsync(owner)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteAsync_RejectsSiblingDirectoryWithSamePrefix()
+    {
+        var sibling = _tempRoot + "-other";
+        var action = () => _svc.DeleteAsync("../" + Path.GetFileName(sibling) + "/private.png");
+        await action.Should().ThrowAsync<InvalidOperationException>();
+    }
 }

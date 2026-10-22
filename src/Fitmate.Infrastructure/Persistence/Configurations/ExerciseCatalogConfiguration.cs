@@ -2,6 +2,7 @@ using Fitmate.Domain.Common;
 using Fitmate.Domain.Workout;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace Fitmate.Infrastructure.Persistence.Configurations;
 
@@ -14,6 +15,10 @@ public sealed class ExerciseCatalogConfiguration : IEntityTypeConfiguration<Exer
 
     public void Configure(EntityTypeBuilder<ExerciseCatalogEntry> entry)
     {
+        var stringListComparer = new ValueComparer<List<string>>(
+            (left, right) => left!.SequenceEqual(right!),
+            values => values.Aggregate(0, (hash, value) => HashCode.Combine(hash, value)),
+            values => values.ToList());
         entry.ToTable("exercise_catalog");
         entry.HasKey(item => item.Id);
         entry.Property(item => item.Id).HasColumnName("id");
@@ -23,9 +28,9 @@ public sealed class ExerciseCatalogConfiguration : IEntityTypeConfiguration<Exer
         entry.Property(item => item.Type).HasConversion<int>();
         entry.Property(item => item.Difficulty).HasMaxLength(32).IsRequired();
         entry.Property(item => item.Equipment).HasMaxLength(80);
-        entry.Property(item => item.PrimaryMuscles).HasColumnType("text[]");
-        entry.Property(item => item.SecondaryMuscles).HasColumnType("text[]");
-        entry.Property(item => item.InstructionsVi).HasColumnType("text[]");
+        entry.Property(item => item.PrimaryMuscles).HasColumnType("text[]").Metadata.SetValueComparer(stringListComparer);
+        entry.Property(item => item.SecondaryMuscles).HasColumnType("text[]").Metadata.SetValueComparer(stringListComparer);
+        entry.Property(item => item.InstructionsVi).HasColumnType("text[]").Metadata.SetValueComparer(stringListComparer);
         entry.Property(item => item.ImageStartUrl).HasMaxLength(1000);
         entry.Property(item => item.ImageEndUrl).HasMaxLength(1000);
         entry.Property(item => item.Source).HasMaxLength(80).IsRequired();

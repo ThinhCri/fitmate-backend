@@ -75,11 +75,18 @@ public class CertificateService : ICertificateService
 
         var user = await _store.FindUserAsync(cert.PtUserId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, "PT user not found.");
-        if (!user.PhoneNumberConfirmed || string.IsNullOrWhiteSpace(user.PhoneNumber))
-            throw new ConflictException("PT_PHONE_NOT_VERIFIED", "PT must verify a phone number before approval.");
-        if (await _store.HasPermanentlyBannedPhoneAsync(user.PhoneNumber, user.Id, ct))
+        if (!user.EmailConfirmed)
+            throw new ConflictException("PT_EMAIL_NOT_VERIFIED", "PT must verify their email before approval.");
+        // Closed-test onboarding accepts a self-entered contact number for manual admin review.
+        // Never set PhoneNumberConfirmed here: it only represents a completed SMS challenge.
+        var contactPhone = user.PhoneNumberConfirmed ? user.PhoneNumber : await _store.FindContactPhoneAsync(cert.PtUserId, ct);
+        if (string.IsNullOrWhiteSpace(contactPhone))
+            throw new ConflictException("PT_CONTACT_PHONE_REQUIRED", "PT must add a contact phone before approval.");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(contactPhone.Trim(), @"^(?:\+84|0)[35789]\d{8}$"))
+            throw new ConflictException("PT_CONTACT_PHONE_INVALID", "PT contact phone must be a valid Vietnamese mobile number.");
+        if (await _store.HasPermanentlyBannedPhoneAsync(contactPhone, user.Id, ct))
             throw new ConflictException("PT_PHONE_PERMANENTLY_BANNED",
-                "This verified phone number belongs to a permanently banned PT.");
+                "This contact phone number belongs to a permanently banned PT.");
 
         cert.Approve(adminUserId); // throws ConflictException nếu không ở Pending
         var profile = await _store.FindPtProfileAsync(cert.PtUserId, ct);
@@ -90,6 +97,17 @@ public class CertificateService : ICertificateService
         _audit.Stage("certificate.approve", "Certificate", certId, adminUserId);
         await _store.SaveChangesAsync(ct);
         return cert;
+    }
+
+    public async Task<PtContactForReview> GetContactForAdminAsync(Guid certId, Guid adminUserId, CancellationToken ct)
+    {
+        await _authz.EnsureRoleAsync(adminUserId, "Admin", ct);
+        var cert = await _store.FindByIdAsync(certId, ct)
+            ?? throw new NotFoundException(ErrorCodes.General.NotFound, $"Certificate {certId} not found.");
+        var user = await _store.FindUserAsync(cert.PtUserId, ct)
+            ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, "PT user not found.");
+        var phone = user.PhoneNumberConfirmed ? user.PhoneNumber : await _store.FindContactPhoneAsync(cert.PtUserId, ct);
+        return new PtContactForReview(phone, user.EmailConfirmed, user.PhoneNumberConfirmed);
     }
 
     public async Task<Certificate> RejectAsync(Guid certId, Guid adminUserId, string reason, CancellationToken ct)

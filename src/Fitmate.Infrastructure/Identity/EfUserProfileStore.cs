@@ -28,6 +28,17 @@ public class EfUserProfileStore : IUserProfileStore
         return _db.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId, ct);
     }
 
+    public async Task<bool> IsPhoneInUseAsync(Guid userId, string phone, CancellationToken ct)
+    {
+        var international = "+84" + phone[1..];
+        var internationalNoPlus = international.Substring(1);
+        return await _db.UserProfiles.AnyAsync(p => p.UserId != userId &&
+            (p.Phone == phone || p.Phone == international || p.Phone == internationalNoPlus), ct)
+            || await _db.Users.IgnoreQueryFilters().AnyAsync(u => u.Id != userId &&
+                u.Status != UserStatus.Deleted && u.PhoneNumberConfirmed &&
+                (u.PhoneNumber == phone || u.PhoneNumber == international), ct);
+    }
+
     public async Task AddProfileAsync(UserProfile profile, CancellationToken ct)
     {
         await _db.UserProfiles.AddAsync(profile, ct);

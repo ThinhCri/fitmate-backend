@@ -4,7 +4,8 @@ public enum UserStatus
 {
     Active = 0,
     Locked = 1,
-    PendingDeletion = 2
+    PendingDeletion = 2,
+    Deleted = 3
 }
 
 public enum UserRole

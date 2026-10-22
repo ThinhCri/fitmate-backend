@@ -51,6 +51,9 @@ public class EfCertificateStore : ICertificateStore
     public Task<Fitmate.Domain.Identity.ApplicationUser?> FindUserAsync(Guid userId, CancellationToken ct)
         => _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
 
+    public Task<string?> FindContactPhoneAsync(Guid userId, CancellationToken ct)
+        => _db.UserProfiles.Where(p => p.UserId == userId).Select(p => p.Phone).FirstOrDefaultAsync(ct);
+
     public Task<bool> HasPermanentlyBannedPhoneAsync(string phoneNumber, Guid excludingUserId,
         CancellationToken ct) => _db.PtProfiles.AnyAsync(p => p.PermanentlyBanned &&
             p.UserId != excludingUserId && _db.Users.Any(u => u.Id == p.UserId &&

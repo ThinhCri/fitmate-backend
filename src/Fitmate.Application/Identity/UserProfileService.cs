@@ -1,6 +1,7 @@
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
 using Fitmate.Application.Storage;
+using System.Text.RegularExpressions;
 
 namespace Fitmate.Application.Identity;
 
@@ -41,6 +42,14 @@ public class UserProfileService : IUserProfileService
     {
         ValidateUpdateRequest(request);
 
+        string? contactPhone = null;
+        if (request.Phone is not null)
+        {
+            contactPhone = NormalizeVietnamMobile(request.Phone);
+            if (contactPhone is not null && await _store.IsPhoneInUseAsync(userId, contactPhone, ct))
+                throw new ConflictException("PHONE_ALREADY_USED", "This phone number is already in use.");
+        }
+
         var user = await _store.FindUserByIdAsync(userId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {userId} not found.");
 
@@ -69,7 +78,7 @@ public class UserProfileService : IUserProfileService
         }
 
         profile.Update(
-            phone: request.Phone,
+            phone: null,
             bio: request.Bio,
             gender: gender,
             birthday: request.Birthday,
@@ -81,6 +90,9 @@ public class UserProfileService : IUserProfileService
             allergies: request.Allergies,
             preferredTimeSlots: request.PreferredTimeSlots,
             healthNotes: request.HealthNotes);
+
+        if (request.Phone is not null)
+            profile.SetContactPhone(contactPhone);
 
         await _store.SaveChangesAsync(ct);
 
@@ -194,6 +206,19 @@ public class UserProfileService : IUserProfileService
         if (req.AvatarUrl?.Length > 500)
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Avatar URL must not exceed 500 characters.",
                 new Dictionary<string, string[]> { ["avatar_url"] = new[] { "Avatar URL must not exceed 500 characters." } });
+    }
+
+    private static string? NormalizeVietnamMobile(string raw)
+    {
+        var phone = raw.Trim();
+        if (phone.Length == 0) return null;
+        if (phone.StartsWith("+84", StringComparison.Ordinal)) phone = "0" + phone[3..];
+        else if (phone.StartsWith("84", StringComparison.Ordinal)) phone = "0" + phone[2..];
+        if (!Regex.IsMatch(phone, @"^0[35789][0-9]{8}$", RegexOptions.CultureInvariant))
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid,
+                "Vietnamese mobile number must contain 10 digits and use a valid mobile prefix.",
+                new Dictionary<string, string[]> { ["phone"] = ["Use 0xxxxxxxxx or +84xxxxxxxxx."] });
+        return phone;
     }
 
     private UserProfileDto MapToDto(ApplicationUser user, UserProfile profile, string role)

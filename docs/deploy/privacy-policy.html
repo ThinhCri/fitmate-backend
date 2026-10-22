@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitmate - Chính Sách Bảo Mật</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Inter, -apple-system, sans-serif;
+            line-height: 1.8;
+            color: #1a1a2e;
+            background: #f8fafc;
+            padding: 0;
+        }
+        .header {
+            background: linear-gradient(135deg, #0F766E 0%, #14b8a6 100%);
+            color: white;
+            padding: 60px 20px 40px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2rem; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 0.95rem; }
+        .container {
+            max-width: 800px;
+            margin: -20px auto 40px;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+            padding: 40px;
+        }
+        h2 {
+            color: #0F766E;
+            font-size: 1.3rem;
+            margin: 32px 0 12px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e6f4f1;
+        }
+        h2:first-child { margin-top: 0; }
+        p, li { font-size: 0.95rem; color: #374151; margin-bottom: 8px; }
+        ul { padding-left: 24px; margin-bottom: 16px; }
+        li { margin-bottom: 4px; }
+        .highlight {
+            background: #e6f4f1;
+            border-left: 4px solid #0F766E;
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 16px 0;
+        }
+        .footer {
+            text-align: center;
+            padding: 24px;
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+        @media (max-width: 600px) {
+            .container { margin: -20px 12px 40px; padding: 24px; }
+            .header h1 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Chính Sách Bảo Mật</h1>
+        <p>Fitmate — Ứng dụng Huấn luyện viên cá nhân</p>
+    </div>
+
+    <div class="container">
+        <h2>1. Giới thiệu</h2>
+        <p>Fitmate ("chúng tôi") cam kết bảo vệ quyền riêng tư của người dùng. Chính sách này mô tả cách chúng tôi thu thập, sử dụng và bảo vệ thông tin cá nhân của bạn khi sử dụng ứng dụng Fitmate.</p>
+
+        <h2>2. Thông tin chúng tôi thu thập</h2>
+        <p>Khi bạn sử dụng Fitmate, chúng tôi có thể thu thập:</p>
+        <ul>
+            <li><strong>Thông tin tài khoản:</strong> Họ tên, địa chỉ email, số điện thoại</li>
+            <li><strong>Thông tin hồ sơ:</strong> Ngày sinh, giới tính, chiều cao, cân nặng, mục tiêu tập luyện</li>
+            <li><strong>Dữ liệu tập luyện:</strong> Lịch sử bài tập, lịch đặt huấn luyện viên</li>
+            <li><strong>Dữ liệu dinh dưỡng:</strong> Ảnh món ăn (khi sử dụng tính năng AI phân tích dinh dưỡng)</li>
+            <li><strong>Thông tin thanh toán:</strong> Được xử lý qua cổng thanh toán bên thứ ba (payOS). Chúng tôi không lưu thông tin thẻ tín dụng/ngân hàng.</li>
+        </ul>
+
+        <h2>3. Cách chúng tôi sử dụng thông tin</h2>
+        <ul>
+            <li>Cung cấp và cải thiện dịch vụ ứng dụng</li>
+            <li>Kết nối bạn với huấn luyện viên cá nhân (PT)</li>
+            <li>Phân tích dinh dưỡng từ ảnh món ăn (tính năng AI)</li>
+            <li>Xử lý thanh toán cho các buổi tập</li>
+            <li>Gửi thông báo liên quan đến lịch tập và tài khoản</li>
+        </ul>
+
+        <h2>4. Chia sẻ thông tin</h2>
+        <div class="highlight">
+            <p><strong>Chúng tôi KHÔNG bán thông tin cá nhân của bạn cho bên thứ ba.</strong></p>
+        </div>
+        <p>Thông tin chỉ được chia sẻ trong các trường hợp:</p>
+        <ul>
+            <li>Với huấn luyện viên mà bạn đặt lịch (tên, lịch hẹn)</li>
+            <li>Với cổng thanh toán payOS để xử lý giao dịch</li>
+            <li>Khi pháp luật yêu cầu</li>
+        </ul>
+
+        <h2>5. Bảo mật dữ liệu</h2>
+        <p>Chúng tôi áp dụng các biện pháp bảo mật:</p>
+        <ul>
+            <li>Mã hóa truyền tải (HTTPS/TLS)</li>
+            <li>Mã hóa mật khẩu (bcrypt)</li>
+            <li>Xác thực qua JWT token</li>
+            <li>Giới hạn truy cập theo vai trò (RBAC)</li>
+        </ul>
+
+        <h2>6. Quyền của bạn</h2>
+        <p>Bạn có quyền:</p>
+        <ul>
+            <li>Truy cập và xem thông tin cá nhân đã cung cấp</li>
+            <li>Chỉnh sửa thông tin hồ sơ</li>
+            <li>Yêu cầu xóa tài khoản và dữ liệu liên quan</li>
+            <li>Rút lại sự đồng ý bất kỳ lúc nào</li>
+        </ul>
+
+        <h2>7. Yêu cầu xóa dữ liệu</h2>
+        <p>Để yêu cầu xóa tài khoản và toàn bộ dữ liệu cá nhân, vui lòng gửi email đến: <strong>support@fitmate-app.xyz</strong></p>
+        <p>Chúng tôi sẽ xử lý yêu cầu trong vòng 30 ngày làm việc.</p>
+
+        <h2>8. Lưu trữ dữ liệu</h2>
+        <p>Dữ liệu được lưu trữ trên máy chủ bảo mật. Chúng tôi chỉ giữ dữ liệu trong thời gian cần thiết để cung cấp dịch vụ hoặc theo yêu cầu pháp luật.</p>
+
+        <h2>9. Thay đổi chính sách</h2>
+        <p>Chúng tôi có thể cập nhật chính sách này. Mọi thay đổi sẽ được thông báo qua ứng dụng.</p>
+
+        <h2>10. Liên hệ</h2>
+        <p>Nếu có câu hỏi về chính sách bảo mật, vui lòng liên hệ:</p>
+        <ul>
+            <li>Email: <strong>support@fitmate-app.xyz</strong></li>
+        </ul>
+
+        <p style="margin-top: 24px; color: #64748b; font-size: 0.85rem;"><em>Cập nhật lần cuối: Tháng 10/2026</em></p>
+    </div>
+
+    <div class="footer">
+        <p>© 2026 Fitmate. All rights reserved.</p>
+    </div>
+</body>
+</html>

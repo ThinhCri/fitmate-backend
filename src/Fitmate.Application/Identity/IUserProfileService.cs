@@ -16,6 +16,7 @@ public interface IUserProfileStore
 {
     Task<ApplicationUser?> FindUserByIdAsync(Guid userId, CancellationToken ct);
     Task<UserProfile?> FindProfileByUserIdAsync(Guid userId, CancellationToken ct);
+    Task<bool> IsPhoneInUseAsync(Guid userId, string phone, CancellationToken ct);
     Task AddProfileAsync(UserProfile profile, CancellationToken ct);
     Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct);
     Task<IReadOnlyList<(ApplicationUser User, UserProfile? Profile, string Role)>> SearchUsersAsync(Guid viewerId, string query, int limit, CancellationToken ct);

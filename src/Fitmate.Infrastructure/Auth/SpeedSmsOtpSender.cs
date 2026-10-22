@@ -32,9 +32,11 @@ public sealed class SpeedSmsOtpSender(HttpClient http, IOptions<SpeedSmsOptions>
             Convert.ToBase64String(Encoding.UTF8.GetBytes(config.AccessToken + ":x")));
         request.Content = JsonContent.Create(new
         {
-            to = new[] { phoneNumberE164[1..] },
+            // SpeedSMS documents Vietnamese recipients in local 0xxxxxxxxx format.
+            to = new[] { "0" + phoneNumberE164[3..] },
             content = $"[Fitmate] Ma xac minh PT cua ban: {code}. Hieu luc 5 phut. Khong chia se ma.",
-            sms_type = config.SmsType,
+            // The provider's downloadable C# sendSMS implementation serializes this as "type".
+            type = config.SmsType,
             sender = config.Sender
         });
 
@@ -59,6 +61,24 @@ public sealed class SpeedSmsOtpSender(HttpClient http, IOptions<SpeedSmsOptions>
         // Permanent request/recipient errors cannot succeed by replaying the same outbox item.
         if (providerCode is "101" or "105" or "110" or "113")
             throw new TerminalOutboxException("SMS_PROVIDER_REJECTED_REQUEST");
-        throw new InvalidOperationException("SMS_PROVIDER_UNAVAILABLE");
+        if (providerCode is "007" or "008" or "009")
+            throw new TerminalOutboxException("SMS_PROVIDER_ACCESS_DENIED_" + providerCode);
+        if (providerCode == "300")
+            throw new TerminalOutboxException("SMS_PROVIDER_INSUFFICIENT_BALANCE");
+        // The numeric provider code is safe to retain; never log its free-form message.
+        if (providerCode is { Length: > 0 and <= 3 } && providerCode.All(char.IsAsciiDigit))
+            throw new InvalidOperationException("SMS_PROVIDER_UNAVAILABLE_" + providerCode);
+        // Only expose a small fixed diagnostic vocabulary, never provider text or recipient details.
+        var statusKind = status switch
+        {
+            "success" => "SUCCESS",
+            "error" => "ERROR",
+            _ => "OTHER"
+        };
+        var codeKind = providerCode is null ? "MISSING" :
+            providerCode.Length == 0 ? "EMPTY" :
+            providerCode.Length <= 20 && providerCode.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_')
+                ? providerCode.ToUpperInvariant() : "UNSAFE";
+        throw new InvalidOperationException($"SMS_PROVIDER_UNAVAILABLE_STATUS_{statusKind}_CODE_{codeKind}");
     }
 }

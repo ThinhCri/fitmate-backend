@@ -965,6 +965,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
 
+                    b.Property<DateTime?>("DeletionRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
 
@@ -993,12 +996,12 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("Email")
                         .IsUnique()
-                        .HasFilter("\"DeletedAt\" IS NULL");
+                        .HasFilter("\"Status\" <> 3");
 
                     b.HasIndex("NormalizedEmail")
                         .IsUnique()
                         .HasDatabaseName("EmailIndex")
-                        .HasFilter("\"DeletedAt\" IS NULL");
+                        .HasFilter("\"Status\" <> 3");
 
                     b.HasIndex("NormalizedUserName")
                         .IsUnique()
@@ -1006,7 +1009,7 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("PhoneNumber")
                         .IsUnique()
-                        .HasFilter("\"PhoneNumberConfirmed\" = TRUE AND \"PhoneNumber\" IS NOT NULL AND \"DeletedAt\" IS NULL");
+                        .HasFilter("\"PhoneNumberConfirmed\" = TRUE AND \"PhoneNumber\" IS NOT NULL AND \"Status\" <> 3");
 
                     b.ToTable("asp_net_users", (string)null);
                 });
@@ -1305,6 +1308,10 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(5,2)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Phone")
+                        .IsUnique()
+                        .HasFilter("\"Phone\" IS NOT NULL");
 
                     b.HasIndex("UserId")
                         .IsUnique();
@@ -2236,7 +2243,8 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer");
 
                     b.Property<DateTime?>("SucceededAtUtc")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("succeeded_at_utc");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");

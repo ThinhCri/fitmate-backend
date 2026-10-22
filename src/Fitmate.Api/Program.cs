@@ -270,6 +270,10 @@ builder.Services.AddScoped<IUserProfileService, Fitmate.Application.Identity.Use
 builder.Services.AddSingleton<IDeletionTokenProtector, Fitmate.Infrastructure.Identity.DataProtectionDeletionTokenProtector>();
 builder.Services.AddScoped<IAccountDeletionStore, Fitmate.Infrastructure.Identity.EfAccountDeletionStore>();
 builder.Services.AddScoped<IAccountDeletionService, Fitmate.Application.Identity.AccountDeletionService>();
+builder.Services.AddScoped<Fitmate.Application.Identity.AdminAccountDeletionService>();
+builder.Services.AddSingleton(new Fitmate.Application.Identity.AccountDeletionFinalizationGate(
+    builder.Configuration.GetValue<bool>("AccountDeletion:FinalizerEnabled")));
+builder.Services.AddScoped<Fitmate.Infrastructure.Identity.AccountDeletionFinalizer>();
 
 // BE-150 & BE-809: Admin finance.
 builder.Services.AddScoped<IFinancialLedgerStore, Fitmate.Infrastructure.Finance.EfFinancialLedgerStore>();
@@ -559,6 +563,9 @@ else
 {
     throw new InvalidOperationException("STORAGE_BACKEND must be 'local' or 'r2'.");
 }
+builder.Services.AddSingleton<Fitmate.Application.Storage.IOwnedStorageKeyListing>(sp =>
+    (Fitmate.Application.Storage.IOwnedStorageKeyListing)sp.GetRequiredService<Fitmate.Application.Storage.IStorageService>());
+builder.Services.AddHostedService<Fitmate.Infrastructure.Identity.AccountDeletionFinalizationWorker>();
 
 
 // BE-070: Idempotency (DEC-011) + Outbox (DEC-012) infrastructure.

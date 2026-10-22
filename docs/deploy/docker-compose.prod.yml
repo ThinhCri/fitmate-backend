@@ -1,0 +1,50 @@
+# Docker Compose for Fitmate Backend — Production (VPS deployment)
+# See deployment-guide.md for full instructions.
+# Usage:
+#   scp this file + .env to VPS
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-fitmate}
+      POSTGRES_USER: ${DB_USER:-fitmate}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    volumes:
+      - fitmate-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fitmate} -d ${DB_NAME:-fitmate}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # No port exposed: only accessible from api container via internal network
+
+  api:
+    image: fitmate-api:prod
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-fitmate}
+      DB_USER: ${DB_USER:-fitmate}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_SSLMODE: ${DB_SSLMODE:-prefer}
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_PATH: ${STORAGE_LOCAL_PATH:-/data/uploads}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - fitmate-dpkeys:/home/fitmate/.aspnet/DataProtection-Keys
+      - fitmate-uploads:/data/uploads
+    ports:
+      # Only bind to localhost — Nginx reverse proxy handles public traffic
+      - "127.0.0.1:8080:8080"
+
+volumes:
+  fitmate-pg-data:
+  fitmate-dpkeys:
+  fitmate-uploads:

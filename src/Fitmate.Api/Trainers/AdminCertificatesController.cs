@@ -60,6 +60,14 @@ public class AdminCertificatesController : ControllerBase
         return Ok(new { url = url.ToString() });
     }
 
+    [HttpGet("{id:guid}/contact")]
+    public async Task<IActionResult> Contact(Guid id, [FromServices] ICurrentUserAccessor current, CancellationToken ct)
+    {
+        var result = await _certs.GetContactForAdminAsync(id, current.GetUserIdOrThrow(), ct);
+        Response.Headers.CacheControl = "no-store";
+        return Ok(result);
+    }
+
     [HttpPost("{id:guid}/revoke")]
     public async Task<IActionResult> Revoke(Guid id, [FromServices] ICurrentUserAccessor current,
         [FromBody] RejectCertificateRequest body, CancellationToken ct) =>

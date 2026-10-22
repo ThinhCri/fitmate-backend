@@ -30,6 +30,12 @@ public class UserProfile : AuditableEntity
         UpdatedAt = DateTime.UtcNow
     };
 
+    public void SetContactPhone(string? phone)
+    {
+        Phone = phone;
+        Touch();
+    }
+
     public void Update(
         string? phone = null,
         string? bio = null,

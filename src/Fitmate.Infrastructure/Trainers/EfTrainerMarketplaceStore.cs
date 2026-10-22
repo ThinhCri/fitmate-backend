@@ -38,7 +38,8 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
                 (p.SuspendedUntilUtc == null || p.SuspendedUntilUtc <= DateTime.UtcNow) &&
                 verifiedPtIds.Contains(p.UserId) &&
                 _db.Users.Any(u => u.Id == p.UserId && u.Status == UserStatus.Active &&
-                    u.EmailConfirmed && u.PhoneNumberConfirmed) &&
+                    u.EmailConfirmed && (u.PhoneNumberConfirmed ||
+                        _db.UserProfiles.Any(up => up.UserId == u.Id && up.Phone != null && up.Phone != ""))) &&
                 _db.Services.Any(s => s.PtUserId == p.UserId && s.IsActive &&
                     s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
                     ((s.DeliveryMode == ServiceDeliveryMode.InPerson && s.LocationName != null && s.LocationAddress != null) ||
@@ -126,7 +127,8 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
         if (profile is null || profile.VerificationStatus != PtVerificationStatus.Approved ||
             !profile.CanAcceptNewBookings(DateTime.UtcNow) ||
             !await _db.Users.AnyAsync(u => u.Id == ptUserId && u.Status == UserStatus.Active &&
-                u.EmailConfirmed && u.PhoneNumberConfirmed, ct)) return null;
+                u.EmailConfirmed && (u.PhoneNumberConfirmed ||
+                    _db.UserProfiles.Any(up => up.UserId == u.Id && up.Phone != null && up.Phone != "")), ct)) return null;
 
         var onlineEnabled = _onlineEnabled;
         var services = await _db.Services

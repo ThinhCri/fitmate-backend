@@ -21,6 +21,10 @@ public interface IAccountDeletionStore
     Task<string?> GetPrimaryRoleAsync(Guid userId, CancellationToken ct);
     Task RevokeUserDevicesAsync(Guid userId, CancellationToken ct);
     Task SaveChangesAsync(CancellationToken ct);
+    Task<ApplicationUser?> FindIncludingPendingAsync(Guid userId, CancellationToken ct);
+    Task<(IReadOnlyList<ApplicationUser> Items, int Total)> ListForAdminAsync(int page, int pageSize, CancellationToken ct);
+    Task<IReadOnlyList<ApplicationUser>> ListDueForFinalizationAsync(DateTime cutoffUtc, int limit, CancellationToken ct);
+    Task<T> WithUserLockAsync<T>(Guid userId, Func<Task<T>> action, CancellationToken ct);
 }
 
 public interface IDeletionTokenProtector
