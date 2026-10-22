@@ -1,3 +1,11 @@
 # Reviewed false positive: a fixed CI-only placeholder in f907c9f, not a credential.
 # This fingerprint suppresses only that historical finding; all other JWT keys remain scanned.
 f907c9f24f789293cac1c20d8aea979f4bbabf1b:.github/workflows/ci.yml:fitmate-jwt-signing-key:83
+
+# Reviewed false positives from the 2026-10-22 push: required Compose env
+# interpolation and explicit example-only values, not committed credentials.
+# Keep these commit/path/rule/line scoped; do not suppress future findings.
+82fe64fe6ed02551bec780daf2641cfae7f5548a:docs/deploy/docker-compose.prod.yml:fitmate-db-password:14
+6b19efb74c6c4b42949f6d33ab1ed00425283661:compose.vps.yml:fitmate-db-password:10
+6b19efb74c6c4b42949f6d33ab1ed00425283661:vps.env.example:fitmate-db-password:8
+6b19efb74c6c4b42949f6d33ab1ed00425283661:vps.env.example:fitmate-jwt-signing-key:9
