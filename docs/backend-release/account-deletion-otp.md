@@ -1,5 +1,7 @@
 # Authenticated account-deletion OTP
 
+Provider reuse: generation/verification uses registration's `UserManager` / `TokenOptions.DefaultEmailProvider`, with a dedicated per-challenge `account-deletion:` purpose rather than signup's `email-verification`. Email delivery already uses the same configured `IEmailSender`/SMTP and outbox. No additional email provider or credentials are needed. Do not call signup email/resend for a confirmed account: that endpoint deliberately does not send to it. The deletion-specific authenticated operation still needs deployment.
+
 POST `/api/v1/users/me/deletion-otp` queues an email OTP for the authenticated account. It does not submit deletion. Response: `expires_at`, `resend_after_seconds` (60). OTP expires after five minutes; at most five wrong attempts per challenge. Resending invalidates the previous challenge. Codes and recipient are protected in the outbox; no plaintext code is persisted or logged by this implementation.
 
 POST `/api/v1/users/me/delete-request` and legacy DELETE `/api/v1/users/me` require `{ "otp": "<six digits>", "reason": "optional" }`. Missing/malformed code returns 400, wrong/expired/used/exhausted code returns 400; inactive/no-email account 403; pending obligations 409. Sending again too early returns 429. Existing pending request prevents another OTP start with 409. User row lock serializes send/verify; verified code is consumed in the same transaction as request creation. A blocked deletion rolls back consumption so a still-valid code can be retried after resolving the blocker.

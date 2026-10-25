@@ -11,11 +11,13 @@ using Microsoft.EntityFrameworkCore;
 namespace Fitmate.Infrastructure.Auth;
 
 public sealed class IdentityAccountDeletionOtpGateway(
-    FitmateDbContext db, IOutboxDispatcher outbox, IDeletionTokenProtector protector) : IAccountDeletionOtpGateway
+    FitmateDbContext db, IOutboxDispatcher outbox, IDeletionTokenProtector protector,
+    UserManager<ApplicationUser> users) : IAccountDeletionOtpGateway
 {
     private const string Provider = "fitmate-account-deletion-otp-v1";
     private const string TokenName = "challenge";
-    private sealed record Challenge(string Email, string ProtectedCode, DateTime ExpiresAt, DateTime SentAt, int Attempts);
+    private sealed record Challenge(string Email, string ProtectedCode, DateTime ExpiresAt, DateTime SentAt, int Attempts,
+        string? Purpose = null);
 
     public Task<DeletionOtpStartResult> StartAsync(Guid userId, CancellationToken ct) =>
         db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
@@ -29,8 +31,11 @@ public sealed class IdentityAccountDeletionOtpGateway(
                 throw new DomainException("DELETION_OTP_RESEND_TOO_SOON", "Vui lòng chờ 60 giây trước khi gửi lại mã.", 429);
             if (user.DeletionRequestedAt.HasValue)
                 throw new ConflictException("DELETION_ALREADY_REQUESTED", "Tài khoản đã có yêu cầu xóa đang chờ xử lý.");
-            var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
-            var challenge = new Challenge(user.Email!, protector.Protect(code), now.AddMinutes(5), now, 0);
+            // Reuse registration's Identity email OTP provider and existing SMTP pipeline.
+            // A separate, per-challenge purpose prevents signup/reset OTP reuse and invalidates resend codes.
+            var purpose = $"account-deletion:{Guid.NewGuid():N}";
+            var code = await users.GenerateUserTokenAsync(user, TokenOptions.DefaultEmailProvider, purpose);
+            var challenge = new Challenge(user.Email!, protector.Protect(code), now.AddMinutes(5), now, 0, purpose);
             if (row is null)
             {
                 row = new IdentityUserToken<Guid> { UserId = userId, LoginProvider = Provider, Name = TokenName };
@@ -54,10 +59,12 @@ public sealed class IdentityAccountDeletionOtpGateway(
             var row = await FindChallengeAsync(userId, ct);
             var challenge = Read(row);
             if (challenge is null || challenge.ExpiresAt <= DateTime.UtcNow || challenge.Attempts >= 5 ||
-                !string.Equals(challenge.Email, user.Email, StringComparison.OrdinalIgnoreCase))
+                !string.Equals(challenge.Email, user.Email, StringComparison.OrdinalIgnoreCase) ||
+                string.IsNullOrWhiteSpace(challenge.Purpose) || !challenge.Purpose.StartsWith("account-deletion:", StringComparison.Ordinal))
                 return null;
             if (!CryptographicOperations.FixedTimeEquals(System.Text.Encoding.UTF8.GetBytes(code),
-                    System.Text.Encoding.UTF8.GetBytes(protector.Unprotect(challenge.ProtectedCode))))
+                    System.Text.Encoding.UTF8.GetBytes(protector.Unprotect(challenge.ProtectedCode))) ||
+                !await users.VerifyUserTokenAsync(user, TokenOptions.DefaultEmailProvider, challenge.Purpose, code))
             {
                 row!.Value = JsonSerializer.Serialize(challenge with { Attempts = challenge.Attempts + 1 });
                 await db.SaveChangesAsync(ct);

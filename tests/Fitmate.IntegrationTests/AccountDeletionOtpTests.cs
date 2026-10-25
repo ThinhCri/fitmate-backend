@@ -10,6 +10,7 @@ using Fitmate.Infrastructure.Persistence;
 using Fitmate.IntegrationTests.Infrastructure;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Fitmate.IntegrationTests;
@@ -38,16 +39,22 @@ public sealed class AccountDeletionOtpTests(FitmateTestAppFactory factory) : ICl
         var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
         var protector = scope.ServiceProvider.GetRequiredService<IDeletionTokenProtector>();
         var user = new ApplicationUser { Id = Guid.NewGuid(), UserName = Guid.NewGuid().ToString(),
-            Email = $"{Guid.NewGuid():N}@example.test", FullName = "OTP integration", Status = UserStatus.Active };
+            Email = $"{Guid.NewGuid():N}@example.test", SecurityStamp = Guid.NewGuid().ToString(), FullName = "OTP integration", Status = UserStatus.Active };
         db.Users.Add(user);
         await db.SaveChangesAsync();
         var outbox = new CaptureOutbox();
-        var gateway = new IdentityAccountDeletionOtpGateway(db, outbox, protector);
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var gateway = new IdentityAccountDeletionOtpGateway(db, outbox, protector, users);
         var start = await gateway.StartAsync(user.Id, default);
         start.ResendAfterSeconds.Should().Be(60);
         user.DeletionRequestedAt.Should().BeNull();
         var payload = outbox.Payload!;
         var code = protector.Unprotect(payload.ProtectedCode);
+        var challengeJson = JsonNode.Parse((await db.UserTokens.SingleAsync(t => t.UserId == user.Id)).Value!)!;
+        var purpose = challengeJson["Purpose"]!.GetValue<string>();
+        purpose.Should().StartWith("account-deletion:").And.NotBe("email-verification");
+        (await users.VerifyUserTokenAsync(user, TokenOptions.DefaultEmailProvider,
+            purpose, code)).Should().BeTrue();
         payload.ProtectedCode.Should().NotBe(code);
         var resend = () => gateway.StartAsync(user.Id, default);
         (await resend.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be("DELETION_OTP_RESEND_TOO_SOON");

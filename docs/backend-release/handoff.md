@@ -1,5 +1,13 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-25 — Commit shared email OTP follow-up for Android update
+- Owner authorized add/commit and requested build instructions, not execution or production rollout. Commit only shared signup email-provider changes, matching integration test source and OTP documentation; preserve unrelated analytics/payout/workout/config changes.
+- Latest shared-provider delta has static diff review only. Prior 20 focused service/email unit tests passed before this provider switch; PostgreSQL integration execution remains blocked by local database/Docker availability. No new build/test, production email/deletion, push or deployment in this turn.
+
+## 2026-10-25 — Reuse registration email OTP provider for deletion (IMPLEMENTED_UNVERIFIED)
+- Owner requested reuse of signup email OTP. Deletion gateway now generates and verifies via the same UserManager DefaultEmailProvider as AuthController registration; keeps existing IEmailSender/SMTP/outbox infrastructure (no new provider/key). A dedicated per-challenge account-deletion purpose, durable expiry/attempts/single-use lock and protected payload remain. Signup email/resend endpoint itself cannot be reused: it deliberately skips already-confirmed accounts and verifies email ownership, not deletion intent.
+- Existing challenges without the new purpose fail closed and require resend. Integration test source updated for the shared provider and purpose binding. No build/test/commit/push/deployment performed in this follow-up. Previous integration environment remains blocked by unavailable local PostgreSQL/Docker. VPS still needs operator-approved backend rollout; no real OTP sent or account deletion invoked.
+
 ## 2026-10-25 — Require email OTP for authenticated deletion requests
 - Added authenticated POST users/me/deletion-otp and mandatory otp on POST delete-request / legacy DELETE users/me. Existing public email-link flow preserved. Dedicated Identity user-token challenge: random 6 digits, protected OTP/email outbox payload, 5-minute expiry, 60-second resend cooldown, 5 failed attempts persisted. User row lock makes consumption and deletion request mutation atomic. No migration needed; no production emails sent or deployment authorized.
 - Mobile removes incomplete personal-data export action, redundant notification toggle and ineffective email preference toggle. One OS-notification settings entry remains; security email behavior is explained. This does not establish or fix duplicate delivered notifications without reproduction evidence.
@@ -2163,5 +2171,3 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - The 2026-10-22 backend push failed only at `gitleaks/gitleaks-action`: four findings were required Compose `${...:?...}` environment references and explicit example-only values in `vps.env.example`, not literal credentials. Added four exact commit/path/rule/line fingerprints to `.gitleaksignore`; no file or rule was broadly excluded.
 - Replayed the CI commit range (`fb19e4ad^..82fe64fe`) with the same Gitleaks 8.24.3 Docker image and configuration: 3 commits scanned, exit 0, no leaks found. A generated throwaway `DB_PASSWORD` value piped to `gitleaks stdin` still triggered the rule (exit 2). `git diff --check` passed. This does not certify other CI jobs or any future scan range.
 - No secret, production configuration, VPS deployment, or Git history rewrite was performed. A new push is required to trigger CI with this ignore file; rerunning the old failed workflow at its old commit cannot read the new file.
-
-
