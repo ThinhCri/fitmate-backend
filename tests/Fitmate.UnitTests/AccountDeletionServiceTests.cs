@@ -11,6 +11,32 @@ namespace Fitmate.UnitTests;
 
 public class AccountDeletionServiceTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("12345")]
+    [InlineData("abcdef")]
+    [InlineData("１２３４５６")]
+    public async Task RequestDeletion_RejectsMissingOrMalformedOtp(string? otp)
+    {
+        var outbox = new InMemoryOutboxDispatcher();
+        var svc = new AccountDeletionService(new InMemoryAccountDeletionStore(), new InMemoryRefreshTokenStore(),
+            outbox, new InMemoryDeletionTokenProtector(), new VerifiedDeletionOtpGateway());
+        var act = () => svc.RequestDeletionAsync(Guid.NewGuid(), new(null, null, otp), default);
+        (await act.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be("DELETION_OTP_REQUIRED");
+        outbox.Messages.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RequestDeletion_CannotBypassRejectedOtp()
+    {
+        var outbox = new InMemoryOutboxDispatcher();
+        var svc = new AccountDeletionService(new InMemoryAccountDeletionStore(), new InMemoryRefreshTokenStore(),
+            outbox, new InMemoryDeletionTokenProtector(), new VerifiedDeletionOtpGateway());
+        var act = () => svc.RequestDeletionAsync(Guid.NewGuid(), new(null, null, "999999"), default);
+        (await act.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be("DELETION_OTP_INVALID");
+        outbox.Messages.Should().BeEmpty();
+    }
     [Fact]
     public async Task RequestDeletionAsync_QueuesForAdminWithoutStartingCountdown()
     {
@@ -28,8 +54,8 @@ public class AccountDeletionServiceTests
         };
         store.Users[user.Id] = user;
 
-        var svc = new AccountDeletionService(store, tokenStore, outbox, protector);
-        var res = await svc.RequestDeletionAsync(user.Id, new AccountDeletionRequest("Privacy concerns", null), CancellationToken.None);
+        var svc = new AccountDeletionService(store, tokenStore, outbox, protector, new VerifiedDeletionOtpGateway());
+        var res = await svc.RequestDeletionAsync(user.Id, new AccountDeletionRequest("Privacy concerns", null, "123456"), CancellationToken.None);
 
         res.IsPendingDeletion.Should().BeTrue();
         res.Status.Should().Be("active");
@@ -61,8 +87,8 @@ public class AccountDeletionServiceTests
         store.Users[user.Id] = user;
         store.UserHasActiveBookings[user.Id] = true;
 
-        var svc = new AccountDeletionService(store, tokenStore, outbox, protector);
-        var act = () => svc.RequestDeletionAsync(user.Id, new AccountDeletionRequest(null, null), CancellationToken.None);
+        var svc = new AccountDeletionService(store, tokenStore, outbox, protector, new VerifiedDeletionOtpGateway());
+        var act = () => svc.RequestDeletionAsync(user.Id, new AccountDeletionRequest(null, null, "123456"), CancellationToken.None);
 
         var ex = await act.Should().ThrowAsync<ConflictException>();
         ex.Which.Code.Should().Be(ErrorCodes.Identity.HasActiveBookings);
@@ -86,7 +112,7 @@ public class AccountDeletionServiceTests
         };
         store.Users[user.Id] = user;
 
-        var svc = new AccountDeletionService(store, tokenStore, outbox, protector);
+        var svc = new AccountDeletionService(store, tokenStore, outbox, protector, new VerifiedDeletionOtpGateway());
         var status = await svc.GetDeletionStatusAsync(user.Id, CancellationToken.None);
 
         status.IsPendingDeletion.Should().BeTrue();
@@ -111,7 +137,7 @@ public class AccountDeletionServiceTests
         };
         store.Users[user.Id] = user;
 
-        var svc = new AccountDeletionService(store, tokenStore, outbox, protector);
+        var svc = new AccountDeletionService(store, tokenStore, outbox, protector, new VerifiedDeletionOtpGateway());
         var status = await svc.CancelDeletionAsync(user.Id, CancellationToken.None);
 
         status.IsPendingDeletion.Should().BeFalse();
@@ -140,7 +166,7 @@ public class AccountDeletionServiceTests
         };
         store.Users[user.Id] = user;
 
-        var svc = new AccountDeletionService(store, tokenStore, outbox, protector);
+        var svc = new AccountDeletionService(store, tokenStore, outbox, protector, new VerifiedDeletionOtpGateway());
 
         // Step 1: Request public deletion
         await svc.RequestPublicDeletionAsync(new PublicAccountDeletionRequest("public@example.com", "Moving abroad"), CancellationToken.None);
@@ -182,7 +208,7 @@ public class AccountDeletionServiceTests
         store.Profiles[user.Id] = profile;
         store.Roles[user.Id] = "member";
 
-        var svc = new AccountDeletionService(store, tokenStore, outbox, protector);
+        var svc = new AccountDeletionService(store, tokenStore, outbox, protector, new VerifiedDeletionOtpGateway());
         var export = await svc.ExportUserDataAsync(user.Id, CancellationToken.None);
 
         export.Should().NotBeNull();
@@ -193,6 +219,15 @@ public class AccountDeletionServiceTests
         export.Profile!.FitnessGoal.Should().Be("Weight loss");
         export.Profile.Phone.Should().Be("0911223344");
     }
+}
+
+internal sealed class VerifiedDeletionOtpGateway : IAccountDeletionOtpGateway
+{
+    public Task<DeletionOtpStartResult> StartAsync(Guid userId, CancellationToken ct) =>
+        Task.FromResult(new DeletionOtpStartResult(DateTime.UtcNow.AddMinutes(5), 60));
+    public Task<AccountDeletionStatusDto> ExecuteVerifiedAsync(Guid userId, string code,
+        Func<Task<AccountDeletionStatusDto>> action, CancellationToken ct) => code == "123456"
+        ? action() : throw new DomainException("DELETION_OTP_INVALID", "Invalid OTP", 400);
 }
 
 internal class InMemoryDeletionTokenProtector : IDeletionTokenProtector

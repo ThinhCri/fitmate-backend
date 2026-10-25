@@ -1,5 +1,10 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-25 — Require email OTP for authenticated deletion requests
+- Added authenticated POST users/me/deletion-otp and mandatory otp on POST delete-request / legacy DELETE users/me. Existing public email-link flow preserved. Dedicated Identity user-token challenge: random 6 digits, protected OTP/email outbox payload, 5-minute expiry, 60-second resend cooldown, 5 failed attempts persisted. User row lock makes consumption and deletion request mutation atomic. No migration needed; no production emails sent or deployment authorized.
+- Mobile removes incomplete personal-data export action, redundant notification toggle and ineffective email preference toggle. One OS-notification settings entry remains; security email behavior is explained. This does not establish or fix duplicate delivered notifications without reproduction evidence.
+- Verification and release caveats tracked in docs/backend-release/account-deletion-otp.md. Old mobile clients cannot submit deletion until upgraded; public verified email-link option remains. No push, production deployment or mobile version bump.
+
 ## 2026-10-21 — PT contact-phone onboarding for closed test (IMPLEMENTED_UNVERIFIED)
 - PT certificate approval now requires verified email and a valid entered contact phone, without falsely setting `PhoneNumberConfirmed`; verified SMS remains an optional existing path. Admin-only certificate contact read was added for manual review. Marketplace/booking gates accept an admin-approved PT with entered contact phone. Payout-account verified-phone gate remains strict because financial onboarding is out of scope.
 - Coordinated mobile/web changes are local only. Run integration and mobile/web checks, then deploy backend before the new clients. Manual admin contact confirmation is currently a UI acknowledgement, not an independently verifiable phone-ownership proof. No production deployment was performed.
@@ -2158,4 +2163,5 @@ Invoke-RestMethod -Method Post -Uri http://localhost:5116/api/v1/auth/register `
 - The 2026-10-22 backend push failed only at `gitleaks/gitleaks-action`: four findings were required Compose `${...:?...}` environment references and explicit example-only values in `vps.env.example`, not literal credentials. Added four exact commit/path/rule/line fingerprints to `.gitleaksignore`; no file or rule was broadly excluded.
 - Replayed the CI commit range (`fb19e4ad^..82fe64fe`) with the same Gitleaks 8.24.3 Docker image and configuration: 3 commits scanned, exit 0, no leaks found. A generated throwaway `DB_PASSWORD` value piped to `gitleaks stdin` still triggered the rule (exit 2). `git diff --check` passed. This does not certify other CI jobs or any future scan range.
 - No secret, production configuration, VPS deployment, or Git history rewrite was performed. A new push is required to trigger CI with this ignore file; rerunning the old failed workflow at its old commit cannot read the new file.
+
 

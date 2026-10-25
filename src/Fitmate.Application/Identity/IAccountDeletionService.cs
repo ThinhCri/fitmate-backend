@@ -4,12 +4,20 @@ namespace Fitmate.Application.Identity;
 
 public interface IAccountDeletionService
 {
+    Task<DeletionOtpStartResult> SendDeletionOtpAsync(Guid userId, CancellationToken ct);
     Task<AccountDeletionStatusDto> RequestDeletionAsync(Guid userId, AccountDeletionRequest request, CancellationToken ct);
     Task<AccountDeletionStatusDto> GetDeletionStatusAsync(Guid userId, CancellationToken ct);
     Task<AccountDeletionStatusDto> CancelDeletionAsync(Guid userId, CancellationToken ct);
     Task RequestPublicDeletionAsync(PublicAccountDeletionRequest request, CancellationToken ct);
     Task<AccountDeletionStatusDto> ConfirmPublicDeletionAsync(string token, CancellationToken ct);
     Task<UserDataExportDto> ExportUserDataAsync(Guid userId, CancellationToken ct);
+}
+
+public interface IAccountDeletionOtpGateway
+{
+    Task<DeletionOtpStartResult> StartAsync(Guid userId, CancellationToken ct);
+    Task<AccountDeletionStatusDto> ExecuteVerifiedAsync(Guid userId, string code,
+        Func<Task<AccountDeletionStatusDto>> action, CancellationToken ct);
 }
 
 public interface IAccountDeletionStore

@@ -424,21 +424,26 @@ paths:
           $ref: '#/components/responses/ValidationError'
     delete:
       tags: [Users]
-      summary: Xóa tài khoản (yêu cầu xác nhận password)
+      summary: Gửi yêu cầu xóa tài khoản bằng OTP email (alias cũ)
       operationId: deleteMe
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required: [password_confirmation]
-              properties:
-                password_confirmation:
-                  type: string
+              $ref: '#/components/schemas/AccountDeletionRequest'
       responses:
-        '204':
-          description: No Content
+        '200':
+          description: Yêu cầu đang chờ quản trị viên xử lý
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AccountDeletionStatus'}
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          description: Tài khoản không thể yêu cầu xóa
+        '409':
+          description: Còn lịch hẹn hoặc nghĩa vụ tài chính chưa hoàn tất
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -735,13 +740,39 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /users/me/deletion-otp:
+    post:
+      tags: [Users]
+      summary: Gửi OTP email trước khi yêu cầu xóa tài khoản
+      description: Mã dùng một lần trong 5 phút, tối đa 5 lần nhập sai; gửi lại sau 60 giây. Không tạo yêu cầu xóa.
+      operationId: sendAccountDeletionOtp
+      responses:
+        '200':
+          description: OTP đã được đưa vào hàng đợi email
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [expires_at, resend_after_seconds]
+                properties:
+                  expires_at: { type: string, format: date-time }
+                  resend_after_seconds: { type: integer, example: 60 }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Tài khoản không hoạt động hoặc không có email
+        '409':
+          description: Đã có yêu cầu xóa đang chờ xử lý
+        '429':
+          description: Chưa hết thời gian chờ gửi lại mã
+
   /users/me/delete-request:
     post:
       tags: [Users]
-      summary: Yêu cầu xóa tài khoản (grace period 30 ngày)
+      summary: Xác thực OTP email và gửi yêu cầu xóa cho quản trị viên
       operationId: requestAccountDeletion
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
@@ -6146,7 +6177,12 @@ components:
 
     AccountDeletionRequest:
       type: object
+      required: [otp]
       properties:
+        otp:
+          type: string
+          pattern: '^[0-9]{6}$'
+          description: OTP email bắt buộc, bao gồm DELETE /users/me cũ. Thiếu, sai, hết hạn, đã dùng hoặc vượt 5 lần thử trả 400; nghĩa vụ chưa hoàn tất trả 409.
         reason:
           type: string
           nullable: true

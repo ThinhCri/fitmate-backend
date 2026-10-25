@@ -4,7 +4,12 @@ namespace Fitmate.Application.Identity;
 
 public sealed record AccountDeletionRequest(
     [property: JsonPropertyName("reason")] string? Reason,
-    [property: JsonPropertyName("password")] string? Password);
+    [property: JsonPropertyName("password")] string? Password,
+    [property: JsonPropertyName("otp")] string? Otp = null);
+
+public sealed record DeletionOtpStartResult(
+    [property: JsonPropertyName("expires_at")] DateTime ExpiresAt,
+    [property: JsonPropertyName("resend_after_seconds")] int ResendAfterSeconds);
 
 public sealed record AccountDeletionStatusDto(
     [property: JsonPropertyName("user_id")] Guid UserId,

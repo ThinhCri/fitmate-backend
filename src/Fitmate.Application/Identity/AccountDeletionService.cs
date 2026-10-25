@@ -11,6 +11,7 @@ public class AccountDeletionService : IAccountDeletionService
     private readonly IRefreshTokenStore _refreshTokenStore;
     private readonly IOutboxDispatcher _outbox;
     private readonly IDeletionTokenProtector _tokenProtector;
+    private readonly IAccountDeletionOtpGateway _otp;
 
     private const int RetentionDays = 30;
 
@@ -18,15 +19,26 @@ public class AccountDeletionService : IAccountDeletionService
         IAccountDeletionStore store,
         IRefreshTokenStore refreshTokenStore,
         IOutboxDispatcher outbox,
-        IDeletionTokenProtector tokenProtector)
+        IDeletionTokenProtector tokenProtector,
+        IAccountDeletionOtpGateway otp)
     {
         _store = store;
         _refreshTokenStore = refreshTokenStore;
         _outbox = outbox;
         _tokenProtector = tokenProtector;
+        _otp = otp;
     }
 
-    public async Task<AccountDeletionStatusDto> RequestDeletionAsync(Guid userId, AccountDeletionRequest request, CancellationToken ct)
+    public Task<DeletionOtpStartResult> SendDeletionOtpAsync(Guid userId, CancellationToken ct) => _otp.StartAsync(userId, ct);
+
+    public Task<AccountDeletionStatusDto> RequestDeletionAsync(Guid userId, AccountDeletionRequest request, CancellationToken ct)
+    {
+        if (request.Otp is not { Length: 6 } || request.Otp.Any(c => c < '0' || c > '9'))
+            throw new DomainException("DELETION_OTP_REQUIRED", "Vui lòng nhập mã OTP gồm 6 chữ số gửi tới email tài khoản.", 400);
+        return _otp.ExecuteVerifiedAsync(userId, request.Otp, () => RequestVerifiedDeletionAsync(userId, request, ct), ct);
+    }
+
+    private async Task<AccountDeletionStatusDto> RequestVerifiedDeletionAsync(Guid userId, AccountDeletionRequest request, CancellationToken ct)
     {
         var user = await _store.FindUserByIdAsync(userId, ct)
             ?? throw new NotFoundException(ErrorCodes.Identity.UserNotFound, $"User {userId} not found.");

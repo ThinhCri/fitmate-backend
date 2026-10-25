@@ -27,6 +27,15 @@ public class AccountDeletionController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("api/v1/users/me/deletion-otp")]
+    [Authorize]
+    public async Task<IActionResult> SendDeletionOtp(CancellationToken ct)
+    {
+        var userId = ResolveUserId();
+        if (userId is null) return Unauthorized();
+        return Ok(await _deletionService.SendDeletionOtpAsync(userId.Value, ct));
+    }
+
     [HttpGet("api/v1/users/me/deletion-status")]
     [Authorize]
     public async Task<IActionResult> GetDeletionStatus(CancellationToken ct)

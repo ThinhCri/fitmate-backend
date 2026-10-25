@@ -270,6 +270,8 @@ builder.Services.AddScoped<IUserProfileService, Fitmate.Application.Identity.Use
 builder.Services.AddSingleton<IDeletionTokenProtector, Fitmate.Infrastructure.Identity.DataProtectionDeletionTokenProtector>();
 builder.Services.AddScoped<IAccountDeletionStore, Fitmate.Infrastructure.Identity.EfAccountDeletionStore>();
 builder.Services.AddScoped<IAccountDeletionService, Fitmate.Application.Identity.AccountDeletionService>();
+builder.Services.AddScoped<IAccountDeletionOtpGateway, Fitmate.Infrastructure.Auth.IdentityAccountDeletionOtpGateway>();
+builder.Services.AddScoped<IOutboxHandler, DeletionOtpEmailOutboxHandler>();
 builder.Services.AddScoped<Fitmate.Application.Identity.AdminAccountDeletionService>();
 builder.Services.AddSingleton(new Fitmate.Application.Identity.AccountDeletionFinalizationGate(
     builder.Configuration.GetValue<bool>("AccountDeletion:FinalizerEnabled")));
