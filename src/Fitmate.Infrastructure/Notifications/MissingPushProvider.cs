@@ -24,8 +24,7 @@ public sealed class MissingPushProvider : IPushProvider
         // Log which notification would have been sent — no token, no title content.
         _logger.LogWarning(
             "MissingPushProvider: push send attempted with no provider configured. " +
-            "Title: {Title}, HasPayload: {HasPayload}",
-            title,
+            "HasPayload: {HasPayload}",
             !string.IsNullOrEmpty(payloadJson));
 
         return Task.FromResult(

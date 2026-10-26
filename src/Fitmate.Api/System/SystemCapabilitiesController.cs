@@ -21,13 +21,16 @@ public class SystemCapabilitiesController : ControllerBase
     private readonly IWebHostEnvironment _env;
     private readonly IOptions<AiOptions> _aiOptions;
     private readonly Fitmate.Application.Payments.IPaymentProvider? _payments;
+    private readonly Fitmate.Application.Notifications.IPushProvider? _push;
 
     public SystemCapabilitiesController(IWebHostEnvironment env, IOptions<AiOptions> aiOptions,
-        Fitmate.Application.Payments.IPaymentProvider? payments = null)
+        Fitmate.Application.Payments.IPaymentProvider? payments = null,
+        Fitmate.Application.Notifications.IPushProvider? push = null)
     {
         _env = env;
         _aiOptions = aiOptions;
         _payments = payments;
+        _push = push;
     }
 
     [HttpGet]
@@ -54,7 +57,7 @@ public class SystemCapabilitiesController : ControllerBase
             PtAutomaticPayout: new FeatureCapabilityStatus(
                 Enabled: false,
                 StatusReason: "Automated direct payouts are not active. Trainer earnings are settled periodically through verified manual accounting transfers."),
-            PushNotificationsEnabled: true,
+            PushNotificationsEnabled: _push is not null and not Fitmate.Infrastructure.Notifications.MissingPushProvider,
             PaymentsEnabled: _payments is not null and not Fitmate.Application.Payments.MissingPaymentProvider
                 and not Fitmate.Application.Payments.StubPaymentProvider,
             StorageProvider: "local",
@@ -63,11 +66,11 @@ public class SystemCapabilitiesController : ControllerBase
                 MinCancelHours: 48,
                 RefundWindowDays: 7),
             Contact: new PublicContactInfo(
-                SupportEmail: "support@fitmate.vn",
-                Hotline: "1900-FITMATE",
-                TermsUrl: "https://fitmate.vn/terms",
-                PrivacyUrl: "https://fitmate.vn/privacy",
-                DeletionPolicyUrl: "https://fitmate.vn/account-deletion"));
+                SupportEmail: "votanthinhseven@gmail.com",
+                Hotline: "",
+                TermsUrl: "https://fitmate.site/terms/",
+                PrivacyUrl: "https://fitmate.site/privacy/",
+                DeletionPolicyUrl: "https://fitmate.site/account-deletion/"));
 
         return Ok(capabilities);
     }

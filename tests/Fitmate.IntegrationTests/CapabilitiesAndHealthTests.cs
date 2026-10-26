@@ -81,8 +81,10 @@ public class CapabilitiesAndHealthTests : IClassFixture<FitmateTestAppFactory>
         dto.PtAutomaticPayout.Enabled.Should().BeFalse();
         dto.PtAutomaticPayout.StatusReason.Should().NotBeNullOrWhiteSpace();
 
-        dto.Contact.SupportEmail.Should().Be("support@fitmate.vn");
-        dto.Contact.Hotline.Should().NotBeNullOrWhiteSpace();
+        dto.PushNotificationsEnabled.Should().BeFalse();
+        dto.Contact.SupportEmail.Should().Be("votanthinhseven@gmail.com");
+        dto.Contact.Hotline.Should().BeEmpty();
+        dto.Contact.PrivacyUrl.Should().Be("https://fitmate.site/privacy/");
 
         // Security check: verify no secrets leaked in response JSON
         var rawJson = await response.Content.ReadAsStringAsync();

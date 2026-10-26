@@ -202,6 +202,10 @@ public class AiAdapterTests
         var dto = result!.Value as SystemCapabilitiesDto;
         dto.Should().NotBeNull();
         dto!.Ai.Enabled.Should().BeFalse();
+        dto.PushNotificationsEnabled.Should().BeFalse();
+        dto.Contact.PrivacyUrl.Should().Be("https://fitmate.site/privacy/");
+        dto.Contact.TermsUrl.Should().Be("https://fitmate.site/terms/");
+        dto.Contact.Hotline.Should().BeEmpty();
         dto.Ai.FoodScan.Should().BeFalse();
         dto.Ai.CompanionChat.Should().BeFalse();
         dto.Ai.WorkoutAdjust.Should().BeFalse();
