@@ -31,10 +31,10 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiNutritionStubAdapter_ThrowsUnavailable_WithHttpStatus503_WhenDisabled()
+    public async Task UnavailableNutritionAdapter_ThrowsUnavailable_WithHttpStatus503_WhenDisabled()
     {
         var options = Options.Create(new AiOptions { Enabled = false, FoodScanEnabled = false });
-        var adapter = new AiNutritionStubAdapter(options);
+        var adapter = new UnavailableNutritionAdapter(options);
         using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
 
         var act = () => adapter.EstimateFromImageAsync(stream, "image/jpeg", CancellationToken.None);
@@ -45,9 +45,9 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiNutritionStubAdapter_ThrowsOperationCanceledException_WhenCanceled()
+    public async Task UnavailableNutritionAdapter_ThrowsOperationCanceledException_WhenCanceled()
     {
-        var adapter = new AiNutritionStubAdapter();
+        var adapter = new UnavailableNutritionAdapter();
         using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -58,9 +58,9 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiNutritionStubAdapter_ThrowsValidationException_WhenStreamIsEmpty()
+    public async Task UnavailableNutritionAdapter_ThrowsValidationException_WhenStreamIsEmpty()
     {
-        var adapter = new AiNutritionStubAdapter();
+        var adapter = new UnavailableNutritionAdapter();
         using var emptyStream = new MemoryStream();
 
         var act = () => adapter.EstimateFromImageAsync(emptyStream, "image/jpeg", CancellationToken.None);
@@ -75,9 +75,9 @@ public class AiAdapterTests
     [InlineData("application/pdf")]
     [InlineData("image/gif")]
     [InlineData("")]
-    public async Task AiNutritionStubAdapter_ThrowsValidationException_WhenContentTypeIsInvalid(string invalidType)
+    public async Task UnavailableNutritionAdapter_ThrowsValidationException_WhenContentTypeIsInvalid(string invalidType)
     {
-        var adapter = new AiNutritionStubAdapter();
+        var adapter = new UnavailableNutritionAdapter();
         using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
 
         var act = () => adapter.EstimateFromImageAsync(stream, invalidType, CancellationToken.None);
@@ -88,10 +88,10 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiWorkoutStubAdapter_ThrowsUnavailable_WithHttpStatus503_WhenDisabled()
+    public async Task UnavailableWorkoutAdapter_ThrowsUnavailable_WithHttpStatus503_WhenDisabled()
     {
         var options = Options.Create(new AiOptions { Enabled = false, WorkoutAdjustEnabled = false });
-        var adapter = new AiWorkoutStubAdapter(options);
+        var adapter = new UnavailableWorkoutAdapter(options);
         var req = new WorkoutSuggestionRequest(Guid.NewGuid(), "Weight loss", "Beginner");
 
         var act = () => adapter.SuggestWorkoutPlanAsync(req, CancellationToken.None);
@@ -102,9 +102,9 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiWorkoutStubAdapter_ThrowsOperationCanceledException_WhenCanceled()
+    public async Task UnavailableWorkoutAdapter_ThrowsOperationCanceledException_WhenCanceled()
     {
-        var adapter = new AiWorkoutStubAdapter();
+        var adapter = new UnavailableWorkoutAdapter();
         var req = new WorkoutSuggestionRequest(Guid.NewGuid(), "Hypertrophy", "Intermediate");
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -115,9 +115,9 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiWorkoutStubAdapter_ThrowsValidationException_WhenUserIdIsEmpty()
+    public async Task UnavailableWorkoutAdapter_ThrowsValidationException_WhenUserIdIsEmpty()
     {
-        var adapter = new AiWorkoutStubAdapter();
+        var adapter = new UnavailableWorkoutAdapter();
         var req = new WorkoutSuggestionRequest(Guid.Empty, "Endurance", "Advanced");
 
         var act = () => adapter.SuggestWorkoutPlanAsync(req, CancellationToken.None);
@@ -128,10 +128,10 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiCompanionStubAdapter_ThrowsUnavailable_WithHttpStatus503_WhenDisabled()
+    public async Task UnavailableCompanionAdapter_ThrowsUnavailable_WithHttpStatus503_WhenDisabled()
     {
         var options = Options.Create(new AiOptions { Enabled = false, CompanionChatEnabled = false });
-        var adapter = new AiCompanionStubAdapter(options);
+        var adapter = new UnavailableCompanionAdapter(options);
         var req = new CompanionChatRequest(Guid.NewGuid(), Guid.NewGuid(), "How should I warm up today?");
 
         var act = () => adapter.GenerateReplyAsync(req, CancellationToken.None);
@@ -142,9 +142,9 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiCompanionStubAdapter_ThrowsOperationCanceledException_WhenCanceled()
+    public async Task UnavailableCompanionAdapter_ThrowsOperationCanceledException_WhenCanceled()
     {
-        var adapter = new AiCompanionStubAdapter();
+        var adapter = new UnavailableCompanionAdapter();
         var req = new CompanionChatRequest(Guid.NewGuid(), Guid.NewGuid(), "Hello coach!");
         using var cts = new CancellationTokenSource();
         cts.Cancel();
@@ -157,9 +157,9 @@ public class AiAdapterTests
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public async Task AiCompanionStubAdapter_ThrowsValidationException_WhenMessageIsEmpty(string emptyMessage)
+    public async Task UnavailableCompanionAdapter_ThrowsValidationException_WhenMessageIsEmpty(string emptyMessage)
     {
-        var adapter = new AiCompanionStubAdapter();
+        var adapter = new UnavailableCompanionAdapter();
         var req = new CompanionChatRequest(Guid.NewGuid(), Guid.NewGuid(), emptyMessage);
 
         var act = () => adapter.GenerateReplyAsync(req, CancellationToken.None);
@@ -170,9 +170,9 @@ public class AiAdapterTests
     }
 
     [Fact]
-    public async Task AiCompanionStubAdapter_ThrowsValidationException_WhenMessageTooLong()
+    public async Task UnavailableCompanionAdapter_ThrowsValidationException_WhenMessageTooLong()
     {
-        var adapter = new AiCompanionStubAdapter();
+        var adapter = new UnavailableCompanionAdapter();
         var longMessage = new string('A', 2001);
         var req = new CompanionChatRequest(Guid.NewGuid(), Guid.NewGuid(), longMessage);
 
@@ -209,7 +209,7 @@ public class AiAdapterTests
         dto.Ai.FoodScan.Should().BeFalse();
         dto.Ai.CompanionChat.Should().BeFalse();
         dto.Ai.WorkoutAdjust.Should().BeFalse();
-        dto.Ai.StatusReason.Should().Contain("awaiting artifact delivery and validation (BE-817)");
+        dto.Ai.StatusReason.Should().Contain("disabled in server configuration");
     }
 
     [Fact]

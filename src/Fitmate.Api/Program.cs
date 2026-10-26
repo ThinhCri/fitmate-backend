@@ -349,13 +349,16 @@ builder.Services.AddOptions<Fitmate.Application.Ai.GooglePlayBillingOptions>()
          builder.Configuration.GetValue<bool>("AiUsage:Enabled")),
         "Google Play AI Plus sales require both AI capabilities and usage enforcement.")
     .Validate(x => !x.SalesEnabled ||
-        (builder.Configuration["Ai:Provider"] == "python_service" &&
-         Uri.TryCreate(builder.Configuration["Ai:BaseUrl"], UriKind.Absolute, out _) &&
-         !string.IsNullOrWhiteSpace(builder.Configuration["Ai:InternalToken"]) &&
+        (((builder.Configuration["Ai:Provider"] == "python_service" &&
+           Uri.TryCreate(builder.Configuration["Ai:BaseUrl"], UriKind.Absolute, out _) &&
+           !string.IsNullOrWhiteSpace(builder.Configuration["Ai:InternalToken"])) ||
+          (builder.Configuration["Ai:Provider"] == "gemini" &&
+           builder.Configuration.GetValue<bool>("Gemini:Enabled") &&
+           !string.IsNullOrWhiteSpace(builder.Configuration["Gemini:ApiKey"]))) &&
          ((builder.Configuration["Ai:CompanionProvider"] == "groq" &&
            builder.Configuration.GetValue<bool>("Groq:Enabled") &&
            !string.IsNullOrWhiteSpace(builder.Configuration["Groq:ApiKey"])) ||
-          ((builder.Configuration["Ai:CompanionProvider"] is "gemini" or "stub") &&
+          (builder.Configuration["Ai:CompanionProvider"] == "gemini" &&
            builder.Configuration.GetValue<bool>("Gemini:Enabled") &&
            !string.IsNullOrWhiteSpace(builder.Configuration["Gemini:ApiKey"])))),
         "Google Play AI Plus sales require configured real scan and chat providers.")
@@ -394,6 +397,8 @@ builder.Services.AddScoped<IWorkoutStore, Fitmate.Infrastructure.Workout.EfWorko
 builder.Services.AddScoped<IWeightStore, Fitmate.Infrastructure.Workout.EfWeightStore>();
 builder.Services.AddScoped<IExerciseCatalogStore, Fitmate.Infrastructure.Workout.EfExerciseCatalogStore>();
 builder.Services.AddScoped<IWorkoutService, Fitmate.Application.Workout.WorkoutService>();
+builder.Services.AddScoped<Fitmate.Application.Social.ISocialProfileSummaryStore, Fitmate.Infrastructure.Social.EfSocialProfileSummaryStore>();
+builder.Services.AddScoped<Fitmate.Application.Social.SocialProfileSummaryService>();
 builder.Services.AddScoped<IWeightService, Fitmate.Application.Workout.WeightService>();
 builder.Services.AddScoped<IExerciseCatalogService, Fitmate.Application.Workout.ExerciseCatalogService>();
 // BE-170 & BE-817: AI capability adapters & options. Disabled by default awaiting .pt handoff.
@@ -417,11 +422,21 @@ if (string.Equals(aiOptions.Provider, "python_service", StringComparison.Ordinal
     builder.Services.AddScoped<IAiNutritionAdapter>(sp =>
         sp.GetRequiredService<Fitmate.Infrastructure.Nutrition.PythonAiNutritionAdapter>());
 }
-else
+else if (string.Equals(aiOptions.Provider, "gemini", StringComparison.OrdinalIgnoreCase))
 {
-    builder.Services.AddScoped<IAiNutritionAdapter, AiNutritionStubAdapter>();
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Nutrition.GeminiNutritionAdapter>(client => {
+        client.Timeout = TimeSpan.FromSeconds(Math.Clamp(aiOptions.TimeoutSeconds, 5, 120));
+        client.MaxResponseContentBufferSize = 1024 * 1024;
+    }).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    builder.Services.AddScoped<IAiNutritionAdapter>(sp => sp.GetRequiredService<Fitmate.Infrastructure.Nutrition.GeminiNutritionAdapter>());
 }
-builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter, Fitmate.Application.Workout.AiWorkoutStubAdapter>();
+else builder.Services.AddScoped<IAiNutritionAdapter, UnavailableNutritionAdapter>();
+builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GroqWorkoutAdapter>(client => {
+    client.Timeout = TimeSpan.FromSeconds(Math.Clamp(aiOptions.TimeoutSeconds, 5, 120));
+    client.MaxResponseContentBufferSize = 1024 * 1024;
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddScoped<Fitmate.Application.Workout.IAiWorkoutAdapter>(sp => sp.GetRequiredService<Fitmate.Infrastructure.Chat.GroqWorkoutAdapter>());
+builder.Services.AddScoped<Fitmate.Application.Workout.WorkoutSuggestionService>();
 var geminiOptions = builder.Configuration
     .GetSection(Fitmate.Application.Ai.GeminiOptions.SectionName)
     .Get<Fitmate.Application.Ai.GeminiOptions>() ?? new Fitmate.Application.Ai.GeminiOptions();
@@ -432,11 +447,14 @@ if (string.Equals(aiOptions.CompanionProvider, "groq", StringComparison.OrdinalI
 {
     builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GroqCompanionAdapter>(client =>
         client.Timeout = TimeSpan.FromSeconds(groqOptions.TimeoutSeconds > 0 ? groqOptions.TimeoutSeconds : 60));
-    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter>(sp =>
-        sp.GetRequiredService<Fitmate.Infrastructure.Chat.GroqCompanionAdapter>());
+    if (geminiOptions.Enabled)
+        builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>(client =>
+            client.Timeout = TimeSpan.FromSeconds(Math.Clamp(geminiOptions.TimeoutSeconds, 5, 120)));
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter>(sp => new Fitmate.Application.Chat.CompanionRoutingAdapter(
+        sp.GetRequiredService<Fitmate.Infrastructure.Chat.GroqCompanionAdapter>(),
+        geminiOptions.Enabled ? sp.GetRequiredService<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>() : null));
 }
-else if ((string.Equals(aiOptions.CompanionProvider, "gemini", StringComparison.OrdinalIgnoreCase) ||
-          string.Equals(aiOptions.CompanionProvider, "stub", StringComparison.OrdinalIgnoreCase)) && geminiOptions.Enabled)
+else if (string.Equals(aiOptions.CompanionProvider, "gemini", StringComparison.OrdinalIgnoreCase) && geminiOptions.Enabled)
 {
     builder.Services.AddHttpClient<Fitmate.Infrastructure.Chat.GeminiCompanionAdapter>(client =>
         client.Timeout = TimeSpan.FromSeconds(geminiOptions.TimeoutSeconds > 0 ? geminiOptions.TimeoutSeconds : 60));
@@ -445,7 +463,7 @@ else if ((string.Equals(aiOptions.CompanionProvider, "gemini", StringComparison.
 }
 else
 {
-    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.AiCompanionStubAdapter>();
+    builder.Services.AddScoped<Fitmate.Application.Chat.IAiCompanionAdapter, Fitmate.Application.Chat.UnavailableCompanionAdapter>();
 }
 builder.Services.AddScoped<INutritionService, NutritionService>();
 // BE-813: dashboard daily progress summary.
@@ -478,8 +496,8 @@ builder.Services.Configure<PayosOptions>(builder.Configuration.GetSection(PayosO
 builder.Services.AddHttpClient<Fitmate.Infrastructure.Payments.Payos.PayosPaymentAdapter>(client => client.Timeout = TimeSpan.FromSeconds(20))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IPayosWebhookHandler, Fitmate.Infrastructure.Payments.Payos.PayosWebhookHandler>();
-if (paymentOptions.AllowMockProvider && !builder.Environment.IsDevelopment() && !builder.Environment.IsEnvironment("Testing"))
-    throw new InvalidOperationException("Mock payments are restricted to Development/Testing.");
+if (paymentOptions.AllowMockProvider)
+    throw new InvalidOperationException("Runtime mock payments are removed. Configure a real provider; test doubles belong only in test DI.");
 if (payosConfig.Enabled && (!payosConfig.IsValid() || paymentOptions.Provider != "payos"))
     throw new InvalidOperationException("Enabled payOS requires an approved merchant, complete credentials and Payment:Provider=payos.");
 if (paymentOptions.Provider == "payos" && payosConfig.Enabled)
@@ -489,10 +507,6 @@ if (paymentOptions.Provider == "payos" && payosConfig.Enabled)
 else if (paymentOptions.Provider == "vnpay" && vnpayConfig != null && vnpayConfig.IsValid())
 {
     builder.Services.AddScoped<IPaymentProvider, Fitmate.Infrastructure.Payments.Vnpay.VnpayPaymentAdapter>();
-}
-else if (paymentOptions.AllowMockProvider)
-{
-    builder.Services.AddScoped<IPaymentProvider, StubPaymentProvider>();
 }
 else
 {
@@ -511,14 +525,25 @@ builder.Services.AddScoped<IPushDeliveryDispatcher>(sp => new Fitmate.Infrastruc
     sp.GetRequiredService<IOutboxDispatcher>(),
     sp.GetRequiredService<INotificationAuditLogger>(),
     sp.GetRequiredService<ILogger<Fitmate.Infrastructure.Notifications.EfPushDeliveryDispatcher>>()));
-// Push provider: production wires MissingPushProvider until a real adapter is registered.
-// (FCM / Expo adapters belong to BE-200c.)
-builder.Services.AddSingleton<IPushProvider, Fitmate.Infrastructure.Notifications.MissingPushProvider>();
+builder.Services.AddOptions<Fitmate.Infrastructure.Notifications.FcmPushOptions>()
+    .Bind(builder.Configuration.GetSection(Fitmate.Infrastructure.Notifications.FcmPushOptions.SectionName))
+    .Validate(Fitmate.Infrastructure.Notifications.FcmPushProvider.ValidConfiguration,
+        "Enabled FCM requires a valid matching Firebase project and service-account credential.")
+    .ValidateOnStart();
+if (builder.Configuration.GetValue<bool>("FcmPush:Enabled"))
+{
+    builder.Services.AddHttpClient<Fitmate.Infrastructure.Notifications.FcmPushProvider>(client => client.Timeout = TimeSpan.FromSeconds(20))
+        .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+    builder.Services.AddScoped<IPushProvider>(sp => sp.GetRequiredService<Fitmate.Infrastructure.Notifications.FcmPushProvider>());
+}
+else builder.Services.AddSingleton<IPushProvider, Fitmate.Infrastructure.Notifications.MissingPushProvider>();
 builder.Services.AddScoped<PushDeliverySweepService>();
 builder.Services.AddHostedService<Fitmate.Infrastructure.Notifications.SweepBackgroundService>();
 builder.Services.AddHostedService<Fitmate.Infrastructure.Booking.BookingExpirationBackgroundService>();
 // Outbox handler for `notification.push_requested`.
-builder.Services.AddScoped<IOutboxHandler, Fitmate.Application.Notifications.Handlers.NotificationPushHandler>();
+builder.Services.AddScoped<Fitmate.Application.Notifications.Handlers.NotificationPushHandler>();
+builder.Services.AddScoped<IOutboxHandler>(sp => sp.GetRequiredService<Fitmate.Application.Notifications.Handlers.NotificationPushHandler>());
+builder.Services.AddHostedService<Fitmate.Infrastructure.Notifications.PushRetryBackgroundService>();
 
 // BE-816: local storage for development, Cloudflare R2 for durable environments.
 var storageBackend = (builder.Configuration["STORAGE_BACKEND"]

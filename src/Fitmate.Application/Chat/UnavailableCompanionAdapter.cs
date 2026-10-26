@@ -5,14 +5,14 @@ using Microsoft.Extensions.Options;
 namespace Fitmate.Application.Chat;
 
 /// <summary>
-/// BE-817 PREPARE NOW: AI Companion chat adapter stub.
+/// Fail-closed unavailable adapter when no real provider is selected.
 /// Validates input, cancellation, and config gating; throws typed 503 AiUnavailableException.
 /// </summary>
-public class AiCompanionStubAdapter : IAiCompanionAdapter
+public class UnavailableCompanionAdapter : IAiCompanionAdapter
 {
     private readonly IOptions<AiOptions>? _options;
 
-    public AiCompanionStubAdapter(IOptions<AiOptions>? options = null)
+    public UnavailableCompanionAdapter(IOptions<AiOptions>? options = null)
     {
         _options = options;
     }
@@ -62,10 +62,9 @@ public class AiCompanionStubAdapter : IAiCompanionAdapter
         var opt = _options?.Value;
         if (opt is not null && opt.Enabled && opt.CompanionChatEnabled)
         {
-            throw new AiUnavailableException("AI companion chat model artifact is not yet integrated.");
+            throw new AiUnavailableException("AI companion provider is not configured.");
         }
 
         throw new AiUnavailableException("AI companion chat is currently disabled or unavailable awaiting model handoff.");
     }
 }
-

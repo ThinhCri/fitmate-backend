@@ -5,14 +5,14 @@ using Microsoft.Extensions.Options;
 namespace Fitmate.Application.Workout;
 
 /// <summary>
-/// BE-817 PREPARE NOW: Workout plan suggestion adapter stub.
+/// Fail-closed unavailable adapter when no real provider is selected.
 /// Validates input, cancellation, and config gating; throws typed 503 AiUnavailableException.
 /// </summary>
-public class AiWorkoutStubAdapter : IAiWorkoutAdapter
+public class UnavailableWorkoutAdapter : IAiWorkoutAdapter
 {
     private readonly IOptions<AiOptions>? _options;
 
-    public AiWorkoutStubAdapter(IOptions<AiOptions>? options = null)
+    public UnavailableWorkoutAdapter(IOptions<AiOptions>? options = null)
     {
         _options = options;
     }
@@ -40,10 +40,9 @@ public class AiWorkoutStubAdapter : IAiWorkoutAdapter
         var opt = _options?.Value;
         if (opt is not null && opt.Enabled && opt.WorkoutAdjustEnabled)
         {
-            throw new AiUnavailableException("AI workout suggestion model artifact is not yet integrated.");
+            throw new AiUnavailableException("AI workout provider is not configured.");
         }
 
         throw new AiUnavailableException("AI workout plan suggestion is currently disabled or unavailable awaiting model handoff.");
     }
 }
-

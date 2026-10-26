@@ -14,6 +14,9 @@ public class PushDeliverySweepServiceTests
 {
     private sealed class InMemoryPushStore : IPushStore
     {
+        public Task<bool> TryClaimDeliveryAsync(Guid deliveryId, CancellationToken ct) => Task.FromResult(true);
+        public async Task<IReadOnlyList<PushDelivery>> FetchDueForNotificationAsync(Guid notificationId, CancellationToken ct) =>
+            (await FetchDueBatchAsync(1000, ct)).Where(d => d.NotificationId == notificationId).ToList();
         public List<PushDelivery> All { get; } = new();
         public List<PushDelivery> ClaimedBatch { get; set; } = new();
         public List<(Guid Id, PushDeliveryStatus Status, string? Error, DateTime? Next, DateTime? Sent)> Updates { get; } = new();

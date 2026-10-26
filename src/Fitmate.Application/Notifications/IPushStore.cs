@@ -7,6 +7,8 @@ namespace Fitmate.Application.Notifications;
 /// </summary>
 public interface IPushStore
 {
+    Task<bool> TryClaimDeliveryAsync(Guid deliveryId, CancellationToken ct);
+    Task<IReadOnlyList<PushDelivery>> FetchDueForNotificationAsync(Guid notificationId, CancellationToken ct);
     /// <summary>Add a push delivery row.</summary>
     Task AddAsync(PushDelivery delivery, CancellationToken ct = default);
 

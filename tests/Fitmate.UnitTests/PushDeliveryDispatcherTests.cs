@@ -33,6 +33,7 @@ public class PushDeliveryDispatcherTests
 
     private sealed class InMemoryDeviceStore : IDeviceStore
     {
+        public Task<T> WithTokenLockAsync<T>(string tokenHash, Func<Task<T>> action, CancellationToken ct) => action();
         public List<Device> Devices { get; } = new();
         public Task<Device?> FindByTokenHashAsync(Guid userId, string tokenHash, CancellationToken ct) => throw new NotImplementedException();
         public Task<Device?> FindByIdForOwnerAsync(Guid deviceId, Guid userId, CancellationToken ct) => throw new NotImplementedException();
@@ -46,6 +47,9 @@ public class PushDeliveryDispatcherTests
 
     private sealed class InMemoryPushStore : IPushStore
     {
+        public Task<bool> TryClaimDeliveryAsync(Guid deliveryId, CancellationToken ct) => Task.FromResult(true);
+        public async Task<IReadOnlyList<PushDelivery>> FetchDueForNotificationAsync(Guid notificationId, CancellationToken ct) =>
+            (await FetchDueBatchAsync(1000, ct)).Where(d => d.NotificationId == notificationId).ToList();
         public List<PushDelivery> Added { get; } = new();
         public Task AddAsync(PushDelivery d, CancellationToken ct) { Added.Add(d); return Task.CompletedTask; }
         public Task MarkSentAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();

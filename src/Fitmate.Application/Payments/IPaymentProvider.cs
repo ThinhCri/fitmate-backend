@@ -5,6 +5,7 @@ namespace Fitmate.Application.Payments;
 
 public interface IPaymentProvider
 {
+    bool IsRealProvider => true;
     PaymentMethod Method { get; }
 
     Task<ProviderCreatePaymentResult> CreatePaymentAsync(

@@ -34,9 +34,10 @@ public class NotificationPushHandlerTests
 
     private sealed class InMemoryDeviceStore : IDeviceStore
     {
+        public Task<T> WithTokenLockAsync<T>(string tokenHash, Func<Task<T>> action, CancellationToken ct) => action();
         public List<Device> Devices { get; } = new();
         public Task<Device?> FindByTokenHashAsync(Guid u, string t, CancellationToken ct) => Task.FromResult<Device?>(null);
-        public Task<Device?> FindByIdForOwnerAsync(Guid d, Guid u, CancellationToken ct) => Task.FromResult<Device?>(null);
+        public Task<Device?> FindByIdForOwnerAsync(Guid d, Guid u, CancellationToken ct) => Task.FromResult(Devices.FirstOrDefault(x => x.Id == d && x.UserId == u));
         public Task AddAsync(Device d, CancellationToken ct) { Devices.Add(d); return Task.CompletedTask; }
         public Task SaveChangesAsync(CancellationToken ct) => Task.CompletedTask;
         public Task<IReadOnlyList<Device>> GetActiveDevicesAsync(Guid userId, CancellationToken ct)
@@ -50,6 +51,9 @@ public class NotificationPushHandlerTests
 
     private sealed class InMemoryPushStore : IPushStore
     {
+        public Task<bool> TryClaimDeliveryAsync(Guid deliveryId, CancellationToken ct) => Task.FromResult(true);
+        public async Task<IReadOnlyList<PushDelivery>> FetchDueForNotificationAsync(Guid notificationId, CancellationToken ct) =>
+            (await FetchDueBatchAsync(1000, ct)).Where(d => d.NotificationId == notificationId).ToList();
         public List<PushDelivery> Deliveries { get; } = new();
         public List<PushDelivery> DueBatch { get; set; } = new();
         public List<(Guid Id, PushDeliveryStatus Status, string? Error, DateTime? Next, DateTime? Sent)> Updates { get; } = new();
@@ -211,7 +215,7 @@ public class NotificationPushHandlerTests
 
         await handler.HandleAsync(PayloadJson(notif.Id, recipientId, "friend", notif.SourceEventId!.Value), CancellationToken.None);
 
-        audit.Entries.Should().ContainSingle(e => e.Action == "push.skipped" && e.Meta["reason"] == "no_active_device");
+        audit.Entries.Should().ContainSingle(e => e.Action == "push.skipped" && e.Meta["reason"] == "no_due_delivery");
     }
 
     [Fact]
@@ -546,6 +550,6 @@ public class NotificationPushHandlerTests
         await handler.HandleAsync(PayloadJson(notif.Id, recipientId, "friend", notif.SourceEventId!.Value), CancellationToken.None);
 
         ps.Updates.Should().BeEmpty();
-        audit.Entries.Should().BeEmpty();
+        audit.Entries.Should().ContainSingle(e => e.Action == "push.skipped" && e.Meta["reason"] == "no_due_delivery");
     }
 }

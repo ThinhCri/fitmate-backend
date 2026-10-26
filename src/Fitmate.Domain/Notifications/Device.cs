@@ -19,9 +19,8 @@ namespace Fitmate.Domain.Notifications;
 /// <see cref="KeyId"/>.
 /// </para>
 /// <para>
-/// A token can be active for several users at the same time (one device,
-/// multiple accounts). The unique constraint is therefore scoped to
-/// (UserId, TokenHash), not TokenHash alone.
+/// Token history is scoped to (UserId, TokenHash). Registration serializes by
+/// token hash and revokes prior owners so only one account has an active token.
 /// </para>
 /// </remarks>
 public class Device : AuditableEntity

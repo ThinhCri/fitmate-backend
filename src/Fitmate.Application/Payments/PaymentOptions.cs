@@ -5,9 +5,8 @@ public sealed class PaymentOptions
     public const string SectionName = "Payment";
 
     /// <summary>
-    /// Explicit flag to allow mock payment provider (StubPaymentProvider).
-    /// Default is false. MUST be explicitly set to true in Dev/Test environments.
-    /// In Production, setting this to true is rejected or forbidden.
+    /// Legacy switch retained only to reject unsafe old configuration on startup.
+    /// True is rejected in every runtime environment; test doubles are test-only DI.
     /// </summary>
     public bool AllowMockProvider { get; set; } = false;
 

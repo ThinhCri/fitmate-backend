@@ -38,9 +38,8 @@ public class BookingOptions
 public class AiOptions
 {
     public bool Enabled { get; set; } = false;
-    public string Provider { get; set; } = "stub";
+    public string Provider { get; set; } = "none";
     public int TimeoutMs { get; set; } = 8000;
-    public int StubLatencyMs { get; set; } = 200;
 }
 
 public class CorsOptions

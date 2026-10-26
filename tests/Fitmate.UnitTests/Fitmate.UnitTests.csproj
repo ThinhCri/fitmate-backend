@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Compile Include="../Shared/StubPaymentProvider.cs" Link="TestDoubles/StubPaymentProvider.cs" />
   </ItemGroup>
 
   <ItemGroup>

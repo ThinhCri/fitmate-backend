@@ -100,7 +100,8 @@ public class PushDeliveryDispatcher : IPushDeliveryDispatcher
         }
 
         // 3) Push enabled: fan out one delivery per active device.
-        var devices = await _devices.GetActiveDevicesAsync(payload.RecipientId, ct);
+        var devices = (await _devices.GetActiveDevicesAsync(payload.RecipientId, ct))
+            .Where(device => device.Provider == config.Provider).ToList();
         if (devices.Count == 0)
         {
             // In-app only — recipient has no registered device.

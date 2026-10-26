@@ -5,6 +5,7 @@ namespace Fitmate.Application.Payments;
 
 public class StubPaymentProvider : IPaymentProvider
 {
+    public bool IsRealProvider => false;
     public PaymentMethod Method => PaymentMethod.Vnpay;
 
     public Task<ProviderCreatePaymentResult> CreatePaymentAsync(

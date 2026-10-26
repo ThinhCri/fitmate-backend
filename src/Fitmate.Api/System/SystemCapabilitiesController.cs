@@ -47,7 +47,7 @@ public class SystemCapabilitiesController : ControllerBase
                 WorkoutAdjust: ai.WorkoutAdjustEnabled,
                 StatusReason: ai.Enabled
                     ? "AI capabilities are active."
-                    : "AI capabilities are awaiting artifact delivery and validation (BE-817). Manual workout, nutrition, and chat features are fully operational."),
+                    : "AI is disabled in server configuration. Configure real providers before enabling AI features; manual tracking remains available."),
             VipPurchase: new FeatureCapabilityStatus(
                 Enabled: false,
                 StatusReason: "VIP membership purchases are not available in current release. Dedicated in-app purchase flow will be provided in a future update."),
@@ -58,8 +58,7 @@ public class SystemCapabilitiesController : ControllerBase
                 Enabled: false,
                 StatusReason: "Automated direct payouts are not active. Trainer earnings are settled periodically through verified manual accounting transfers."),
             PushNotificationsEnabled: _push is not null and not Fitmate.Infrastructure.Notifications.MissingPushProvider,
-            PaymentsEnabled: _payments is not null and not Fitmate.Application.Payments.MissingPaymentProvider
-                and not Fitmate.Application.Payments.StubPaymentProvider,
+            PaymentsEnabled: _payments is not null and not Fitmate.Application.Payments.MissingPaymentProvider && _payments.IsRealProvider,
             StorageProvider: "local",
             Policies: new PlatformPoliciesSummary(
                 PlatformFeeBps: 1000,

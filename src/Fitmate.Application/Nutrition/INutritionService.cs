@@ -4,7 +4,7 @@ using Fitmate.Domain.Nutrition;
 namespace Fitmate.Application.Nutrition;
 
 /// <summary>
-/// Application interface for nutrition tracking: meal log CRUD, meal schedule, and AI scan stub.
+/// Application interface for nutrition tracking: meal log CRUD, meal schedule, and provider-backed AI scans.
 /// Authorization (ownership) is enforced inside this service using the passed
 /// <paramref name="userId"/> — callers are responsible for extracting the
 /// authenticated user id from <see cref="Auth.ICurrentUserAccessor"/>.

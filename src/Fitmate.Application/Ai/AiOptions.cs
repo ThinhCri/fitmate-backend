@@ -39,15 +39,15 @@ public sealed class AiOptions
     public long MaxImageSizeBytes { get; set; } = 10 * 1024 * 1024;
 
     /// <summary>
-    /// Active provider or adapter strategy (e.g. "stub", "torchscript", "python_service").
+    /// Food scan provider: "none", "gemini", or "python_service".
     /// </summary>
-    public string Provider { get; set; } = "stub";
+    public string Provider { get; set; } = "none";
 
     /// <summary>
-    /// Provider for AI Companion chat: "stub", "gemini", or "groq".
+    /// Provider for AI Companion chat: "none", "gemini", or "groq".
     /// Kept separate from Provider because nutrition inference uses its own runtime.
     /// </summary>
-    public string CompanionProvider { get; set; } = "stub";
+    public string CompanionProvider { get; set; } = "none";
 
     /// <summary>
     /// Optional external path or URI to the artifact/model file, configured outside the source tree.

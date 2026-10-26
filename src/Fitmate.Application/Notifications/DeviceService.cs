@@ -43,6 +43,13 @@ public class DeviceService : IDeviceService
         // before reaching this service.
 
         var tokenHash = ComputeTokenHash(token);
+        return await _store.WithTokenLockAsync(tokenHash,
+            () => RegisterLockedAsync(userId, token, tokenHash, platform, provider, ct), ct);
+    }
+
+    private async Task<RegisterDeviceResult> RegisterLockedAsync(Guid userId, string token, string tokenHash,
+        DevicePlatform platform, PushProvider provider, CancellationToken ct)
+    {
 
         // 1) Cross-account push leak protection: revoke any other user's active device with this tokenHash.
         var activeDevicesForToken = await _store.FindActiveDevicesByTokenHashAsync(tokenHash, ct);
@@ -59,14 +66,7 @@ public class DeviceService : IDeviceService
         if (existing is not null)
         {
             var encryptedToken = _cipher.Protect(token);
-            if (!existing.IsActive)
-            {
-                existing.Reactivate(encryptedToken, existing.KeyId, platform, provider);
-            }
-            else
-            {
-                existing.RefreshToken(encryptedToken, existing.KeyId);
-            }
+            existing.Reactivate(encryptedToken, existing.KeyId, platform, provider);
 
             await _store.SaveChangesAsync(ct);
             return new RegisterDeviceResult(existing.Id, DateTime.UtcNow);

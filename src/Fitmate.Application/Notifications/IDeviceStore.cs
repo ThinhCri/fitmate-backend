@@ -7,6 +7,7 @@ namespace Fitmate.Application.Notifications;
 /// </summary>
 public interface IDeviceStore
 {
+    Task<T> WithTokenLockAsync<T>(string tokenHash, Func<Task<T>> action, CancellationToken ct);
     /// <summary>
     /// Find a device by (userId, tokenHash). Returns null if not found.
     /// </summary>

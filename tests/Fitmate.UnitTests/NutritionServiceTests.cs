@@ -342,7 +342,7 @@ public class NutritionServiceTests
     public async Task ScanMeal_stub_throws_DomainException_with_correct_code()
     {
         var store = new InMemoryNutritionStore();
-        var stub = new AiNutritionStubAdapter();
+        var stub = new UnavailableNutritionAdapter();
         var sut = new NutritionService(store, stub, new TestOutbox());
         using var stream = new MemoryStream(new byte[1]);
 

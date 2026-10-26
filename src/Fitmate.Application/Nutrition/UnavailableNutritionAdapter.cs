@@ -6,11 +6,11 @@ using Microsoft.Extensions.Options;
 namespace Fitmate.Application.Nutrition;
 
 /// <summary>
-/// BE-817 PREPARE NOW: Food recognition adapter boundary stub.
+/// Fail-closed unavailable adapter when no real provider is selected.
 /// Validates input, cancellation, and config gating; throws typed 503 AiUnavailableException.
-/// Real inference execution will be plugged in once .pt artifact is handed off and validated.
+/// Real inference adapters are selected in the API composition root.
 /// </summary>
-public class AiNutritionStubAdapter : IAiNutritionAdapter
+public class UnavailableNutritionAdapter : IAiNutritionAdapter
 {
     private static readonly HashSet<string> SupportedContentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -22,7 +22,7 @@ public class AiNutritionStubAdapter : IAiNutritionAdapter
 
     private readonly IOptions<AiOptions>? _options;
 
-    public AiNutritionStubAdapter(IOptions<AiOptions>? options = null)
+    public UnavailableNutritionAdapter(IOptions<AiOptions>? options = null)
     {
         _options = options;
     }
@@ -61,7 +61,7 @@ public class AiNutritionStubAdapter : IAiNutritionAdapter
         {
             // When real model is integrated in later phases of BE-817, inference execution will occur here.
             // Currently awaiting artifact handoff per ai-contract.md.
-            throw new AiUnavailableException("AI food recognition model artifact is not yet integrated.");
+            throw new AiUnavailableException("AI meal scan provider is not configured.");
         }
 
         throw new AiUnavailableException("AI meal scan is not available. Provider not configured or disabled.");

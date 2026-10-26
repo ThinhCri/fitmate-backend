@@ -176,7 +176,7 @@ public class FitmateTestAppFactory : WebApplicationFactory<Program>
                 ["Ai:CompanionChatEnabled"] = "false",
                 ["Ai:WorkoutAdjustEnabled"] = "false",
                 ["Storage:BasePath"] = Path.Combine(Path.GetTempPath(), "fitmate-integration-uploads"),
-                ["Payment:AllowMockProvider"] = "true",
+                ["Payment:AllowMockProvider"] = "false",
                 ["Vnpay:TmnCode"] = "FITMATETEST",
                 ["Vnpay:HashSecret"] = "VNPAYINTEGRATIONTESTSECRETKEY1234567890ABCDEF1234567890ABCDEF",
                 ["Vnpay:PaymentUrl"] = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
@@ -187,6 +187,7 @@ public class FitmateTestAppFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            services.AddScoped<Fitmate.Application.Payments.IPaymentProvider, Fitmate.Application.Payments.StubPaymentProvider>();
             // Windows test compatibility: persist DataProtection keys to temp directory
             services.AddDataProtection()
                 .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(Path.GetTempPath(), "fitmate-test-dpkeys")))

@@ -15,6 +15,7 @@ public class DeviceServiceTests
 {
     private sealed class InMemoryDeviceStore : IDeviceStore
     {
+        public Task<T> WithTokenLockAsync<T>(string tokenHash, Func<Task<T>> action, CancellationToken ct) => action();
         public Dictionary<Guid, Device> ById { get; } = new();
 
         public Task<Device?> FindByTokenHashAsync(Guid userId, string tokenHash, CancellationToken ct)

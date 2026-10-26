@@ -94,31 +94,27 @@ public sealed class NotificationPushHandler : IOutboxHandler
         }
 
         var now = DateTime.UtcNow;
-        var devices = await _devices.GetActiveDevicesAsync(payload.RecipientId, ct);
-
-        if (devices.Count == 0)
+        var config = await _pushes.GetConfigAsync(ct);
+        var deliveries = await _pushes.FetchDueForNotificationAsync(payload.NotificationId, ct);
+        if (deliveries.Count == 0)
         {
-            _audit.Log(
-                "push.skipped",
-                payload.RecipientId,
-                new Dictionary<string, string>
-                {
-                    ["reason"] = "no_active_device",
-                    ["notification_id"] = payload.NotificationId.ToString(),
-                });
+            _audit.Log("push.skipped", payload.RecipientId, new Dictionary<string, string> { ["reason"] = "no_due_delivery" });
             return;
         }
-
-        foreach (var device in devices)
+        foreach (var mine in deliveries)
         {
             if (ct.IsCancellationRequested) break;
-
-            // Per-delivery lookup to pick up expiry / retry-attempts.
-            var deliveries = await _pushes.FetchDueBatchAsync(batchSize: 100, ct);
-            var mine = deliveries.FirstOrDefault(d =>
-                d.NotificationId == payload.NotificationId &&
-                d.DeviceId == device.Id);
-            if (mine is null) continue;
+            var device = await _devices.FindByIdForOwnerAsync(mine.DeviceId, payload.RecipientId, ct);
+            if (device is null)
+            {
+                await MarkPermanent(mine, "owner_mismatch", payload.RecipientId, ct);
+                continue;
+            }
+            if (config is not null && (!config.Enabled || device.Provider != config.Provider))
+            {
+                await MarkPermanent(mine, "provider_disabled_or_mismatched", payload.RecipientId, ct);
+                continue;
+            }
 
             // ─── Sender-side checks ──────────────────────────────────────
             if (!device.IsActive)
@@ -146,6 +142,8 @@ public sealed class NotificationPushHandler : IOutboxHandler
                 continue;
             }
 
+            if (!await _pushes.TryClaimDeliveryAsync(mine.Id, ct)) continue;
+
             // ─── Provider call ───────────────────────────────────────────
             string decryptedToken;
             try
@@ -169,7 +167,7 @@ public sealed class NotificationPushHandler : IOutboxHandler
                     notification.PayloadJson ?? "{}",
                     ct);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Unexpected exception → treat as retryable.
                 if (mine.IsExpired(now.Add(Backoff(mine.Attempts + 1))))
@@ -181,7 +179,7 @@ public sealed class NotificationPushHandler : IOutboxHandler
                     await _pushes.UpdateStatusAsync(
                         mine.Id,
                         PushDeliveryStatus.FailedRetryable,
-                        Truncate(ex.Message, 200),
+                        "push_transport_failure",
                         now.Add(Backoff(mine.Attempts + 1)),
                         sentAt: null,
                         ct);

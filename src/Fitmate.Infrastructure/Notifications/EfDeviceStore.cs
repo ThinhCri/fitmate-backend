@@ -11,6 +11,22 @@ public class EfDeviceStore : IDeviceStore
 
     public EfDeviceStore(FitmateDbContext db) => _db = db;
 
+    public async Task<T> WithTokenLockAsync<T>(string tokenHash, Func<Task<T>> action, CancellationToken ct)
+    {
+        if (_db.Database.CurrentTransaction is not null)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({tokenHash}, 0))", ct);
+            return await action();
+        }
+        return await _db.Database.CreateExecutionStrategy().ExecuteAsync(async () => {
+            // A failed attempt must not reuse tracked registration/revocation snapshots.
+            foreach (var entry in _db.ChangeTracker.Entries<Device>().Where(e => e.Entity.TokenHash == tokenHash).ToList()) entry.State = EntityState.Detached;
+            await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+            await _db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({tokenHash}, 0))", ct);
+            var result = await action(); await transaction.CommitAsync(ct); return result;
+        });
+    }
+
     public async Task<Device?> FindByTokenHashAsync(
         Guid userId, string tokenHash, CancellationToken ct)
     {

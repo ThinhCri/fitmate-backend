@@ -2889,6 +2889,98 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /me/workout/suggestions:
+    post:
+      tags: [Workout]
+      summary: Gợi ý tập luyện theo yêu cầu, dùng ngân sách AI chat; không tự ghi kế hoạch
+      operationId: suggestWorkoutPlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [goal]
+              properties:
+                goal: {type: string, minLength: 1, maxLength: 200}
+                fitness_level: {type: string, nullable: true, maxLength: 100}
+                notes: {type: string, nullable: true, maxLength: 1000}
+                equipment:
+                  type: array
+                  maxItems: 20
+                  items: {type: string, minLength: 1, maxLength: 80}
+                target_muscles:
+                  type: array
+                  maxItems: 20
+                  items: {type: string, minLength: 1, maxLength: 80}
+      responses:
+        '200':
+          description: Gợi ý tham khảo từ provider thật, chưa lưu thành kế hoạch
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suggested_plan_name, description, exercises, confidence, source, disclaimer]
+                properties:
+                  suggested_plan_name: {type: string}
+                  description: {type: string, nullable: true}
+                  confidence: {type: number, nullable: true}
+                  source: {type: string}
+                  disclaimer: {type: string, nullable: true}
+                  exercises:
+                    type: array
+                    maxItems: 12
+                    items:
+                      type: object
+                      required: [exercise_name, sets, reps, rest_seconds, notes]
+                      properties:
+                        exercise_name: {type: string}
+                        sets: {type: integer, minimum: 1, maximum: 6}
+                        reps: {type: integer, minimum: 1, maximum: 50}
+                        rest_seconds: {type: integer, nullable: true, minimum: 15, maximum: 300}
+                        notes: {type: string, nullable: true}
+        '400': {description: Invalid input}
+        '401': {description: Authentication required}
+        '403': {description: Member or PT required}
+        '429': {description: AI daily budget or provider rate limit reached}
+        '502': {description: Invalid provider output rejected without changing a plan}
+        '503': {description: 'Provider disabled, unconfigured or unavailable'}
+
+  /social/users/{id}/summary:
+    get:
+      tags: [Social]
+      summary: Số bài được phép xem, số bạn và huy hiệu hoạt động có nguồn; số buổi tập chỉ trả cho chính chủ
+      operationId: getSocialProfileSummary
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Profile activity summary, no private health information about other users
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [post_count, friend_count, completed_workouts_count, badges]
+                properties:
+                  post_count: {type: integer, minimum: 0}
+                  friend_count: {type: integer, minimum: 0}
+                  completed_workouts_count: {type: integer, nullable: true, minimum: 0}
+                  badges:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, title, description]
+                      properties:
+                        id: {type: string}
+                        title: {type: string}
+                        description: {type: string}
+        '400': {description: Invalid target UUID}
+        '401': {description: Authentication required}
+        '404': {description: Profile unavailable or interaction blocked in either direction}
+
   /social/posts:
     get:
       tags: [Social]

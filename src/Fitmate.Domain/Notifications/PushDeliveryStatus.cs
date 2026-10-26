@@ -42,4 +42,6 @@ public enum PushDeliveryStatus
 
     /// <summary>Expired without being sent. Notification row remains in the in-app inbox.</summary>
     Expired = 7,
+    /// <summary>Provider attempt leased for two minutes; recoverable after a worker crash.</summary>
+    Sending = 8,
 }
