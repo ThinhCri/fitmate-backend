@@ -24,6 +24,8 @@ BE-801 xuất inventory từng operation/schema. Spec không chứng minh implem
 | 17 | AI usage + Google Play AI Plus | Legacy premium inactive | C `/me/ai-usage`, `/me/ai-subscription`, token verification/binding, encrypted entitlement and reconciliation; native checkout implemented in Mobile but Play UAT/RTDN external gate remains; legacy VIP/rewards disabled | BE-829 |
 
 ## Inventory không bị xóa
+
+- BR-11 / BE-814: author-filtered `/social/posts?author_id=UUID&scope=friends&cursor=...` implemented for mobile profiles with existing privacy/block filters and cursor paging. Backend unit tests pass; real PostgreSQL privacy integration and Android UAT pending. Friends/health counters and earned badges are not introduced as invented public aggregates.
 Mobile FP-001..040 vẫn ở repo app (FP-034 đang trùng nhãn trong tài liệu cũ); dùng BR IDs cross-repo, không renumber lịch sử âm thầm.
 Safe-area/tabs/bottom-sheet/timer/audio/checkpoint/image-picker là FE, không cần endpoint riêng cho mỗi UI primitive.
 Web legacy Mentor/Student/Premium files: WEB-807 kiểm imports/routes trước cleanup, không xóa chỉ vì tên.

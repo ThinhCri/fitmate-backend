@@ -3,14 +3,13 @@ using Fitmate.Domain.Common;
 namespace Fitmate.Application.Social;
 
 /// <summary>
-/// Cursor: base64("<unix-ms>|<guid>"). Cùng pattern cho social feed (BE-180), friend list, block list.
+/// Opaque v2 cursor preserves timestamp ticks; accepts legacy unix-ms cursors.
 /// </summary>
 public static class CursorEncoder
 {
     public static string Encode(DateTime createdAtUtc, Guid id)
     {
-        var ms = new DateTimeOffset(createdAtUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-        var raw = $"{ms}|{id:D}";
+        var raw = $"v2:{createdAtUtc.Ticks}|{id:D}";
         return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(raw));
     }
 
@@ -19,14 +18,18 @@ public static class CursorEncoder
         if (string.IsNullOrWhiteSpace(cursor)) return (null, null);
         try
         {
+            if (cursor.Length > 256) throw new FormatException("cursor length");
             var raw = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
             var parts = raw.Split('|', 2);
             if (parts.Length != 2) throw new FormatException("cursor parts");
-            if (!long.TryParse(parts[0], out var ms)) throw new FormatException("cursor ts");
             if (!Guid.TryParse(parts[1], out var id)) throw new FormatException("cursor id");
-            return (DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime, id);
+            var version2 = parts[0].StartsWith("v2:", StringComparison.Ordinal);
+            var timestamp = version2 ? parts[0][3..] : parts[0];
+            if (!long.TryParse(timestamp, System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var value)) throw new FormatException("cursor ts");
+            return (version2 ? new DateTime(value, DateTimeKind.Utc) : DateTimeOffset.FromUnixTimeMilliseconds(value).UtcDateTime, id);
         }
-        catch (Exception ex) when (ex is FormatException)
+        catch (Exception ex) when (ex is FormatException or ArgumentOutOfRangeException)
         {
             throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "cursor invalid.",
                 new Dictionary<string, string[]> { ["cursor"] = new[] { "base64(ts|guid)" } });

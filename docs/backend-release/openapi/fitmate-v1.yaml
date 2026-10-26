@@ -2896,6 +2896,12 @@ paths:
       operationId: listPosts
       parameters:
         - in: query
+          name: author_id
+          description: Lọc tác giả trước phân trang; vẫn áp visibility, friendship và block hai chiều. UUID rỗng không hợp lệ.
+          schema:
+            type: string
+            format: uuid
+        - in: query
           name: cursor
           schema:
             type: string
@@ -2933,6 +2939,10 @@ paths:
                   nextCursor:
                     type: string
                     nullable: true
+        '400':
+          description: Invalid author UUID, scope, search query or opaque cursor
+        '401':
+          description: Authentication required
     post:
       tags: [Social]
       summary: Tạo post

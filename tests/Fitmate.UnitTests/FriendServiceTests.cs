@@ -111,7 +111,7 @@ public class FriendServiceTests
         public Task<SocialAuthorRow?> GetAuthorAsync(Guid userId, CancellationToken ct)
             => Task.FromResult<SocialAuthorRow?>(new SocialAuthorRow(userId, "Test User", null));
         // Các method khác không dùng trong Friend tests — throw để bắt nếu ai gọi nhầm.
-        public Task<(IReadOnlyList<SocialPostRow>, string?)> ListPostsAsync(Guid? v, FeedScope s, DateTime? c, Guid? i, int l, string? q, CancellationToken ct) => throw new NotImplementedException();
+        public Task<(IReadOnlyList<SocialPostRow>, string?)> ListPostsAsync(Guid? v, FeedScope s, DateTime? c, Guid? i, int l, string? q, CancellationToken ct, Guid? authorId = null) => throw new NotImplementedException();
         public Task<IReadOnlyList<SocialPostRow>> ListBookmarkedPostsAsync(Guid v, DateTime? c, Guid? i, int l, CancellationToken ct) => throw new NotImplementedException();
         public Task<SocialPostRow?> GetPostByIdAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();
         public Task<SocialPostRow?> GetPostWithAuthorAsync(Guid id, CancellationToken ct) => throw new NotImplementedException();

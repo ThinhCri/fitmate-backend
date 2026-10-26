@@ -47,9 +47,10 @@ public class SocialServiceTests
         public HashSet<(Guid PostId, Guid UserId)> Bookmarks { get; } = new();
 
         public Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
-            Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, string? query, CancellationToken ct)
+            Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, string? query, CancellationToken ct, Guid? authorId = null)
         {
             IEnumerable<SocialPostRow> q = Posts;
+            if (authorId.HasValue) q = q.Where(p => p.AuthorId == authorId.Value);
             if (scope == FeedScope.Public)
                 q = q.Where(p => p.Visibility == PostVisibility.Public);
             else
@@ -280,6 +281,31 @@ public class SocialServiceTests
         var page = await NewService(store, new InMemoryCertificateStore()).ListPostsAsync(viewer, FeedScope.Friends, null, 10, null, CancellationToken.None);
         // Viewer thấy: chính mình friends + other's public = 2
         page.Items.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ListPosts_AuthorFilter_AppliesBeforeCursorPagination()
+    {
+        var store = new InMemorySocialStore();
+        var author = Guid.NewGuid();
+        for (var i = 0; i < 5; i++) store.Posts.Add(NewPost(author, PostVisibility.Public));
+        for (var i = 0; i < 10; i++) store.Posts.Add(NewPost(Guid.NewGuid(), PostVisibility.Public));
+        store.Posts.Add(NewPost(author, PostVisibility.Private));
+        var service = NewService(store, new InMemoryCertificateStore());
+        var first = await service.ListPostsAsync(null, FeedScope.Public, null, 2, null, CancellationToken.None, author);
+        first.Items.Should().HaveCount(2).And.OnlyContain(p => p.AuthorId == author && p.Visibility == "public");
+        first.NextCursor.Should().NotBeNull();
+        var second = await service.ListPostsAsync(null, FeedScope.Public, first.NextCursor, 2, null, CancellationToken.None, author);
+        second.Items.Should().HaveCount(2);
+        second.Items.Select(p => p.Id).Should().NotIntersectWith(first.Items.Select(p => p.Id));
+    }
+
+    [Fact]
+    public async Task ListPosts_RejectsEmptyAuthorId()
+    {
+        var service = NewService(new InMemorySocialStore(), new InMemoryCertificateStore());
+        var act = () => service.ListPostsAsync(null, FeedScope.Public, null, 20, null, CancellationToken.None, Guid.Empty);
+        await act.Should().ThrowAsync<ValidationException>();
     }
 
     [Fact]

@@ -78,7 +78,7 @@ public sealed record ReportInputDto(
 
 public interface ISocialService
 {
-    Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, string? query, CancellationToken ct);
+    Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, string? query, CancellationToken ct, Guid? authorId = null);
     Task<PostPage> ListBookmarkedPostsAsync(Guid viewerId, string? cursor, int limit, CancellationToken ct);
     Task<PostView> GetPostAsync(Guid viewerId, Guid postId, CancellationToken ct);
     Task<PostView> CreatePostAsync(Guid authorId, PostInput input, CancellationToken ct);

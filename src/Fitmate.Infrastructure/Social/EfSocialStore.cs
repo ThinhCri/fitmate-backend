@@ -29,7 +29,7 @@ public class EfSocialStore : ISocialStore
     }
 
     public async Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
-        Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, string? query, CancellationToken ct)
+        Guid? viewerId, FeedScope scope, DateTime? cursorCreatedAt, Guid? cursorId, int limit, string? query, CancellationToken ct, Guid? authorId = null)
     {
         // Scope: Public => chỉ Visibility=Public; Friends => Public + (Friends của viewer) + author = viewer.
         IQueryable<Post> q = _db.Posts.Where(p => p.DeletedAt == null);
@@ -55,7 +55,7 @@ public class EfSocialStore : ISocialStore
             }
             q = q.Where(p => p.Visibility == PostVisibility.Public
                           || (viewerId.HasValue && p.AuthorId == viewerId.Value)
-                          || (viewerId.HasValue && friendIds.Contains(p.AuthorId)));
+                          || (viewerId.HasValue && p.Visibility == PostVisibility.Friends && friendIds.Contains(p.AuthorId)));
         }
 
         if (viewerId.HasValue)
@@ -66,6 +66,9 @@ public class EfSocialStore : ISocialStore
                 .Select(b => b.BlockerId == v ? b.BlockedId : b.BlockerId);
             q = q.Where(p => !blockedUserIds.Contains(p.AuthorId));
         }
+
+        if (authorId.HasValue)
+            q = q.Where(p => p.AuthorId == authorId.Value);
 
         if (!string.IsNullOrWhiteSpace(query))
         {

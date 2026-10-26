@@ -56,7 +56,7 @@ public class SocialService : ISocialService
         _logger = logger;
     }
 
-    public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, string? query, CancellationToken ct)
+    public async Task<PostPage> ListPostsAsync(Guid? viewerId, FeedScope scope, string? cursor, int limit, string? query, CancellationToken ct, Guid? authorId = null)
     {
         // Feed không yêu cầu role — chỉ cần user hợp lệ (anonymous cũng xem được public).
         if (limit < 1) limit = DefaultLimit;
@@ -67,7 +67,10 @@ public class SocialService : ISocialService
                 new Dictionary<string, string[]> { ["query"] = new[] { $"Maximum length is {MaxSearchLength}." } });
 
         var (createdAt, id) = ParseCursor(cursor);
-        var (rows, _) = await _store.ListPostsAsync(viewerId, scope, createdAt, id, limit + 1, query, ct);
+        if (authorId == Guid.Empty)
+            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "author_id invalid.",
+                new Dictionary<string, string[]> { ["author_id"] = new[] { "A non-empty UUID is required." } });
+        var (rows, _) = await _store.ListPostsAsync(viewerId, scope, createdAt, id, limit + 1, query, ct, authorId);
 
         var hasMore = rows.Count > limit;
         var page = hasMore ? rows.Take(limit).ToList() : rows;
@@ -461,31 +464,9 @@ public class SocialService : ISocialService
             ImageStorageKeys: viewerId == r.AuthorId ? storageKeys : []);
     }
 
-    /// <summary>Cursor: base64("<unix-ms>|<guid>"). Ổn định theo (CreatedAt desc, Id desc).</summary>
-    internal static string EncodeCursor(DateTime createdAtUtc, Guid id)
-    {
-        var ms = new DateTimeOffset(createdAtUtc, TimeSpan.Zero).ToUnixTimeMilliseconds();
-        var raw = $"{ms}|{id:D}";
-        return Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(raw));
-    }
+    internal static string EncodeCursor(DateTime createdAtUtc, Guid id) => CursorEncoder.Encode(createdAtUtc, id);
 
-    internal static (DateTime? createdAt, Guid? id) ParseCursor(string? cursor)
-    {
-        if (string.IsNullOrWhiteSpace(cursor)) return (null, null);
-        try
-        {
-            var raw = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(cursor));
-            var parts = raw.Split('|', 2);
-            if (parts.Length != 2) throw new FormatException("cursor parts");
-            if (!long.TryParse(parts[0], out var ms)) throw new FormatException("cursor ts");
-            if (!Guid.TryParse(parts[1], out var id)) throw new FormatException("cursor id");
-            return (DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime, id);
-        }
-        catch (Exception ex) when (ex is FormatException)
-        {
-            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "cursor invalid.", new Dictionary<string, string[]> { ["cursor"] = new[] { "base64(ts|guid)" } });
-        }
-    }
+    internal static (DateTime? createdAt, Guid? id) ParseCursor(string? cursor) => CursorEncoder.Decode(cursor);
 
     /// <summary>BE-181: delegate Friend check sang FriendService.</summary>
     private Task<bool> IsFriendAsync(Guid viewerId, Guid authorId, CancellationToken ct) => _friend.IsFriendAsync(viewerId, authorId, ct);

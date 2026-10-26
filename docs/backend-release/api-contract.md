@@ -37,6 +37,11 @@ Sau freeze: additive hoặc version/migration window có consumer agreement.
 Mỗi operation có implemented/spec-only/proposed/verified marker trong coverage report.
 Production lỗi phải show error/unavailable; không fallback mock.
 
+## Social profile feed follow-up — 2026-10-26
+`GET /social/posts` accepts optional `author_id` UUID (empty UUID is 400). Filter is applied before cursor/limit and after the same visibility/friendship/block rules; filtering an author does not grant access. Friends scope only includes friends-only posts of friends, never their private posts. Own private posts remain owner-visible. No public health aggregates added.
+
+Social/friend/block cursors are opaque: new encoding preserves .NET timestamp ticks with a v2 marker, and decoder accepts legacy unix-ms cursors. Clients must pass `nextCursor` unchanged. Invalid/out-of-range/oversized cursors return 400 rather than a server error. Restart pagination if filters change. Unit tests passed; PostgreSQL integration source compiled but local port 5432 unavailable. Generated clients/hash still need normal regeneration/verification before contract freeze.
+
 
 ## Payment/settlement override — 2026-09-26
 User chọn tích hợp payOS cho checkout mới và chi PT thủ công sau gọi xác nhận khách + PT + hồ sơ buổi tập. Xem [runbook](runbooks/payos-manual-settlement.md) và handoff mới. Code/migration/tests đã soạn, chưa chạy; evidence cũ không verify thay đổi mới. OPS-03 cần xác nhận provider cho mô hình thu tiền/chi PT trước live. Không tự deploy/commit/chuyển tiền.
