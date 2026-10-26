@@ -112,6 +112,19 @@ public class TrainerRevenueServiceTests
     }
 
     [Fact]
+    public async Task GetOverview_ReturnsOnlyRefundAdjustmentAgainstRecognizedTrainerEarnings()
+    {
+        var store = new InMemoryTrainerTrainerStoreWrapper();
+        var at = DateTime.UtcNow.AddDays(-1);
+        store.Bookings.Add(BookingRow(100_000, 10_000, 90_000, at, AppointmentStatus.Completed, refunded: 20_000));
+        store.Bookings.Add(BookingRow(200_000, 20_000, 180_000, at, AppointmentStatus.Cancelled, refunded: 200_000));
+        var overview = await NewService(store, "PT").GetOverviewAsync(Guid.NewGuid(), FinanceRange._30d, CancellationToken.None);
+        overview.RefundAdjustmentVnd.Should().Be(18_000);
+        overview.NetEarningsVnd.Should().Be(72_000);
+        (overview.RefundAdjustmentVnd + overview.NetEarningsVnd).Should().Be(90_000);
+    }
+
+    [Fact]
     public async Task GetOverview_NonPt_Forbidden()
     {
         var store = new InMemoryTrainerTrainerStoreWrapper();

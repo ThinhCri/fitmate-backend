@@ -42,6 +42,7 @@ public class RevenueContractTests
             "pending_payout_vnd",
             "completed_payout_vnd",
             "completed_sessions_count",
+            "refund_adjustment_vnd",
             "chart"
         };
 
@@ -147,6 +148,7 @@ public class RevenueContractTests
             "pending_payout_vnd",
             "completed_payout_vnd",
             "completed_sessions_count",
+            "refund_adjustment_vnd",
             "chart"
         };
         overviewSchema.Properties.Keys.Should().BeEquivalentTo(expectedOverviewProps);

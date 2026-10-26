@@ -16,7 +16,8 @@ public sealed record TrainerRevenueOverview(
     [property: JsonPropertyName("pending_payout_vnd")] long PendingPayoutVnd,
     [property: JsonPropertyName("completed_payout_vnd")] long CompletedPayoutVnd,
     [property: JsonPropertyName("completed_sessions_count")] int CompletedSessionsCount,
-    [property: JsonPropertyName("chart")] IReadOnlyList<TrainerRevenueChartPoint> Chart);
+    [property: JsonPropertyName("chart")] IReadOnlyList<TrainerRevenueChartPoint> Chart,
+    [property: JsonPropertyName("refund_adjustment_vnd")] long RefundAdjustmentVnd = 0);
 
 public sealed record TrainerRevenueItem(
     [property: JsonPropertyName("appointment_id")] Guid AppointmentId,

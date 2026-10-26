@@ -39,7 +39,7 @@ public sealed class MobileWireContractIntegrationTests : IClassFixture<FitmateTe
         await AssertObjectKeys(pt, "/api/v1/me/revenue/history", "items", "total", "page", "pageSize");
         await AssertObjectKeys(pt, "/api/v1/me/revenue", "range", "total_gross_vnd",
             "platform_fee_vnd", "net_earnings_vnd", "pending_payout_vnd",
-            "completed_payout_vnd", "completed_sessions_count", "chart");
+            "completed_payout_vnd", "completed_sessions_count", "chart", "refund_adjustment_vnd");
     }
 
     [Fact]

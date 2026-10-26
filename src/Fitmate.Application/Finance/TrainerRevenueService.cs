@@ -61,7 +61,8 @@ public class TrainerRevenueService : ITrainerRevenueService
             PendingPayoutVnd: netEarnings - paidOut,
             CompletedPayoutVnd: paidOut,
             CompletedSessionsCount: completedSessionsCount,
-            Chart: chart);
+            Chart: chart,
+            RefundAdjustmentVnd: paidRows.Sum(r => r.TrainerShareVnd - NetRevenue(r)));
     }
 
     public async Task<TrainerRevenueHistoryPage> GetHistoryAsync(Guid ptUserId, int page, int pageSize, CancellationToken ct)

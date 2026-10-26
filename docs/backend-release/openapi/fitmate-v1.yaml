@@ -7158,6 +7158,7 @@ components:
         - completed_payout_vnd
         - completed_sessions_count
         - chart
+        - refund_adjustment_vnd
       properties:
         range:
           type: string
@@ -7174,6 +7175,9 @@ components:
           type: integer
         completed_sessions_count:
           type: integer
+        refund_adjustment_vnd:
+          type: integer
+          description: Phần thu nhập PT bị giảm bởi hoàn tiền của các buổi đã ghi nhận trong kỳ; không phải toàn bộ tiền hoàn khách.
         chart:
           type: array
           items:
