@@ -2287,11 +2287,6 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/PtPayoutAccount'}
-        '409':
-          description: Verified phone or another payout-account prerequisite is missing
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/ProblemDetails'}
         '422': {$ref: '#/components/responses/ValidationError'}
         '429': {$ref: '#/components/responses/RateLimited'}
 
@@ -5301,9 +5296,13 @@ paths:
   /admin/analytics/overview:
     get:
       tags: [Admin]
-      summary: Read-only GA4 app usage metrics; returns configured=false without fabricated zeros
+      summary: Read-only GA4 metrics filtered by app or landing; standard reports are not realtime
       operationId: adminAnalyticsOverview
       parameters:
+        - in: query
+          name: source
+          description: app filters Android/iOS; landing filters web traffic on fitmate.site and www.fitmate.site; all preserves combined reports
+          schema: { type: string, enum: [all, app, landing], default: all }
         - in: query
           name: range
           schema: { type: string, enum: [7d, 30d, 90d], default: 30d }
@@ -7242,6 +7241,12 @@ components:
       type: object
       required: [configured, range, activeUsers, newUsers, views, eventCount, days]
       properties:
+        source: { type: string, enum: [all, app, landing] }
+        generatedAtUtc: { type: string, format: date-time, nullable: true, description: "Time fetched from GA4; cached for up to 5 minutes, not the processing watermark" }
+        realtimeActiveUsers: { type: integer, format: int64, nullable: true }
+        realtimeViews: { type: integer, format: int64, nullable: true }
+        realtimeStatus: { type: string, enum: [available, unavailable, not_configured] }
+        realtimeGeneratedAtUtc: { type: string, format: date-time, nullable: true, description: Snapshot from GA4 last 30 minutes; cached up to 30 seconds }
         configured: { type: boolean }
         range: { type: string, enum: [7d, 30d, 90d] }
         activeUsers: { type: integer, format: int64, nullable: true }
@@ -7627,6 +7632,7 @@ components:
         rest_sec:
           type: integer
           minimum: 0
+          maximum: 600
         rest_after_sec:
           type: integer
         calories:
