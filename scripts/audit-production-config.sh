@@ -7,6 +7,7 @@ test -r "$env_file" || { echo 'CONFIG_NOT_READABLE'; exit 1; }
 keys=(
   Email__SmtpHost Email__SmtpUsername Email__SmtpPassword Email__SenderEmail Email__FrontendBaseUrl
   Groq__ApiKey Gemini__ApiKey Ai__InternalToken
+  FcmPush__ProjectId FcmPush__ServiceAccountJsonBase64
   BankLookup__ClientId BankLookup__ApiKey
   GoogleMeet__ClientId GoogleMeet__ClientSecret GoogleMeet__RedirectUri
   Sms__AccessToken Sms__Sender
@@ -26,7 +27,7 @@ for key in "${keys[@]}"; do
 done
 unset value
 # Only non-secret booleans/provider selectors are allowlisted below.
-for key in Ai__Enabled Ai__FoodScanEnabled Ai__CompanionChatEnabled Ai__WorkoutAdjustEnabled Groq__Enabled Gemini__Enabled Payos__Enabled Payos__MerchantApproved GooglePlayBilling__Enabled GooglePlayBilling__SalesEnabled AiUsage__Enabled; do
+for key in FcmPush__Enabled Ai__Enabled Ai__FoodScanEnabled Ai__CompanionChatEnabled Ai__WorkoutAdjustEnabled Groq__Enabled Gemini__Enabled Payos__Enabled Payos__MerchantApproved GooglePlayBilling__Enabled GooglePlayBilling__SalesEnabled AiUsage__Enabled; do
   value=$(sed -n "s/^${key}=//p" "$env_file" | tail -n 1 | tr -d '\r')
   case "$value" in true|false|True|False) printf '%s=%s\n' "$key" "$value";; *) printf '%s=UNSET_OR_NONBOOLEAN\n' "$key";; esac
 done

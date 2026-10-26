@@ -1,5 +1,7 @@
 # Rà soát dữ liệu thật theo vai trò — 2026-10-26
 
+> Cập nhật 27/10: các mục "chưa có code" về native FCM, AI hosted và số liệu hồ sơ bên dưới là lịch sử. Đã bổ sung implementation/API thật, dọn prototype và kiểm thử unit backend; xem [cấu hình và UAT hiện hành](provider-setup-and-real-tests-20261027.md). Key/console setup, PostgreSQL integration, native UI và end-to-end vẫn chưa nghiệm thu.
+
 Trạng thái: IMPLEMENTED_UNVERIFIED cho lượt UI mới. Không phải chứng nhận toàn bộ chức năng hoặc cho phép phát hành. Yêu cầu owner: commit công việc đã làm, lưu thiếu cấu hình, rà Admin/member/PT; loại dữ liệu giả trong runtime, kết nối API thật.
 
 ## Đã sửa trong lượt rà soát

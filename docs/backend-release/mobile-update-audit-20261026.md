@@ -1,5 +1,7 @@
 # Mobile/backend release audit — 2026-10-26
 
+> Superseded provider implementation status on 2026-10-27: real FCM, hosted Gemini food scan, Groq workout suggestions and profile summaries now exist. See [current provider setup and real-test checklist](provider-setup-and-real-tests-20261027.md). Presence-only VPS observations below remain historical; no new live audit/deploy was performed. The old staged archive must be rebuilt.
+
 This is a readiness audit, not certification that every product module is complete. Never enable payments, billing, AI inference or push merely by setting all booleans true.
 
 ## Configuration actually inspected on VPS

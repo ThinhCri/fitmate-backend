@@ -72,12 +72,50 @@ files=(
   src/Fitmate.Application/Admin/AdminAnalyticsService.cs
   src/Fitmate.Infrastructure/Admin/Ga4ReportProvider.cs
   src/Fitmate.Infrastructure/Notifications/MissingPushProvider.cs
+  src/Fitmate.Api/Social/SocialProfilesController.cs
+  src/Fitmate.Api/Workout/WorkoutSuggestionsController.cs
+  src/Fitmate.Application/Ai/AiOptions.cs
+  src/Fitmate.Application/Chat/UnavailableCompanionAdapter.cs
+  src/Fitmate.Application/Chat/CompanionRoutingAdapter.cs
+  src/Fitmate.Application/Nutrition/UnavailableNutritionAdapter.cs
+  src/Fitmate.Application/Nutrition/INutritionService.cs
+  src/Fitmate.Application/Common/AppOptions.cs
+  src/Fitmate.Application/Payments/IPaymentProvider.cs
+  src/Fitmate.Application/Payments/PaymentOptions.cs
+  src/Fitmate.Application/Social/SocialProfileSummaryService.cs
+  src/Fitmate.Application/Workout/IAiWorkoutAdapter.cs
+  src/Fitmate.Application/Workout/UnavailableWorkoutAdapter.cs
+  src/Fitmate.Application/Workout/WorkoutSuggestionService.cs
+  src/Fitmate.Application/Notifications/DeviceService.cs
+  src/Fitmate.Application/Notifications/IDeviceStore.cs
+  src/Fitmate.Application/Notifications/IPushStore.cs
+  src/Fitmate.Application/Notifications/PushDeliveryDispatcher.cs
+  src/Fitmate.Application/Notifications/Handlers/NotificationPushHandler.cs
+  src/Fitmate.Domain/Notifications/Device.cs
+  src/Fitmate.Domain/Notifications/PushDeliveryStatus.cs
+  src/Fitmate.Infrastructure/Chat/GroqWorkoutAdapter.cs
+  src/Fitmate.Infrastructure/Nutrition/GeminiNutritionAdapter.cs
+  src/Fitmate.Infrastructure/Social/EfSocialProfileSummaryStore.cs
+  src/Fitmate.Infrastructure/Notifications/FcmPushOptions.cs
+  src/Fitmate.Infrastructure/Notifications/FcmPushProvider.cs
+  src/Fitmate.Infrastructure/Notifications/PushRetryBackgroundService.cs
+  src/Fitmate.Infrastructure/Notifications/EfDeviceStore.cs
+  src/Fitmate.Infrastructure/Notifications/EfPushStore.cs
+)
+obsolete=(
+  src/Fitmate.Application/Payments/StubPaymentProvider.cs
+  src/Fitmate.Application/Nutrition/AiNutritionStubAdapter.cs
+  src/Fitmate.Application/Chat/AiCompanionStubAdapter.cs
+  src/Fitmate.Application/Workout/AiWorkoutStubAdapter.cs
 )
 existing=()
 new=()
 for file in "${files[@]}"; do
   test -f "$stage/$file" && test ! -L "$stage/$file"
   if test -f "$backend/$file"; then existing+=("$file"); else new+=("$file"); fi
+done
+for file in "${obsolete[@]}"; do
+  if test -f "$backend/$file"; then existing+=("$file"); fi
 done
 tar -czf "$backup/source-before.tgz" -C "$backend" "${existing[@]}"
 printf '%s\n' "${new[@]}" > "$backup/new-files.txt"
@@ -129,7 +167,7 @@ docker run --rm --network "$test_network" -v "$stage:/work" -w /work \
   -e DB_HOST="$test_container" -e DB_PORT=5432 -e DB_USER=fitmate -e DB_PASSWORD=isolated-test-only \
   mcr.microsoft.com/dotnet/sdk:10.0 bash -euc '
     dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --verbosity minimal
-    dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --filter "FullyQualifiedName~AccountDeletionOtpTests|FullyQualifiedName~CapabilitiesAndHealthTests|FullyQualifiedName~AccountDeletionIdentityConstraintsTests|FullyQualifiedName~SocialProfileVisibilityTests" --verbosity minimal
+    dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --filter "FullyQualifiedName~AccountDeletionOtpTests|FullyQualifiedName~CapabilitiesAndHealthTests|FullyQualifiedName~AccountDeletionIdentityConstraintsTests|FullyQualifiedName~SocialProfileVisibilityTests|FullyQualifiedName~PushDeliveryConcurrencyTests|FullyQualifiedName~HostedFeatureEndpointTests" --verbosity minimal
   ' 2>&1 | tee "$backup/verification.log"
 
 echo 'Building candidate from staged source...'
@@ -157,6 +195,7 @@ docker run --rm --network fitmate-prod_default --env-file "$backend/.env" \
 # Preserve production-only settings/assets while installing only the reviewed source allowlist.
 changed=1
 for file in "${files[@]}"; do install -D -m 0644 "$stage/$file" "$backend/$file"; done
+for file in "${obsolete[@]}"; do rm -f -- "$backend/$file"; done
 docker tag "$candidate" fitmate-api:vps
 (cd "$backend" && docker compose -f compose.vps.yml up -d --no-deps --force-recreate api)
 ready=0
