@@ -421,8 +421,8 @@ public class WorkoutService : IWorkoutService
                 errors[$"exercises[{i}].reps"] = new[] { "cannot be negative" };
             if (ex.DurationSec.HasValue && ex.DurationSec.Value < 0)
                 errors[$"exercises[{i}].duration_sec"] = new[] { "cannot be negative" };
-            if (ex.RestSec < 0)
-                errors[$"exercises[{i}].rest_sec"] = new[] { "cannot be negative" };
+            if (ex.RestSec < 0 || ex.RestSec > 600)
+                errors[$"exercises[{i}].rest_sec"] = new[] { "must be 0..600 seconds" };
             if (ex.Calories < 0)
                 errors[$"exercises[{i}].calories"] = new[] { "cannot be negative" };
         }

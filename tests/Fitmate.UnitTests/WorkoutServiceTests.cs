@@ -234,6 +234,40 @@ public class WorkoutServiceTests
         await act.Should().ThrowAsync<ValidationException>();
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(601)]
+    [InlineData(45000000)]
+    public async Task Plan_writes_reject_invalid_rest_without_persisting(int restSeconds)
+    {
+        var store = new InMemoryWorkoutStore();
+        var exercise = new WorkoutPlanExerciseInput { Name = "Push-up", Type = ExerciseType.Reps, Sets = 3, Reps = 10, RestSec = restSeconds };
+        var create = () => SUT(store).CreatePlanAsync(UserId, new CreateWorkoutPlanRequest {
+            DayOfWeek = "Mon", WorkoutName = "Test", DurationMinutes = 30, TargetCaloriesBurn = 0, Exercises = [exercise] });
+        await create.Should().ThrowAsync<ValidationException>();
+        store.Plans.Should().BeEmpty();
+        store.PlanExercises.Should().BeEmpty();
+
+        var plan = CreateTestPlan(PlanId, UserId);
+        store.Plans.Add(plan);
+        var original = CreateTestExercise(ExerciseId, plan.Id);
+        store.PlanExercises.Add(original);
+        var update = () => SUT(store).UpdatePlanAsync(UserId, plan.Id, new UpdateWorkoutPlanRequest { Exercises = [exercise] });
+        await update.Should().ThrowAsync<ValidationException>();
+        store.PlanExercises.Should().ContainSingle().Which.RestSec.Should().Be(60);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(600)]
+    public async Task Plan_accepts_rest_boundaries_in_seconds(int restSeconds)
+    {
+        var result = await SUT().CreatePlanAsync(UserId, new CreateWorkoutPlanRequest {
+            DayOfWeek = "Mon", WorkoutName = "Test", DurationMinutes = 30, TargetCaloriesBurn = 0,
+            Exercises = [new() { Name = "Push-up", Type = ExerciseType.Reps, Sets = 3, Reps = 10, RestSec = restSeconds }] });
+        result.Exercises.Single().RestSec.Should().Be(restSeconds);
+    }
+
     [Fact]
     public async Task UpdatePlanAsync_updates_plan_and_replaces_exercises()
     {
