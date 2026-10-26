@@ -18,7 +18,7 @@ Các API trên đã tồn tại; lượt này không thay backend runtime, schem
 
 ## Còn mở — phải tiếp tục, không đánh DONE
 
-- Public profile chưa có API author-filtered posts/public counters/earned badges. Cần thiết kế nguồn dữ liệu thật, pagination, block/visibility; không công khai số liệu sức khỏe riêng tư để lấp chỗ trống. UI hiện nói rõ chưa có dữ liệu, không coi là đã hoàn thành feature.
+- Author-filtered posts đã được bổ sung ở lượt tiếp theo: profile dùng API thật + server cursor/Xem thêm, sửa Friends visibility và mất độ chính xác cursor; commit backend `faabea1`, mobile `26f77fc`. Public counters bạn bè/sức khỏe và earned badges vẫn chưa có contract/consent/rules hoàn chỉnh; không công khai dữ liệu sức khỏe riêng tư để lấp chỗ trống.
 - Native push chưa có provider/token registration/lifecycle; OS permission không chứng minh gửi được. Cần triển khai trước khi bật capability.
 - Tra cứu tên chủ tài khoản cần BankLookup ClientId/ApiKey; không thay bằng tên người dùng tự đoán. Không yêu cầu SMS khi lưu STK.
 - Meet thiếu ClientId/ClientSecret/RedirectUri. payOS thiếu ClientId/ApiKey/ChecksumKey/AccountNumber/ReturnUrl/CancelUrl. Play Billing thiếu ServiceAccountJsonBase64. Chưa bật bán gói/thanh toán khi thiếu cấu hình và test.
@@ -41,4 +41,6 @@ npm run test:run
 npm run build
 ```
 
-Baseline BE unit 1021/1021 thuộc lượt trước; không là evidence cho UI mới. VPS updater vẫn OPERATOR_PENDING, xem `mobile-update-audit-20261026.md`; không khẳng định backend đã deploy. Mobile cần build mới sau khi sửa/kiểm chứng hoàn tất, không push bản đang rà lên Play.
+Lượt tiếp theo: backend full unit 1028/1028 pass sau cursor/author filter; cuối lượt gồm refund adjustment là 1029/1029 pass. Integration project compile cuối lượt 0 warnings/errors, PostgreSQL tests pending do local port 5432 đóng. Không là evidence cho UI mới. Account hub hiện lấy tổng server từng trạng thái thay giới hạn 100 lịch. API doanh thu bổ sung `refund_adjustment_vnd`, phần giảm thu nhập PT từ hoàn tiền của các buổi đã ghi nhận trong kỳ; app chỉ hiển thị field thật, server cũ vẫn hiện chưa có số liệu. Không đồng nhất với toàn bộ tiền đã hoàn cho khách.
+
+VPS updater vẫn OPERATOR_PENDING. Source allowlist/filter đã cập nhật nhưng file tar đã upload trước đó là cũ: cần chạy lại prepare-mobile-update.ps1 sau commit rồi mới dùng lệnh deploy operator. Không khẳng định backend đã deploy. Mobile cần build mới sau khi sửa/kiểm chứng hoàn tất, không push bản đang rà lên Play.

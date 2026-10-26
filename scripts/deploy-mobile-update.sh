@@ -29,6 +29,12 @@ files=(
   src/Fitmate.Api/Identity/AccountDeletionController.cs
   src/Fitmate.Api/System/SystemCapabilitiesController.cs
   src/Fitmate.Api/Admin/AdminMetricsController.cs
+  src/Fitmate.Api/Social/SocialController.cs
+  src/Fitmate.Application/Social/ISocialService.cs
+  src/Fitmate.Application/Social/ISocialStore.cs
+  src/Fitmate.Application/Social/SocialService.cs
+  src/Fitmate.Application/Social/CursorEncoder.cs
+  src/Fitmate.Infrastructure/Social/EfSocialStore.cs
   src/Fitmate.Application/Identity/AccountDeletionDtos.cs
   src/Fitmate.Application/Identity/AccountDeletionService.cs
   src/Fitmate.Application/Identity/IAccountDeletionService.cs
@@ -60,6 +66,8 @@ files=(
   src/Fitmate.Infrastructure/Trainers/EfTrainerStores.cs
   src/Fitmate.Application/Workout/WorkoutService.cs
   src/Fitmate.Application/Finance/PtPayoutAccountService.cs
+  src/Fitmate.Application/Finance/ITrainerRevenueService.cs
+  src/Fitmate.Application/Finance/TrainerRevenueService.cs
   src/Fitmate.Infrastructure/Finance/EfPtPayoutAccountStore.cs
   src/Fitmate.Application/Admin/AdminAnalyticsService.cs
   src/Fitmate.Infrastructure/Admin/Ga4ReportProvider.cs
@@ -121,7 +129,7 @@ docker run --rm --network "$test_network" -v "$stage:/work" -w /work \
   -e DB_HOST="$test_container" -e DB_PORT=5432 -e DB_USER=fitmate -e DB_PASSWORD=isolated-test-only \
   mcr.microsoft.com/dotnet/sdk:10.0 bash -euc '
     dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --verbosity minimal
-    dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --filter "FullyQualifiedName~AccountDeletionOtpTests|FullyQualifiedName~CapabilitiesAndHealthTests|FullyQualifiedName~AccountDeletionIdentityConstraintsTests" --verbosity minimal
+    dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --filter "FullyQualifiedName~AccountDeletionOtpTests|FullyQualifiedName~CapabilitiesAndHealthTests|FullyQualifiedName~AccountDeletionIdentityConstraintsTests|FullyQualifiedName~SocialProfileVisibilityTests" --verbosity minimal
   ' 2>&1 | tee "$backup/verification.log"
 
 echo 'Building candidate from staged source...'
