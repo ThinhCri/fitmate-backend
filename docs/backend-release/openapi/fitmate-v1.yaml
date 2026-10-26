@@ -7721,6 +7721,7 @@ components:
 
     ExerciseInput:
       type: object
+      description: 'Product input limits: 1–10 sets; reps type requires 1–100 reps; time type requires 1–600 duration_sec. These are input bounds, not safety recommendations.'
       required: [name, type, sets, rest_sec, calories]
       properties:
         name:
@@ -7731,10 +7732,15 @@ components:
         sets:
           type: integer
           minimum: 1
+          maximum: 10
         reps:
           type: integer
+          minimum: 1
+          maximum: 100
         duration_sec:
           type: integer
+          minimum: 1
+          maximum: 600
         rest_sec:
           type: integer
           minimum: 0
@@ -7929,18 +7935,24 @@ components:
 
     WorkoutSetInput:
       type: object
+      description: 'Completed sets require a positive actual result for the exercise type. Zero is not a completed set. Values are user-reported.'
       required: [set_index, status]
       properties:
         set_index:
           type: integer
           minimum: 1
+          maximum: 10
         status:
           type: string
           enum: [completed, partial, skipped]
         actual_reps:
           type: integer
+          minimum: 0
+          maximum: 100
         actual_duration_sec:
           type: integer
+          minimum: 0
+          maximum: 600
 
     WorkoutSetView:
       type: object

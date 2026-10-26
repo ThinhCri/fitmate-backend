@@ -2,6 +2,10 @@
 Yêu cầu trực tiếp của user thay provider baseline VNPay cho checkout mới và thay policy chi theo lịch bằng duyệt từng buổi sau gọi khách/PT + hồ sơ. Implement payOS payment-requests, không payouts. Không tự tạo task/DEC ID mới. Lịch sử DEC cũ được giữ; nội dung mâu thuẫn nhường quyết định này. OPS-03 vẫn chặn live tới khi provider duyệt mô hình và có evidence. Chi tiết: [runbook](runbooks/payos-manual-settlement.md).
 # Decisions Log
 
+## User-approved workout numeric bounds — 2026-10-27
+- Owner approved limits after reviewing the oversized rep display: plan sets 1–10, reps 1–100, timed set 1–600 seconds, rest/rest-after 0–600 seconds. App warnings at >6 sets, >50 reps, >300 seconds work/rest require confirmation. Product input bounds, not medical safety thresholds.
+- Actual results remain separate from targets; zero is not a completed set. Missing sets stay skipped rather than inheriting planned numbers. Legacy invalid plans must be edited before starting/logging; do not silently clamp or rewrite stored history. Apply validation at application API boundary as well as mobile; keep real plan/session APIs.
+
 ## DEC-051 — Production baseline và contract chung ba repo (2026-09-22)
 - Status: Accepted for planning under user request to hoàn thiện business/nghiệp vụ/tasks. Không chứng nhận implementation hoặc tự duyệt deploy.
 - Baseline: PROD-2026-09-22-v1; đọc README/business-requirements/domain-rules/tasks mới.

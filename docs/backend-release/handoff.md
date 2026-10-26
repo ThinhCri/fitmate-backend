@@ -1,5 +1,11 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-27 — Enforce owner-approved workout numeric bounds
+- Plan create/update rejects sets outside 1–10, reps outside 1–100, timed sets outside 1–600 seconds, rest/rest-after outside 0–600. Session logging checks actual results and unique bounded set indexes; completed zero/absent results rejected. Legacy invalid source exercises require plan edit, no data migration/clamp.
+- Mobile editor validates numeric fields inline and confirms unusually high valid values. Active session blocks invalid old plans with edit action, separates blank actual result from displayed target, provides explicit target shortcut, prevents overflowing rep text and stops filling missing sets as completed. Existing real create/update/session endpoints remain in use, no mock adapter added.
+- Backend boundary tests and mobile source tests added. Mobile commands not run under repo manual-only instructions; PostgreSQL/device UAT pending. No deploy/Play upload.
+- Full backend unit suite 1,063/1,063 passed; integration project compiled with 0 warnings/errors before the added HTTP boundary scenario (compile checked again after it). HTTP/PostgreSQL scenario source tests direct API create/update bypass and preserved valid data; execution pending isolated PostgreSQL. No new mock runtime or provider calls.
+
 ## 2026-10-27 — Connect hosted AI, native push and real profile aggregates
 - Added real FCM HTTP v1 provider + native registration/logout/refresh wiring, single active token-owner transaction lock, persisted retry worker and delivery lease. Privacy-preserving push opens authenticated inbox. Fixed sweep status SQL; Sending=8 preserves existing enum values. PostgreSQL concurrency execution and physical-device delivery remain unverified.
 - Gemini hosted food scan and image-chat route, Groq workout suggestion endpoint sharing daily chat quota, Member/PT input/auth guards, strict bounded provider output, null invented confidence and no auto-save. Play sales configuration now accepts Gemini or Python scans; sales remains gated. Shared text/image chat routing uses Gemini for images rather than Groq's text model.

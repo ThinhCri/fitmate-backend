@@ -258,6 +258,58 @@ public class WorkoutServiceTests
     }
 
     [Theory]
+    [InlineData(11, 10, null)]
+    [InlineData(0, 10, null)]
+    [InlineData(3, 101, null)]
+    [InlineData(3, 100000, null)]
+    [InlineData(3, 0, null)]
+    [InlineData(3, -1, null)]
+    [InlineData(3, null, 601)]
+    [InlineData(3, null, 0)]
+    public async Task Plan_numeric_limits_reject_create_and_update_without_writes(int sets, int? reps, int? duration)
+    {
+        var store = new InMemoryWorkoutStore();
+        var exercise = new WorkoutPlanExerciseInput { Name = "Test", Type = duration.HasValue ? ExerciseType.Time : ExerciseType.Reps, Sets = sets, Reps = reps, DurationSec = duration, RestSec = 0 };
+        await FluentActions.Invoking(() => SUT(store).CreatePlanAsync(UserId, new CreateWorkoutPlanRequest {
+            DayOfWeek = "Mon", WorkoutName = "Test", DurationMinutes = 30, TargetCaloriesBurn = 0, Exercises = [exercise] })).Should().ThrowAsync<ValidationException>();
+        store.Plans.Should().BeEmpty();
+        var plan = CreateTestPlan(PlanId, UserId); store.Plans.Add(plan);
+        await FluentActions.Invoking(() => SUT(store).UpdatePlanAsync(UserId, plan.Id, new UpdateWorkoutPlanRequest { Exercises = [exercise] })).Should().ThrowAsync<ValidationException>();
+        store.PlanExercises.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(101)]
+    [InlineData(100000)]
+    public async Task Completed_session_rejects_out_of_range_actual_reps_before_writing(int reps)
+    {
+        var store = new InMemoryWorkoutStore();
+        var request = new LogWorkoutSessionRequest {
+            ClientId = "boundary", Date = new DateOnly(2026, 10, 27), DurationMin = 1, CaloriesBurned = 0,
+            Exercises = 1, Status = WorkoutSessionStatus.Completed,
+            ExerciseItems = [new() { ExerciseId = ExerciseId, OrderIndex = 0,
+                Sets = [new() { SetIndex = 1, Status = WorkoutSetStatus.Completed, ActualReps = reps }] }] };
+        await FluentActions.Invoking(() => SUT(store).LogSessionAsync(UserId, request, "boundary-key", CancellationToken.None)).Should().ThrowAsync<ValidationException>();
+        store.Sessions.Should().BeEmpty();
+        store.Sets.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(1, 1, null)]
+    [InlineData(10, 100, null)]
+    [InlineData(10, null, 600)]
+    public async Task Plan_accepts_numeric_boundaries(int sets, int? reps, int? duration)
+    {
+        var result = await SUT().CreatePlanAsync(UserId, new CreateWorkoutPlanRequest {
+            DayOfWeek = "Mon", WorkoutName = "Boundary", DurationMinutes = 30, TargetCaloriesBurn = 0,
+            Exercises = [new() { Name = "Test", Type = duration.HasValue ? ExerciseType.Time : ExerciseType.Reps,
+                Sets = sets, Reps = reps, DurationSec = duration, RestSec = 600 }] });
+        result.Exercises.Single().Sets.Should().Be(sets);
+    }
+
+    [Theory]
     [InlineData(0)]
     [InlineData(600)]
     public async Task Plan_accepts_rest_boundaries_in_seconds(int restSeconds)

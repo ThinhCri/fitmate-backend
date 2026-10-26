@@ -308,6 +308,11 @@ public class WorkoutService : IWorkoutService
                     throw new NotFoundException(WorkoutErrorCodes.ExerciseNotFound,
                         $"Exercise {item.ExerciseId} not found in the selected workout plan.");
 
+                if (source.Sets is < 1 or > 10 || source.RestSec is < 0 or > 600 ||
+                    (source.Type == ExerciseType.Reps && (source.Reps is null or < 1 or > 100)) ||
+                    (source.Type == ExerciseType.Time && (source.DurationSec is null or < 1 or > 600)))
+                    throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Hãy sửa số liệu kế hoạch về giới hạn hợp lệ trước khi ghi buổi tập.", new Dictionary<string, string[]> { ["plan_id"] = ["Kế hoạch vượt giới hạn tập luyện."] });
+
                 var sessionEx = WorkoutSessionExercise.Create(
                     session.Id, source.Name, source.Type, item.OrderIndex,
                     source.Sets, item.PlannedReps ?? source.Reps, source.DurationSec,
@@ -320,6 +325,9 @@ public class WorkoutService : IWorkoutService
                 {
                     foreach (var setReq in item.Sets)
                     {
+                        if (setReq.Status == WorkoutSetStatus.Completed &&
+                            (source.Type == ExerciseType.Reps ? setReq.ActualReps is null or < 1 or > 100 : setReq.ActualDurationSec is null or < 1 or > 600))
+                            throw new ValidationException(ErrorCodes.Validation.FieldInvalid, "Hiệp hoàn thành cần kết quả thực tế hợp lệ.", new Dictionary<string, string[]> { ["exercise_items"] = ["Thiếu kết quả thực tế hợp lệ."] });
                         var isBonus = setReq.SetIndex > source.Sets;
                         var set = WorkoutSessionExerciseSet.Create(
                             sessionEx.Id, setReq.SetIndex, setReq.Status,
@@ -415,14 +423,16 @@ public class WorkoutService : IWorkoutService
             var ex = exercises[i];
             if (string.IsNullOrWhiteSpace(ex.Name))
                 errors[$"exercises[{i}].name"] = new[] { "required" };
-            if (ex.Sets <= 0 || ex.Sets > 100)
-                errors[$"exercises[{i}].sets"] = new[] { "must be 1..100" };
-            if (ex.Reps.HasValue && ex.Reps.Value < 0)
-                errors[$"exercises[{i}].reps"] = new[] { "cannot be negative" };
-            if (ex.DurationSec.HasValue && ex.DurationSec.Value < 0)
-                errors[$"exercises[{i}].duration_sec"] = new[] { "cannot be negative" };
+            if (ex.Sets <= 0 || ex.Sets > 10)
+                errors[$"exercises[{i}].sets"] = new[] { "Số hiệp phải từ 1 đến 10." };
+            if ((ex.Type == ExerciseType.Reps && ex.Reps is null) || ex.Reps is < 1 or > 100)
+                errors[$"exercises[{i}].reps"] = new[] { "Số lần mỗi hiệp phải từ 1 đến 100." };
+            if ((ex.Type == ExerciseType.Time && ex.DurationSec is null) || ex.DurationSec is < 1 or > 600)
+                errors[$"exercises[{i}].duration_sec"] = new[] { "Thời gian mỗi hiệp phải từ 1 đến 600 giây." };
             if (ex.RestSec < 0 || ex.RestSec > 600)
                 errors[$"exercises[{i}].rest_sec"] = new[] { "must be 0..600 seconds" };
+            if (ex.RestAfterSec is < 0 or > 600)
+                errors[$"exercises[{i}].rest_after_sec"] = new[] { "must be 0..600 seconds" };
             if (ex.Calories < 0)
                 errors[$"exercises[{i}].calories"] = new[] { "cannot be negative" };
         }
@@ -439,6 +449,23 @@ public class WorkoutService : IWorkoutService
             errors["calories_burned"] = new[] { "must be 0..10000" };
         if (request.Exercises < 0 || request.Exercises > 100)
             errors["exercises"] = new[] { "must be 0..100" };
+
+        if (request.ExerciseItems is { } items)
+        {
+            for (var i = 0; i < items.Count; i++)
+            {
+                var item = items[i];
+                if (item.PlannedReps is < 1 or > 100 || item.PlannedRestSec is < 0 or > 600)
+                    errors[$"exercise_items[{i}]"] = ["Mục tiêu phải từ 1–100 lần; nghỉ từ 0–600 giây."];
+                if (item.Sets is not { } sets) continue;
+                if (sets.Count > 10 || sets.Select(s => s.SetIndex).Distinct().Count() != sets.Count)
+                    errors[$"exercise_items[{i}].sets"] = ["Tối đa 10 hiệp, không trùng số hiệp."];
+                foreach (var set in sets)
+                    if (set.SetIndex is < 1 or > 10 || set.ActualReps is < 0 or > 100 || set.ActualDurationSec is < 0 or > 600 ||
+                        (set.Status == WorkoutSetStatus.Completed && (set.ActualReps == 0 || set.ActualDurationSec == 0)))
+                        errors[$"exercise_items[{i}].sets[{set.SetIndex}]"] = ["Kết quả không hợp lệ: 0–100 lần hoặc 0–600 giây; 0 không tính hoàn thành hiệp."];
+            }
+        }
 
         if (errors.Count > 0)
             throw new ValidationException(
