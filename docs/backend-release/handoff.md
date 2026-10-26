@@ -1,5 +1,10 @@
 > Chỉ mục đầu tiên là trạng thái bàn giao hiện tại. Các mục bên dưới được giữ làm lịch sử và không thay thế source-of-truth hiện hành.
 
+## 2026-10-26 — Save cross-role runtime audit (IMPLEMENTED_UNVERIFIED)
+- Owner requested local commits and continued Admin/member/PT API audit. Prior backend capability/analytics/payout/rest fixes and guarded release scripts committed; no push or deployment.
+- Current mobile/Admin changes and exact remaining gaps recorded in `role-api-runtime-audit-20261026.md`. Public profile posts/counters/earned badges remain missing contract work; fake badges removed without claiming completion. New PT sessions/revenue use existing real endpoints.
+- Latest UI tests/typecheck/build not executed under manual-only repo instructions. Backend runtime/schema unchanged in this UI batch; staged updater remains operator pending. Preserve missing-provider inventory and permanent-deletion approval gate.
+
 ## 2026-10-26 — Audit real feature/provider gaps and stage backend update (OPERATOR_PENDING)
 - Owner requested missing-key inventory, closing real-function gaps before another mobile build, and commands to update VPS. Read-only private config audit outputs names/presence only: SMTP/Groq/GA4/SMS token present; bank lookup/Meet/payOS/Play Billing service account absent. Gemini/Python internal token/R2 absent but not universal requirements. No secret value output. Findings and distinctions are in mobile-update-audit-20261026.md.
 - Fixed capabilities claiming push enabled with MissingPushProvider, wrong .vn legal links/fake hotline, and private notification-title logging. Mobile capability cache now expires after 60s and Settings reports light-only theme truthfully. Push native/provider lifecycle is not implemented; OS permission is not delivery. Do not claim missing modules complete just because gates are false or a key is present.
