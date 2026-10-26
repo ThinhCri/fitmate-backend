@@ -8,10 +8,10 @@ namespace Fitmate.UnitTests;
 public sealed class PtPayoutAccountServiceTests
 {
     [Fact]
-    public async Task Save_verifies_and_masks_supported_bank_account()
+    public async Task Save_verifies_and_masks_supported_bank_account_without_phone_verification()
     {
         var pt = Guid.NewGuid();
-        var store = new PayoutStore { HasVerifiedPhone = true };
+        var store = new PayoutStore();
         var lookup = new PayoutLookup();
         var service = new PtPayoutAccountService(store, lookup, AlwaysAllowAuthz.Instance);
 
@@ -25,15 +25,15 @@ public sealed class PtPayoutAccountServiceTests
     }
 
     [Fact]
-    public async Task Save_rejects_unverified_phone_before_external_lookup()
+    public async Task Save_rejects_non_pt_before_external_lookup()
     {
         var lookup = new PayoutLookup();
-        var service = new PtPayoutAccountService(new PayoutStore(), lookup, AlwaysAllowAuthz.Instance);
+        var service = new PtPayoutAccountService(new PayoutStore(), lookup, new RoleRequireAuthz("Member"));
 
         var act = () => service.SaveAsync(Guid.NewGuid(),
             new SavePtPayoutAccountRequest("970422", "MB Bank", "0123456789"), default);
 
-        await act.Should().ThrowAsync<ConflictException>().WithMessage("*phone*");
+        await act.Should().ThrowAsync<ForbiddenException>();
         lookup.Calls.Should().Be(0);
     }
 
@@ -42,7 +42,7 @@ public sealed class PtPayoutAccountServiceTests
     {
         var lookup = new PayoutLookup();
         var service = new PtPayoutAccountService(
-            new PayoutStore { HasVerifiedPhone = true }, lookup, AlwaysAllowAuthz.Instance);
+            new PayoutStore(), lookup, AlwaysAllowAuthz.Instance);
 
         var act = () => service.SaveAsync(Guid.NewGuid(),
             new SavePtPayoutAccountRequest("970422", "Vietcombank", "0123456789"), default);
@@ -53,12 +53,9 @@ public sealed class PtPayoutAccountServiceTests
 
     private sealed class PayoutStore : IPtPayoutAccountStore
     {
-        public bool HasVerifiedPhone { get; init; }
         public PtPayoutAccount? Account { get; private set; }
         public Task<PtPayoutAccount?> FindAsync(Guid ptUserId, CancellationToken ct) =>
             Task.FromResult(Account);
-        Task<bool> IPtPayoutAccountStore.HasVerifiedPhoneAsync(Guid ptUserId, CancellationToken ct) =>
-            Task.FromResult(HasVerifiedPhone);
         public Task SaveAsync(PtPayoutAccount account, CancellationToken ct)
         {
             Account = account;

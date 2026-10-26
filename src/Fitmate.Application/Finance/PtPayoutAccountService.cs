@@ -29,7 +29,6 @@ public interface IBankAccountLookup
 public interface IPtPayoutAccountStore
 {
     Task<PtPayoutAccount?> FindAsync(Guid ptUserId, CancellationToken ct);
-    Task<bool> HasVerifiedPhoneAsync(Guid ptUserId, CancellationToken ct);
     Task SaveAsync(PtPayoutAccount account, CancellationToken ct);
 }
 
@@ -56,9 +55,6 @@ public sealed class PtPayoutAccountService(IPtPayoutAccountStore store, IBankAcc
         CancellationToken ct)
     {
         await authz.EnsureRoleAsync(ptUserId, "PT", ct);
-        if (!await store.HasVerifiedPhoneAsync(ptUserId, ct))
-            throw new ConflictException("VERIFIED_PHONE_REQUIRED",
-                "Verify your phone number before changing the payout account.");
         var bankCode = request.BankBin?.Trim() ?? "";
         var bankName = request.BankName?.Trim() ?? "";
         var accountNumber = request.AccountNumber?.Trim() ?? "";
