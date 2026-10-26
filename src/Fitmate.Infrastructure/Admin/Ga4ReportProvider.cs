@@ -26,28 +26,106 @@ public sealed class Ga4ReportProvider(
         }
     }
 
-    public Task<AnalyticsOverview> GetAsync(string range, int days, CancellationToken ct)
+    public async Task<AnalyticsOverview> GetAsync(string range, int days, CancellationToken ct, string source = "all")
     {
         var propertyId = settings.Value.PropertyId.Trim();
         if (!IsConfigured || !propertyId.All(char.IsDigit)) throw Unavailable();
-        return cache.GetOrCreateAsync($"ga4:{propertyId}:{range}", async entry =>
+        if (source is not ("all" or "app" or "landing"))
+            throw new DomainException("SOURCE_INVALID", "Use all, app or landing.", 400);
+        var overview = await cache.GetOrCreateAsync($"ga4:{propertyId}:{range}:{source}", async entry =>
         {
             entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5);
-            return await FetchAsync(propertyId, range, days, ct);
-        })!;
+            return await FetchAsync(propertyId, range, days, source, ct);
+        });
+        var streamId = settings.Value.LandingStreamId.Trim();
+        if (source == "landing" && (streamId.Length == 0 || !streamId.All(char.IsDigit)))
+            return overview! with { RealtimeStatus = "not_configured" };
+        try
+        {
+            var realtime = await cache.GetOrCreateAsync($"ga4-realtime:{propertyId}:{source}:{streamId}", async entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(30);
+                return await FetchRealtimeAsync(propertyId, source, streamId, ct);
+            });
+            return overview! with { RealtimeActiveUsers = realtime!.Users, RealtimeViews = realtime.Views,
+                RealtimeStatus = "available", RealtimeGeneratedAtUtc = realtime.FetchedAt };
+        }
+        catch (DomainException)
+        {
+            // A realtime API failure must not erase a valid historical report.
+            return overview! with { RealtimeStatus = "unavailable" };
+        }
     }
 
-    private async Task<AnalyticsOverview> FetchAsync(string propertyId, string range, int days, CancellationToken ct)
+    private sealed record RealtimeResult(long Users, long Views, DateTimeOffset FetchedAt);
+
+    private static object? SourceFilter(string source, string? realtimeStreamId = null)
+    {
+        object Filter(string field, string[] values) => new
+        {
+            filter = new { fieldName = field, inListFilter = new { values, caseSensitive = false } }
+        };
+        return source switch
+        {
+            "app" => Filter("platform", ["Android", "iOS"]),
+            "landing" => new { andGroup = new { expressions = new[]
+            {
+                Filter("platform", ["web"]),
+                realtimeStreamId is null
+                    ? Filter("hostName", ["fitmate.site", "www.fitmate.site"])
+                    : Filter("streamId", [realtimeStreamId])
+            } } },
+            _ => null
+        };
+    }
+
+    private async Task<RealtimeResult> FetchRealtimeAsync(string propertyId, string source, string streamId, CancellationToken ct)
+    {
+        var token = await GetAccessTokenAsync(ct);
+        var body = new Dictionary<string, object>
+        {
+            ["metrics"] = new[] { new { name = "activeUsers" }, new { name = "screenPageViews" } },
+            ["minuteRanges"] = new[] { new { startMinutesAgo = 29, endMinutesAgo = 0 } }
+        };
+        var filter = SourceFilter(source, streamId);
+        if (filter is not null) body["dimensionFilter"] = filter;
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            $"https://analyticsdata.googleapis.com/v1beta/properties/{propertyId}:runRealtimeReport")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        using var response = await SendAsync(request, ct);
+        if (!response.IsSuccessStatusCode) throw Unavailable();
+        try
+        {
+            using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+            if (!document.RootElement.TryGetProperty("rows", out var rows) || rows.GetArrayLength() == 0)
+                return new RealtimeResult(0, 0, DateTimeOffset.UtcNow);
+            var metrics = rows[0].GetProperty("metricValues");
+            return new RealtimeResult(long.Parse(metrics[0].GetProperty("value").GetString()!, CultureInfo.InvariantCulture),
+                long.Parse(metrics[1].GetProperty("value").GetString()!, CultureInfo.InvariantCulture), DateTimeOffset.UtcNow);
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException or OverflowException or IndexOutOfRangeException or ArgumentNullException)
+        { throw Unavailable(); }
+    }
+
+    private async Task<AnalyticsOverview> FetchAsync(string propertyId, string range, int days, string source, CancellationToken ct)
     {
         var token = await GetAccessTokenAsync(ct);
         var dateRanges = new[] { new { startDate = $"{days - 1}daysAgo", endDate = "today" } };
-        var requests = new object[]
+        var requests = new[]
         {
-            new { dateRanges, metrics = new[] { new { name = "activeUsers" }, new { name = "newUsers" },
-                new { name = "screenPageViews" }, new { name = "eventCount" } } },
-            new { dateRanges, metrics = new[] { new { name = "activeUsers" }, new { name = "screenPageViews" } },
-                dimensions = new[] { new { name = "date" } }, limit = "100" }
+            new Dictionary<string, object> { ["dateRanges"] = dateRanges,
+                ["metrics"] = new[] { new { name = "activeUsers" }, new { name = "newUsers" },
+                    new { name = "screenPageViews" }, new { name = "eventCount" } } },
+            new Dictionary<string, object> { ["dateRanges"] = dateRanges,
+                ["metrics"] = new[] { new { name = "activeUsers" }, new { name = "screenPageViews" } },
+                ["dimensions"] = new[] { new { name = "date" } }, ["limit"] = "100" }
         };
+        var sourceFilter = SourceFilter(source);
+        if (sourceFilter is not null)
+            foreach (var report in requests) report["dimensionFilter"] = sourceFilter;
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"https://analyticsdata.googleapis.com/v1beta/properties/{propertyId}:batchRunReports")
         {
@@ -80,7 +158,7 @@ public sealed class Ga4ReportProvider(
                     daily.Add(new AnalyticsDay(parsed, Number(metrics, 0), Number(metrics, 1)));
                 }
             return new AnalyticsOverview(true, range, Number(values, 0), Number(values, 1),
-                Number(values, 2), Number(values, 3), daily.OrderBy(d => d.Date).ToArray());
+                Number(values, 2), Number(values, 3), daily.OrderBy(d => d.Date).ToArray(), source, DateTimeOffset.UtcNow);
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
         {
