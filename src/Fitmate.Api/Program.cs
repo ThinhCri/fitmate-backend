@@ -375,6 +375,8 @@ builder.Services.AddScoped<Fitmate.Application.Ai.IAiSubscriptionService, Fitmat
 builder.Services.AddHostedService<Fitmate.Api.Ai.AiSubscriptionReconcileWorker>();
 
 // BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
+builder.Services.AddScoped<IReportEvidenceStore, Fitmate.Infrastructure.Moderation.EfReportEvidenceStore>();
+builder.Services.AddScoped<ReportEvidenceService>();
 builder.Services.AddScoped<IModerationStore, Fitmate.Infrastructure.Moderation.EfModerationStore>();
 builder.Services.AddScoped<IModerationActionStore, Fitmate.Infrastructure.Moderation.EfModerationActionStore>();
 builder.Services.AddScoped<IModerationService, Fitmate.Application.Moderation.ModerationService>();
@@ -1093,3 +1095,4 @@ app.MapHub<Fitmate.Api.Realtime.FitmateRealtimeHub>("/hubs/realtime");
 app.Run();
 
 public partial class Program { }
+

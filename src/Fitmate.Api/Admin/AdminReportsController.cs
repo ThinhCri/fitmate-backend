@@ -31,6 +31,10 @@ public class AdminReportsController : ControllerBase
         return Ok(new { items = result.Items, total = result.Total });
     }
 
+    [HttpGet("reports/{id:guid}/evidence")]
+    public async Task<IActionResult> Evidence(Guid id, [FromServices] ReportEvidenceService evidence, CancellationToken ct)
+        => Ok(await evidence.ReadAsync(GetUserId(), id, ct));
+
     [HttpPost("reports/{id:guid}/resolve")]
     public async Task<IActionResult> Resolve(Guid id, [FromBody] ResolveReportBody body, CancellationToken ct)
     {

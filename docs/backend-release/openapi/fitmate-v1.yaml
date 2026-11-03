@@ -5041,6 +5041,41 @@ paths:
                   total:
                     type: integer
 
+  /admin/reports/{id}/evidence:
+    get:
+      tags: [Admin]
+      summary: Read current reported content and bounded signed media for moderation
+      description: Admin only. Does not return private health or chat data. Deleted targets are unavailable; content is current, not a report-time snapshot.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Current evidence, identities and short-lived image URLs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  targetType: { type: string }
+                  targetId: { type: string, format: uuid }
+                  reporterId: { type: string, format: uuid }
+                  reporterName: { type: string, nullable: true }
+                  authorId: { type: string, format: uuid, nullable: true }
+                  authorName: { type: string, nullable: true }
+                  content: { type: string, nullable: true }
+                  imageUrls:
+                    type: array
+                    maxItems: 10
+                    items: { type: string, format: uri }
+                  available: { type: boolean }
+                  contentUpdatedAt: { type: string, format: date-time, nullable: true }
+        '401': { description: Authentication required }
+        '403': { description: Admin role required }
+        '404': { description: Report not found }
+
   /admin/reports/{id}/resolve:
     post:
       tags: [Admin]
@@ -7754,6 +7789,7 @@ components:
           type: string
         media_url:
           type: string
+          description: 'Shared catalog identity may use storage://exercise-catalog/<slug>/0.jpg. Legacy signed catalog URLs are accepted and normalized; response media_url is freshly signed by the selected storage provider.'
         media_type:
           type: string
           enum: [image, video, audio]
