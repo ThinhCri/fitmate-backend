@@ -22,15 +22,18 @@ public class SystemCapabilitiesController : ControllerBase
     private readonly IOptions<AiOptions> _aiOptions;
     private readonly Fitmate.Application.Payments.IPaymentProvider? _payments;
     private readonly Fitmate.Application.Notifications.IPushProvider? _push;
+    private readonly IOptions<Fitmate.Application.Storage.StorageOptions>? _storage;
 
     public SystemCapabilitiesController(IWebHostEnvironment env, IOptions<AiOptions> aiOptions,
         Fitmate.Application.Payments.IPaymentProvider? payments = null,
-        Fitmate.Application.Notifications.IPushProvider? push = null)
+        Fitmate.Application.Notifications.IPushProvider? push = null,
+        IOptions<Fitmate.Application.Storage.StorageOptions>? storage = null)
     {
         _env = env;
         _aiOptions = aiOptions;
         _payments = payments;
         _push = push;
+        _storage = storage;
     }
 
     [HttpGet]
@@ -59,7 +62,7 @@ public class SystemCapabilitiesController : ControllerBase
                 StatusReason: "Automated direct payouts are not active. Trainer earnings are settled periodically through verified manual accounting transfers."),
             PushNotificationsEnabled: _push is not null and not Fitmate.Infrastructure.Notifications.MissingPushProvider,
             PaymentsEnabled: _payments is not null and not Fitmate.Application.Payments.MissingPaymentProvider && _payments.IsRealProvider,
-            StorageProvider: "local",
+            StorageProvider: _storage?.Value.Backend ?? "local",
             Policies: new PlatformPoliciesSummary(
                 PlatformFeeBps: 1000,
                 MinCancelHours: 48,

@@ -47,8 +47,8 @@ services:
       ASPNETCORE_URLS: http://+:8080
       DB_HOST: postgres
       DB_PORT: "5432"
-      STORAGE_BACKEND: local
-      STORAGE_LOCAL_PATH: /data/uploads
+      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      STORAGE_LOCAL_PATH: ${STORAGE_LOCAL_PATH:-/data/uploads}
     depends_on:
       postgres:
         condition: service_healthy

@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using Fitmate.Application.Auth;
 using Fitmate.Application.Outbox;
+using Fitmate.Application.Storage;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Workout;
 
@@ -16,15 +17,17 @@ public class WorkoutService : IWorkoutService
     private readonly IWorkoutStore _store;
     private readonly IAuthorizationGuard _authz;
     private readonly IOutboxDispatcher _outbox;
+    private readonly ISignedUrlService? _signedUrls;
 
     public WorkoutService(
         IWorkoutStore store,
         IAuthorizationGuard authz,
-        IOutboxDispatcher outbox)
+        IOutboxDispatcher outbox, ISignedUrlService? signedUrls = null)
     {
         _store = store;
         _authz = authz;
         _outbox = outbox;
+        _signedUrls = signedUrls;
     }
 
     public async Task<IReadOnlyList<WorkoutPlanView>> ListPlansAsync(Guid userId, CancellationToken ct = default)
@@ -91,7 +94,7 @@ public class WorkoutService : IWorkoutService
                     ex.RestAfterSec,
                     ex.Calories,
                     ex.Notes,
-                    ex.MediaUrl,
+                    WorkoutMediaReference.NormalizeForStorage(ex.MediaUrl),
                     ex.MediaType,
                     ex.MediaSource,
                     ex.Tags ?? new List<string>());
@@ -152,7 +155,7 @@ public class WorkoutService : IWorkoutService
                     ex.RestAfterSec,
                     ex.Calories,
                     ex.Notes,
-                    ex.MediaUrl,
+                    WorkoutMediaReference.NormalizeForStorage(ex.MediaUrl),
                     ex.MediaType,
                     ex.MediaSource,
                     ex.Tags ?? new List<string>());
@@ -486,10 +489,10 @@ public class WorkoutService : IWorkoutService
         _ => "Mon"
     };
 
-    private static ExerciseItemView MapExerciseItem(Exercise e) => new(
+    private ExerciseItemView MapExerciseItem(Exercise e) => new(
         e.Id, e.WorkoutPlanId, e.Name, e.Type, e.Sets, e.Reps,
         e.DurationSec, e.RestSec, e.RestAfterSec, e.Calories,
-        e.Notes, e.MediaUrl, e.MediaType, e.MediaSource, e.Tags);
+        e.Notes, WorkoutMediaReference.ForRead(e.MediaUrl, _signedUrls), e.MediaType, e.MediaSource, e.Tags);
 
     private static WorkoutSessionView MapSession(WorkoutSession s) => new(
         s.Id, s.WorkoutPlanId, s.SnapshotPlanName, s.Date, s.Day,

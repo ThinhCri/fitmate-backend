@@ -124,6 +124,28 @@ public class WorkoutServiceTests
     // ─── Plan Tests ─────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task Plan_media_persists_catalog_identity_and_refreshes_legacy_urls_after_owner_check()
+    {
+        var store = new InMemoryWorkoutStore();
+        var signer = new Moq.Mock<Fitmate.Application.Storage.ISignedUrlService>();
+        var revision = 0;
+        signer.Setup(x => x.CreatePresignedReadUrl("exercise-catalog/Pushups/0.jpg", Moq.It.IsAny<TimeSpan>()))
+            .Returns(() => new Uri($"https://storage.example/exercise-catalog/Pushups/0.jpg?fresh={++revision}"));
+        var service = new WorkoutService(store, AlwaysAllowAuthz.Instance, new TestOutbox(), signer.Object);
+        var expired = "https://account.r2.cloudflarestorage.com/bucket/exercise-catalog/Pushups/0.jpg?X-Amz-Signature=expired";
+        var result = await service.CreatePlanAsync(UserId, new CreateWorkoutPlanRequest {
+            DayOfWeek = "Mon", WorkoutName = "Media", DurationMinutes = 30, TargetCaloriesBurn = 0,
+            Exercises = [new() { Name = "Push-up", Type = ExerciseType.Reps, Sets = 3, Reps = 12, MediaUrl = expired }] });
+        store.PlanExercises.Single().MediaUrl.Should().Be("storage://exercise-catalog/Pushups/0.jpg");
+        result.Exercises.Single().MediaUrl.Should().EndWith("fresh=1");
+        typeof(Exercise).GetProperty("MediaUrl")!.SetValue(store.PlanExercises.Single(), expired);
+        var detail = await service.GetPlanDetailAsync(UserId, result.Id);
+        detail!.Exercises.Single().MediaUrl.Should().EndWith("fresh=2");
+        (await service.GetPlanDetailAsync(Guid.NewGuid(), result.Id)).Should().BeNull();
+        signer.Verify(x => x.CreatePresignedReadUrl(Moq.It.IsAny<string>(), Moq.It.IsAny<TimeSpan>()), Moq.Times.Exactly(2));
+    }
+
+    [Fact]
     public async Task ListPlansAsync_returns_empty_when_no_plans()
     {
         var result = await SUT().ListPlansAsync(UserId);

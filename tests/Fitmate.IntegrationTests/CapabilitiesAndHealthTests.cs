@@ -63,7 +63,8 @@ public class CapabilitiesAndHealthTests : IClassFixture<FitmateTestAppFactory>
         dto.Ai.FoodScan.Should().BeFalse();
         dto.Ai.CompanionChat.Should().BeFalse();
         dto.Ai.WorkoutAdjust.Should().BeFalse();
-        dto.Ai.StatusReason.Should().Contain("BE-817");
+        dto.Ai.StatusReason.Should().Contain("disabled");
+        dto.Ai.StatusReason.Should().Contain("manual tracking");
 
         dto.Policies.PlatformFeeBps.Should().Be(1000);
         dto.Policies.MinCancelHours.Should().Be(48);
