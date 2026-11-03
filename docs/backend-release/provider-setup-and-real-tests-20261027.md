@@ -22,9 +22,9 @@ Chỉ sửa private `/home/fitmate/backend/.env` hoặc secret manager. Không �
 | Chat chữ/gợi ý bài tập | `Groq__ApiKey` đã có theo audit cũ | `Groq__Enabled=true`, model hỗ trợ JSON object; test phản hồi thật |
 | Push Android | `FcmPush__ProjectId`, `FcmPush__ServiceAccountJsonBase64` | Cùng Firebase project với google-services.json của app; Cloud Messaging API hoạt động, service account có quyền gửi FCM |
 | Lookup STK PT | `BankLookup__ClientId`, `BankLookup__ApiKey` | `BankLookup__Provider=VietQr`; quyền API lookup thật, không chỉ tạo mã QR |
-| Meet PT | `GoogleMeet__ClientId`, `GoogleMeet__ClientSecret`, `GoogleMeet__RedirectUri` | OAuth/Calendar API, consent/test users; PT phải kết nối Google của họ |
+| Meet PT | `GoogleMeet__ClientId`, `GoogleMeet__ClientSecret`, `GoogleMeet__RedirectUri` | Google Meet REST API + OAuth scope meetings.space.created, consent/test users; PT phải kết nối Google của họ |
 | Thanh toán lịch PT | `Payos__ClientId`, `Payos__ApiKey`, `Payos__ChecksumKey`, `Payos__AccountNumber`, `Payos__ReturnUrl`, `Payos__CancelUrl` | Merchant được duyệt, webhook đăng ký, đối soát thanh toán/hoàn tiền thật |
-| AI Plus Android | `GooglePlayBilling__ServiceAccountJsonBase64` | Play API permissions, subscription `fitmate_ai_plus`, base plan `monthly`, package `vn.fitmate.app`, license testers |
+| AI Plus Android | `GooglePlayBilling__ServiceAccountJsonBase64` | Play API permissions, subscription `fitmate_ai_plus`, prepaid base plan `monthly` trả trước 1 tháng (không tự gia hạn), package `vn.fitmate.app`, license testers |
 
 Email OTP xóa tài khoản dùng SMTP/OTP email đã có, không cần key mới. GA4 app/web đã có property/stream/service account theo audit trước; không tạo property mới hay xóa lịch sử. SMS không bắt buộc khi lưu STK. R2 không bắt buộc khi dùng local storage bền vững. Python/model artifact/internal token chỉ cần khi chọn `python_service`; đường Gemini không cần sidecar Python.
 

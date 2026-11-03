@@ -11,6 +11,18 @@ try {
     # Archive tracked source + test contract; never recurse over arbitrary .env/config or build outputs.
     $taskInputs = @(& git ls-files -- src tests global.json Fitmate.slnx Dockerfile.migrate .dockerignore .gitleaks.toml docs/backend-release/openapi/fitmate-v1.yaml)
     if ($LASTEXITCODE -ne 0 -or $taskInputs.Count -lt 100) { throw 'Cannot enumerate tracked source.' }
+    # This reviewed media fix has not been committed yet; include its new source and test explicitly.
+    $taskInputs += @(
+        'src/Fitmate.Application/Workout/WorkoutMediaReference.cs',
+        'tests/Fitmate.UnitTests/WorkoutMediaReferenceTests.cs',
+        'src/Fitmate.Application/Moderation/ReportEvidenceService.cs',
+        'src/Fitmate.Infrastructure/Moderation/EfReportEvidenceStore.cs',
+        'tests/Fitmate.UnitTests/ReportEvidenceServiceTests.cs'
+    )
+    $taskInputs = @($taskInputs | Sort-Object -Unique)
+    foreach ($taskInput in $taskInputs) {
+        if (-not (Test-Path -LiteralPath $taskInput -PathType Leaf)) { throw "Missing source file: $taskInput" }
+    }
     if ($taskInputs | Where-Object { $_ -match '(^|/)\.env($|/)|\.(pfx|p12|keystore|jks|dump)$|(^|/)(bin|obj)/' }) {
         throw 'Refusing unexpected secret/generated path in source manifest.'
     }

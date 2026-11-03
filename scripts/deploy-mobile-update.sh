@@ -12,8 +12,8 @@ test -f "$backend/compose.vps.yml"
 test -f "$backend/.env"
 finalizer=$(sed -n 's/^AccountDeletion__FinalizerEnabled=//p' "$backend/.env" | tail -n 1 | tr -d '\r')
 case "$finalizer" in
-  ''|false|False) ;;
-  *) echo 'Final erasure config needs explicit operator review before rollout.' >&2; exit 1;;
+  ''|false|False|true|True) ;;
+  *) echo 'Invalid account-deletion finalizer setting.' >&2; exit 1;;
 esac
 test ! -L "$backend"
 exec 9>"$release/deploy.lock"
@@ -22,6 +22,9 @@ stage=$(mktemp -d "$release/source.XXXXXX")
 backup=$(mktemp -d "$release/before.XXXXXX")
 tar -xzf "$release/source.tgz" -C "$stage"
 files=(
+  src/Fitmate.Api/Admin/AdminReportsController.cs
+  src/Fitmate.Application/Moderation/ReportEvidenceService.cs
+  src/Fitmate.Infrastructure/Moderation/EfReportEvidenceStore.cs
   src/Fitmate.Api/Program.cs
   src/Fitmate.Api/Auth/AuthController.cs
   src/Fitmate.Api/Identity/AdminAccountDeletionController.cs
@@ -65,6 +68,7 @@ files=(
   src/Fitmate.Infrastructure/Trainers/EfTrainerMarketplaceStore.cs
   src/Fitmate.Infrastructure/Trainers/EfTrainerStores.cs
   src/Fitmate.Application/Workout/WorkoutService.cs
+  src/Fitmate.Application/Workout/WorkoutMediaReference.cs
   src/Fitmate.Application/Finance/PtPayoutAccountService.cs
   src/Fitmate.Application/Finance/ITrainerRevenueService.cs
   src/Fitmate.Application/Finance/TrainerRevenueService.cs
@@ -117,6 +121,8 @@ done
 for file in "${obsolete[@]}"; do
   if test -f "$backend/$file"; then existing+=("$file"); fi
 done
+# Preserve the production Compose file before removing its legacy forced-local override.
+existing+=(compose.vps.yml)
 tar -czf "$backup/source-before.tgz" -C "$backend" "${existing[@]}"
 printf '%s\n' "${new[@]}" > "$backup/new-files.txt"
 old_image=$(docker inspect --format '{{.Image}}' fitmate-prod-api-1)
@@ -196,6 +202,9 @@ docker run --rm --network fitmate-prod_default --env-file "$backend/.env" \
 changed=1
 for file in "${files[@]}"; do install -D -m 0644 "$stage/$file" "$backend/$file"; done
 for file in "${obsolete[@]}"; do rm -f -- "$backend/$file"; done
+# Change only the known legacy line; retain operator ports/volumes/other settings.
+# env_file values now select the same storage provider as local configuration.
+sed -i 's/^      STORAGE_BACKEND: local\r\?$/      STORAGE_BACKEND: ${STORAGE_BACKEND:-local}/' "$backend/compose.vps.yml"
 docker tag "$candidate" fitmate-api:vps
 (cd "$backend" && docker compose -f compose.vps.yml up -d --no-deps --force-recreate api)
 ready=0
