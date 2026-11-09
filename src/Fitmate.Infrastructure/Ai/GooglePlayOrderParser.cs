@@ -12,7 +12,7 @@ public static class GooglePlayOrderParser
         if (Text(root, "orderId") != orderId || Text(root, "purchaseToken") != token ||
             !root.TryGetProperty("lineItems", out var items) || items.ValueKind != JsonValueKind.Array ||
             items.GetArrayLength() != 1 || Text(items[0], "productId") != productId ||
-            !items[0].TryGetProperty("subscriptionDetails", out var details) || Text(details, "basePlanId") != basePlanId)
+            !MatchesType(items[0], basePlanId))
             throw Invalid();
         var state = Text(root, "state");
         if (state is not ("PROCESSED" or "PENDING" or "CANCELED" or "PENDING_REFUND" or "PARTIALLY_REFUNDED" or "REFUNDED")) throw Invalid();
@@ -22,6 +22,11 @@ public static class GooglePlayOrderParser
         if (total < 0) throw Invalid();
         return new(orderId, state, created.UtcDateTime, total, Money(root, "tax"), Money(root, "developerRevenueInBuyerCurrency"));
     }
+
+    private static bool MatchesType(JsonElement item, string basePlanId) => basePlanId.Length == 0
+        ? item.TryGetProperty("oneTimePurchaseDetails", out var oneTime) && oneTime.ValueKind == JsonValueKind.Object &&
+          !item.TryGetProperty("subscriptionDetails", out _)
+        : item.TryGetProperty("subscriptionDetails", out var details) && Text(details, "basePlanId") == basePlanId;
 
     private static long? Money(JsonElement root, string name)
     {

@@ -9,14 +9,19 @@ using Fitmate.Domain.Outbox;
 namespace Fitmate.Infrastructure.Ai;
 
 public sealed class AiPlayOrderSync(FitmateDbContext db, IAiSubscriptionService subscriptions,
-    IGooglePlayOrderReader google, IDataProtectionProvider protection)
+    IGooglePlayOrderReader google, IDataProtectionProvider protection, IAiOneTimePurchaseService? oneTime = null)
 {
     public async Task SyncAsync(Guid subscriptionId, CancellationToken ct, string? historicalOrderId = null)
     {
         var row = await db.AiSubscriptions.SingleAsync(x => x.Id == subscriptionId, ct);
         var token = protection.CreateProtector("fitmate-google-play-purchase-token-v1").Unprotect(row.ProtectedPurchaseToken);
         // Backfill old records through Google, never assume that a legacy record is a real sale.
-        try { await subscriptions.VerifyAsync(row.UserId, token, ct); }
+        try
+        {
+            if (row.BasePlanId.Length == 0)
+                await (oneTime ?? throw new InvalidOperationException("One-time verifier is required.")).ReconcileAsync(row.Id, ct);
+            else await subscriptions.VerifyAsync(row.UserId, token, ct);
+        }
         catch (DomainException ex) when (ex.Code == "AI_SUBSCRIPTION_INVALID" &&
             row.IsTestPurchase == false && row.LatestOrderId != null)
         {

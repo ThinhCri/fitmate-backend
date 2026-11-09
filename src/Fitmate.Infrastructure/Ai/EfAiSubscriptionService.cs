@@ -34,6 +34,7 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
         if (userId == Guid.Empty) throw new ArgumentException("User is required.");
         var current = await CurrentAsync(userId, ct);
         if (current is not null && _options.Enabled &&
+            current.BasePlanId.Length != 0 &&
             current.State is not ("SUBSCRIPTION_STATE_REVOKED" or "SUBSCRIPTION_STATE_REPLACED") &&
             (current.ExpiresAtUtc is null || current.ExpiresAtUtc.Value > DateTime.UtcNow.AddDays(-60)) &&
             current.VerifiedAtUtc.AddMinutes(Math.Clamp(_options.RefreshMinutes, 1, 60)) <= DateTime.UtcNow)
@@ -138,9 +139,10 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
     {
         var entitled = row is not null && row.ExpiresAtUtc > DateTime.UtcNow &&
             row.State == "SUBSCRIPTION_STATE_ACTIVE";
-        return new AiSubscriptionView(entitled ? "plus" : "free", _options.Enabled && _options.SalesEnabled,
+        return new AiSubscriptionView(entitled ? "plus" : "free", _options.Enabled && _options.SalesEnabled && _options.OneTimeSalesEnabled,
             _options.Enabled,
-            _options.ProductId, _options.BasePlanId, row?.State ?? "none", row?.ExpiresAtUtc, BillingAccountId(userId));
+            _options.OneTimeProductId, string.Empty, row?.State ?? "none", row?.ExpiresAtUtc, BillingAccountId(userId),
+            "in-app", _options.ProductId);
     }
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));

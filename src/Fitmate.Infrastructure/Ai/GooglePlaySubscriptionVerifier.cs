@@ -8,8 +8,8 @@ using Microsoft.Extensions.Options;
 
 namespace Fitmate.Infrastructure.Ai;
 
-public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<GooglePlayBillingOptions> settings)
-    : IGooglePlaySubscriptionVerifier, IGooglePlayOrderReader, IGooglePlayOrderDiscovery
+public sealed partial class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<GooglePlayBillingOptions> settings)
+    : IGooglePlaySubscriptionVerifier, IGooglePlayOrderReader, IGooglePlayOrderDiscovery, IGooglePlayProductVerifier
 {
     private const string Scope = "https://www.googleapis.com/auth/androidpublisher";
 
@@ -75,7 +75,7 @@ public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<Goo
         using var response = await SendGoogleRequestAsync(request, ct);
         if (!response.IsSuccessStatusCode) throw Unavailable();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
-        return GooglePlayOrderParser.Parse(document.RootElement, orderId, purchaseToken, settings.Value.ProductId, settings.Value.BasePlanId);
+        return ParseSupportedOrder(document.RootElement, orderId, purchaseToken);
     }
 
     public async Task<string> GetPurchaseTokenAsync(string orderId, CancellationToken ct)
@@ -92,7 +92,7 @@ public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<Goo
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
         var token = ReadString(document.RootElement, "purchaseToken");
         if (string.IsNullOrWhiteSpace(token)) throw Unavailable();
-        _ = GooglePlayOrderParser.Parse(document.RootElement, orderId, token, settings.Value.ProductId, settings.Value.BasePlanId);
+        _ = ParseSupportedOrder(document.RootElement, orderId, token);
         return token;
     }
 

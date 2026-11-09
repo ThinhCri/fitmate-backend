@@ -2739,7 +2739,7 @@ paths:
       operationId: getMyAiSubscription
       responses:
         '200':
-          description: Subscription status; only plan plus grants extra AI quota. New sales require X-Fitmate-Android-Version-Code at or above the configured minimum (initially 5); missing or older clients retain restoration and entitlement but billing_available is false.
+          description: Subscription status; only plan plus grants extra AI quota. New sales require X-Fitmate-Android-Version-Code at or above the one-time minimum (initially 8); missing or older clients retain restoration and entitlement but billing_available is false.
           content:
             application/json:
               schema:
@@ -2779,6 +2779,49 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '409':
           description: Purchase token already belongs to another account or idempotency conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+        '503':
+          description: Google Play verification unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+
+  /me/ai-subscription/verify-purchase:
+    post:
+      tags: [Nutrition]
+      summary: Verify a one-time AI Plus purchase and durably grant one calendar month to the bound Fitmate account
+      operationId: verifyMyAiOneTimePurchase
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purchase_token]
+              properties:
+                purchase_token:
+                  type: string
+                  minLength: 1
+                  maxLength: 4096
+      responses:
+        '200':
+          description: Account entitlement after verified payment; pending or foreign purchases do not grant rights
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSubscriptionStatus'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Purchase belongs to another account, is pending, or requires operator recovery
           content:
             application/json:
               schema:
@@ -5950,6 +5993,8 @@ components:
         state: {type: string}
         expires_at_utc: {type: string, format: date-time, nullable: true}
         billing_account_id: {type: string, nullable: true, description: Server-derived opaque account binding to send as Google Play obfuscatedAccountId; never email}
+        purchase_type: {type: string, enum: [subs, in-app], description: Checkout type; older clients receive subs with new sales disabled.}
+        legacy_product_id: {type: string, nullable: true, description: Restore-only prepaid subscription product.}
     LegacyAppointmentReconciliationView:
       type: object
       properties:

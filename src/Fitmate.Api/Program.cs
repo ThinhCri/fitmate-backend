@@ -358,11 +358,18 @@ builder.Services.AddOptions<Fitmate.Application.Ai.GooglePlayBillingOptions>()
         (x.PackageName == "vn.fitmate.app" && x.ProductId == "fitmate_ai_plus" &&
          x.BasePlanId == "monthly" && !string.IsNullOrWhiteSpace(x.ServiceAccountJsonBase64)),
         "Google Play billing is enabled without the approved Android product or credentials.")
+    .Validate(x => x.OneTimeProductId == "fitmate_ai_plus_month" && x.OneTimeMinimumAndroidVersionCode >= 8,
+        "One-time AI Plus requires the approved product and compatible Android client.")
+    .Validate(x => !x.OneTimeSalesEnabled || (x.Enabled && x.SalesEnabled),
+        "One-time sales require verification and AI Plus sales to be enabled.")
     .ValidateOnStart();
 builder.Services.AddHttpClient<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>(client =>
     client.Timeout = TimeSpan.FromSeconds(15));
 builder.Services.AddScoped<Fitmate.Application.Ai.IGooglePlaySubscriptionVerifier>(sp =>
     sp.GetRequiredService<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>());
+builder.Services.AddScoped<Fitmate.Application.Ai.IGooglePlayProductVerifier>(sp => sp.GetRequiredService<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>());
+builder.Services.AddScoped<Fitmate.Application.Ai.IAiOneTimePurchaseService, Fitmate.Infrastructure.Ai.EfAiOneTimePurchaseService>();
+builder.Services.AddScoped<IOutboxHandler, Fitmate.Infrastructure.Ai.AiPurchaseCompleteHandler>();
 builder.Services.AddScoped<Fitmate.Application.Ai.IAiSubscriptionService, Fitmate.Infrastructure.Ai.EfAiSubscriptionService>();
 builder.Services.AddScoped<Fitmate.Application.Ai.IGooglePlayOrderReader>(sp => sp.GetRequiredService<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>());
 builder.Services.AddScoped<Fitmate.Application.Ai.IAdminAiSalesStore, Fitmate.Infrastructure.Ai.EfAdminAiSalesStore>();

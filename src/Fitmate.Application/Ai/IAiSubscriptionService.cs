@@ -10,7 +10,9 @@ public sealed record AiSubscriptionView(
     [property: JsonPropertyName("base_plan_id")] string BasePlanId,
     [property: JsonPropertyName("state")] string State,
     [property: JsonPropertyName("expires_at_utc")] DateTime? ExpiresAtUtc,
-    [property: JsonPropertyName("billing_account_id")] string? BillingAccountId = null);
+    [property: JsonPropertyName("billing_account_id")] string? BillingAccountId = null,
+    [property: JsonPropertyName("purchase_type")] string PurchaseType = "subs",
+    [property: JsonPropertyName("legacy_product_id")] string? LegacyProductId = null);
 
 public sealed record VerifiedGoogleSubscription(string ProductId, string BasePlanId,
     string State, DateTime? ExpiresAtUtc, string? LinkedPurchaseToken, bool Acknowledged,
