@@ -22,6 +22,25 @@ stage=$(mktemp -d "$release/source.XXXXXX")
 backup=$(mktemp -d "$release/before.XXXXXX")
 tar -xzf "$release/source.tgz" -C "$stage"
 files=(
+  src/Fitmate.Api/Admin/AdminAiSalesController.cs
+  src/Fitmate.Api/Ai/AiPlayOrderSyncWorker.cs
+  src/Fitmate.Application/Ai/IAdminAiSalesService.cs
+  src/Fitmate.Domain/Ai/AiPlayOrder.cs
+  src/Fitmate.Infrastructure/Ai/GooglePlayOrderParser.cs
+  src/Fitmate.Infrastructure/Ai/EfAdminAiSalesStore.cs
+  src/Fitmate.Infrastructure/Ai/AiPlayOrderSync.cs
+  src/Fitmate.Infrastructure/Persistence/Configurations/AiPlayOrderConfiguration.cs
+  src/Fitmate.Infrastructure/Persistence/Migrations/20261108111812_AddAiPlayOrderReporting.cs
+  src/Fitmate.Infrastructure/Persistence/Migrations/20261108111812_AddAiPlayOrderReporting.Designer.cs
+  src/Fitmate.Application/Ai/IAiSubscriptionService.cs
+  src/Fitmate.Domain/Ai/AiSubscriptionRecord.cs
+  src/Fitmate.Infrastructure/Ai/EfAiSubscriptionService.cs
+  src/Fitmate.Infrastructure/Ai/GooglePlaySubscriptionVerifier.cs
+  src/Fitmate.Infrastructure/Persistence/Configurations/AiSubscriptionConfiguration.cs
+  src/Fitmate.Infrastructure/Persistence/FitmateDbContext.cs
+  src/Fitmate.Application/Ai/AiPlusSalesPolicy.cs
+  src/Fitmate.Application/Ai/GooglePlayBillingOptions.cs
+  src/Fitmate.Api/Ai/AiSubscriptionController.cs
   src/Fitmate.Api/Admin/AdminReportsController.cs
   src/Fitmate.Application/Moderation/ReportEvidenceService.cs
   src/Fitmate.Infrastructure/Moderation/EfReportEvidenceStore.cs
@@ -173,7 +192,7 @@ docker run --rm --network "$test_network" -v "$stage:/work" -w /work \
   -e DB_HOST="$test_container" -e DB_PORT=5432 -e DB_USER=fitmate -e DB_PASSWORD=isolated-test-only \
   mcr.microsoft.com/dotnet/sdk:10.0 bash -euc '
     dotnet test tests/Fitmate.UnitTests/Fitmate.UnitTests.csproj --verbosity minimal
-    dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --filter "FullyQualifiedName~AccountDeletionOtpTests|FullyQualifiedName~CapabilitiesAndHealthTests|FullyQualifiedName~AccountDeletionIdentityConstraintsTests|FullyQualifiedName~SocialProfileVisibilityTests|FullyQualifiedName~PushDeliveryConcurrencyTests|FullyQualifiedName~HostedFeatureEndpointTests" --verbosity minimal
+    dotnet test tests/Fitmate.IntegrationTests/Fitmate.IntegrationTests.csproj --filter "FullyQualifiedName~AccountDeletionOtpTests|FullyQualifiedName~CapabilitiesAndHealthTests|FullyQualifiedName~AccountDeletionIdentityConstraintsTests|FullyQualifiedName~SocialProfileVisibilityTests|FullyQualifiedName~PushDeliveryConcurrencyTests|FullyQualifiedName~HostedFeatureEndpointTests|FullyQualifiedName~AiSalesReportingIntegrationTests|FullyQualifiedName~AiUsageIntegrationTests|FullyQualifiedName~AiSubscriptionIntegrationTests|FullyQualifiedName~GooglePlayPrepaidVerifierTests" --verbosity minimal
   ' 2>&1 | tee "$backup/verification.log"
 
 echo 'Building candidate from staged source...'

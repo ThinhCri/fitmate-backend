@@ -13,6 +13,21 @@ try {
     if ($LASTEXITCODE -ne 0 -or $taskInputs.Count -lt 100) { throw 'Cannot enumerate tracked source.' }
     # This reviewed media fix has not been committed yet; include its new source and test explicitly.
     $taskInputs += @(
+        'src/Fitmate.Api/Admin/AdminAiSalesController.cs',
+        'src/Fitmate.Api/Ai/AiPlayOrderSyncWorker.cs',
+        'src/Fitmate.Application/Ai/IAdminAiSalesService.cs',
+        'src/Fitmate.Domain/Ai/AiPlayOrder.cs',
+        'src/Fitmate.Infrastructure/Ai/GooglePlayOrderParser.cs',
+        'src/Fitmate.Infrastructure/Ai/EfAdminAiSalesStore.cs',
+        'src/Fitmate.Infrastructure/Ai/AiPlayOrderSync.cs',
+        'src/Fitmate.Infrastructure/Persistence/Configurations/AiPlayOrderConfiguration.cs',
+        'src/Fitmate.Infrastructure/Persistence/Migrations/20261108111812_AddAiPlayOrderReporting.cs',
+        'src/Fitmate.Infrastructure/Persistence/Migrations/20261108111812_AddAiPlayOrderReporting.Designer.cs',
+        'tests/Fitmate.UnitTests/AiSalesReportingTests.cs',
+        'tests/Fitmate.IntegrationTests/AiSalesReportingIntegrationTests.cs',
+        'src/Fitmate.Application/Ai/AiPlusSalesPolicy.cs',
+        'tests/Fitmate.UnitTests/AiPlusSalesPolicyTests.cs',
+        'tests/Fitmate.UnitTests/GooglePlaySubscriptionVerifierTests.cs',
         'src/Fitmate.Application/Workout/WorkoutMediaReference.cs',
         'tests/Fitmate.UnitTests/WorkoutMediaReferenceTests.cs',
         'src/Fitmate.Application/Moderation/ReportEvidenceService.cs',
