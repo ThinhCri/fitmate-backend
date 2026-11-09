@@ -11,5 +11,7 @@ public sealed class GooglePlayBillingOptions
     public string BasePlanId { get; set; } = "monthly";
     // Base64-encoded Google service-account JSON. Supply from a secret manager, never the app.
     public string ServiceAccountJsonBase64 { get; set; } = string.Empty;
+    // Older clients advertise food scanning as a paid benefit; do not open their storefront.
+    public int MinimumAndroidVersionCode { get; set; } = 5;
     public int RefreshMinutes { get; set; } = 5;
 }
