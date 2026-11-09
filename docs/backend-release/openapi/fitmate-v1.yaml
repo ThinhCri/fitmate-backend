@@ -2739,7 +2739,7 @@ paths:
       operationId: getMyAiSubscription
       responses:
         '200':
-          description: Subscription status; only plan plus grants extra AI quota
+          description: Subscription status; only plan plus grants extra AI quota. New sales require X-Fitmate-Android-Version-Code at or above the configured minimum (initially 5); missing or older clients retain restoration and entitlement but billing_available is false.
           content:
             application/json:
               schema:
@@ -4878,6 +4878,96 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/ProblemDetails' }
 
+  /admin/finance/ai-sales:
+    get:
+      tags: [Admin]
+      operationId: listAdminAiSales
+      summary: Server-verified real Google Play AI Plus orders only
+      description: Test and unclassified purchases are excluded. VND values come from Google Orders API, not catalog prices. Revenue is not bank payout. Vietnam calendar-day ranges. Missing provider revenue stays null. AwaitingSync counts classified real subscriptions missing their latest order across all dates.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: range
+          schema: {type: string, enum: [7d, 30d, 90d, all], default: 30d}
+        - in: query
+          name: state
+          schema: {type: string, enum: [PROCESSED, PENDING, CANCELED, PENDING_REFUND, PARTIALLY_REFUNDED, REFUNDED]}
+        - in: query
+          name: orderId
+          schema: {type: string, maxLength: 128}
+          description: Exact Google GPA order identifier
+        - in: query
+          name: sort
+          schema: {type: string, enum: [newest, oldest], default: newest}
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, maximum: 100000, default: 1}
+        - in: query
+          name: pageSize
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - in: query
+          name: search
+          schema: {type: string, maxLength: 200}
+          description: Literal case-insensitive Google order ID, name or email substring; matches anywhere, not an SQL wildcard pattern
+        - in: query
+          name: userId
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Verified real-order read model; empty page when no orders match
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiSalesPage'}
+        '400': {description: Invalid filter or pagination}
+        '401': {description: Authentication required}
+        '403': {description: Administrator role required}
+
+  /admin/finance/ai-sales/buyers:
+    get:
+      tags: [Admin]
+      operationId: listAdminAiBuyers
+      summary: Real Google Play purchases grouped by user and product/base plan
+      description: Test and unclassified purchases are excluded. VND values come from Google Orders API, not catalog prices. Revenue is not bank payout. Vietnam calendar-day ranges. Missing provider revenue stays null. AwaitingSync counts classified real subscriptions missing their latest order across all dates.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: range
+          schema: {type: string, enum: [7d, 30d, 90d, all], default: 30d}
+        - in: query
+          name: state
+          schema: {type: string, enum: [PROCESSED, PENDING, CANCELED, PENDING_REFUND, PARTIALLY_REFUNDED, REFUNDED]}
+        - in: query
+          name: orderId
+          schema: {type: string, maxLength: 128}
+          description: Exact Google GPA order identifier
+        - in: query
+          name: sort
+          schema: {type: string, enum: [newest, oldest], default: newest}
+        - in: query
+          name: page
+          schema: {type: integer, minimum: 1, maximum: 100000, default: 1}
+        - in: query
+          name: pageSize
+          schema: {type: integer, minimum: 1, maximum: 100, default: 25}
+        - in: query
+          name: search
+          schema: {type: string, maxLength: 200}
+          description: Literal case-insensitive Google order ID, name or email substring; matches anywhere, not an SQL wildcard pattern
+        - in: query
+          name: userId
+          schema: {type: string, format: uuid}
+      responses:
+        '200':
+          description: Verified real-order read model; empty page when no orders match
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiBuyersPage'}
+        '400': {description: Invalid filter or pagination}
+        '401': {description: Authentication required}
+        '403': {description: Administrator role required}
+
   /admin/finance/overview:
     get:
       tags: [Admin]
@@ -5859,6 +5949,7 @@ components:
         base_plan_id: {type: string}
         state: {type: string}
         expires_at_utc: {type: string, format: date-time, nullable: true}
+        billing_account_id: {type: string, nullable: true, description: Server-derived opaque account binding to send as Google Play obfuscatedAccountId; never email}
     LegacyAppointmentReconciliationView:
       type: object
       properties:
@@ -7484,6 +7575,66 @@ components:
         packageId: { type: string, format: uuid, nullable: true }
         providerReference: { type: string, nullable: true }
 
+    AiSalesPage:
+      type: object
+      required: [items, total, page, pageSize, processedOrders, processedGrossVnd, developerRevenueVnd, revenueUnavailableOrders, awaitingSync, lastSyncedAtUtc]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/AiSaleRow'}
+        total: {type: integer}
+        page: {type: integer}
+        pageSize: {type: integer}
+        confirmedRevenueVnd: {type: integer, format: int64, description: Sum of available Google net values only; zero if none confirmed. Partial total when revenueUnavailableOrders is positive}
+        processedOrders: {type: integer}
+        processedGrossVnd: {type: integer, format: int64, description: Sum of PROCESSED orders only within filters}
+        developerRevenueVnd: {type: integer, format: int64, nullable: true, description: Complete Google revenue across processed and refunded orders; null if any required value is missing}
+        revenueUnavailableOrders: {type: integer}
+        awaitingSync: {type: integer}
+        lastSyncedAtUtc: {type: string, format: date-time, nullable: true}
+    AiSaleRow:
+      type: object
+      required: [orderId, userId, productId, basePlanId, state, purchasedAtUtc, totalVnd, taxVnd, developerRevenueVnd, syncedAtUtc]
+      properties:
+        orderId: {type: string}
+        userId: {type: string, format: uuid}
+        userName: {type: string, nullable: true}
+        userEmail: {type: string, nullable: true}
+        productId: {type: string}
+        basePlanId: {type: string}
+        state: {type: string, enum: [PROCESSED, PENDING, CANCELED, PENDING_REFUND, PARTIALLY_REFUNDED, REFUNDED]}
+        purchasedAtUtc: {type: string, format: date-time}
+        totalVnd: {type: integer, format: int64}
+        taxVnd: {type: integer, format: int64, nullable: true}
+        developerRevenueVnd: {type: integer, format: int64, nullable: true}
+        syncedAtUtc: {type: string, format: date-time}
+
+    AiBuyersPage:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/AiBuyerRow'}
+        total: {type: integer}
+        page: {type: integer}
+        pageSize: {type: integer}
+    AiBuyerRow:
+      type: object
+      required: [userId, userName, userEmail, productId, basePlanId, purchaseCount, orderTotalVnd, refundedOrders, developerRevenueVnd, lastPurchasedAtUtc]
+      properties:
+        userId: {type: string, format: uuid}
+        userName: {type: string, nullable: true}
+        userEmail: {type: string, nullable: true}
+        productId: {type: string}
+        basePlanId: {type: string}
+        confirmedRevenueVnd: {type: integer, format: int64, description: Sum of available Google net values for this buyer and plan; does not estimate missing amounts}
+        revenueUnavailableOrders: {type: integer}
+        purchaseCount: {type: integer, description: Unique orders in PROCESSED or refund states; excludes pending and canceled}
+        orderTotalVnd: {type: integer, format: int64, description: Sum of provider order totals before refund subtraction; not net customer spend}
+        refundedOrders: {type: integer, description: Count of partially or fully refunded orders; not a refund amount}
+        developerRevenueVnd: {type: integer, format: int64, nullable: true}
+        lastPurchasedAtUtc: {type: string, format: date-time}
     FinanceOverview:
       type: object
       properties:

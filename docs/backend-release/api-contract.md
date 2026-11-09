@@ -59,3 +59,19 @@ Contract v1 đã được kiểm chứng và đóng băng giữa Backend, Mobile
   - Decoupled wire DTOs với `[property: JsonPropertyName("...")]` loại bỏ hoàn toàn việc trả domain entity trực tiếp.
 - Mobile App được phép generate client và viết API adapter từ revision/hash được ghi trong evidence BE-801.
 
+
+Optional compatibility header: X-Fitmate-Android-Version-Code carries the native Android build code. AI subscription status/verification responses hide new sales for builds below GooglePlayBilling.MinimumAndroidVersionCode (minimum5) or missing/invalid header. Restore and server-verified entitlement are preserved; no role or purchase authorization relies on a client-supplied build value.
+
+Admin AI sales: GET /admin/finance/ai-sales is read-only, Admin controller policy plus Application guard. Real/known purchases only; server filter/sort/page and VND Google Orders values. Unknown net revenue is null. No purchase tokens, test rows, buyer addresses or inferred bank payouts. OpenAPI defines response/filter details.
+
+## 2026-11-09 — Buyer-level AI purchase reporting
+GET /admin/finance/ai-sales/buyers reuses the admin application guard and bounded server filters (range, search <=200 literal case-insensitive name/email, userId, state, orderId, sort, page/size). Groups real classified orders by Fitmate user/product/base plan. Counts unique Google orders in processed/refund states; pending/canceled and test/unknown purchases are excluded. OrderTotalVnd sums provider totals before refund subtraction, not net spend; RefundedOrders is a count, never an inferred amount. Missing developer revenue stays null. The existing order endpoint now returns nullable display name/email with a left join and supports exact userId history; missing/deleted identity does not erase financial rows. No migration or payment mutation.
+
+### Partial revenue contract
+confirmedRevenueVnd is the subtotal of Google-supplied net values, including known refund adjustments. It remains available when another order has null net. revenueUnavailableOrders separately signals incomplete coverage; zero confirmed does not assert missing orders have zero revenue. developerRevenueVnd retains its complete-total/null semantics. Admin and CSV must label confirmed subtotals and missing counts together.
+
+## Admin finance SignalR
+GET/POST /api/v1/admin/finance/live uses SignalR negotiation/transports, not a REST report. Only Admin with Application authorization joins server-assigned admin-finance group. Event finance.updated has only scope=ai-sales; browser re-reads authorized report APIs. Outbox emission is committed with order change. On reconnect, refetch current filters because disconnected messages may be missed. No order/customer/payment data goes in event payload. WebSockets use scoped access_token authentication only on the hub prefix; other API routes continue requiring Authorization headers. Configure hub proxy Upgrade/Connection, no buffering, and suppress query-string access logs on this path.
+
+Admin AI sales search <=200 now matches any literal substring of Google order ID OR user display name OR email, case-insensitively, before pagination/aggregation. Existing orderId remains exact for compatibility. '%' and '_' are literal search characters, never user-provided SQL wildcard patterns.
+

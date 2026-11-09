@@ -335,3 +335,6 @@ Không tái sử dụng ID hoặc đổi message commit cũ trong task tài li�
 ### BE-700 — Google Play
 - Plan: [Plan triển khai](production-plans/BE-700.md).
 - Status: BLOCKED (app integration, OPS-07); tracking BE-827 + MOB-808.
+
+### 2026-11-08 — BE-818 / BR-14 AI Plus real-order reporting
+IMPLEMENTED_LOCAL: server-verified non-test Google Play order read model, historical token backfill, admin endpoint and financial separation from PT/payouts. Unit1103 passed; isolated PostgreSQL/provider/admin deployment acceptance pending. See handoff and runbook.

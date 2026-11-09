@@ -652,3 +652,6 @@ Yêu cầu trực tiếp của user thay provider baseline VNPay cho checkout m�
   - Cloud adapter (S3 / GCS) sau này chỉ cần implement `IStorageService` + swap HMAC bằng provider-native presigned URL. Không sửa controller.
   - Không có thumbnail / image processing trong MVP — FE tự scale.
 - **Trạng thái**: ✅ Accepted (BE-420 DONE — phiên 35, 2026-09-22).
+
+## 2026-11-08 — AI Plus scope and price override
+Owner sets AI Plus target price to VND29,000 per prepaid calendar month (no auto-renew), including chat and workout suggestions only. Shared text quota remains10 free/100 Plus per Vietnam day. Food scan is not a paid entitlement; release clients show coming soon. Kaggle demonstration stays local/debug. This supersedes earlier199,000 and paid scan copy; actual charge comes from Play Console product pricing. No commercial launch until Google verification credentials/product and purchase/restore UAT are confirmed.
