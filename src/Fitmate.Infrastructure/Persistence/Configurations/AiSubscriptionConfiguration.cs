@@ -15,6 +15,7 @@ public sealed class AiSubscriptionConfiguration : IEntityTypeConfiguration<AiSub
         e.Property(x => x.ProductId).HasMaxLength(128).IsRequired();
         e.Property(x => x.BasePlanId).HasMaxLength(128).IsRequired();
         e.Property(x => x.State).HasMaxLength(64).IsRequired();
+        e.Property(x => x.LatestOrderId).HasMaxLength(128);
         e.HasIndex(x => x.PurchaseTokenHash).IsUnique();
         e.HasIndex(x => new { x.UserId, x.ExpiresAtUtc });
     }

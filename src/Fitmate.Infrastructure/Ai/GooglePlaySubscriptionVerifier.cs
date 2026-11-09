@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace Fitmate.Infrastructure.Ai;
 
 public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<GooglePlayBillingOptions> settings)
-    : IGooglePlaySubscriptionVerifier
+    : IGooglePlaySubscriptionVerifier, IGooglePlayOrderReader
 {
     private const string Scope = "https://www.googleapis.com/auth/androidpublisher";
 
@@ -36,6 +36,7 @@ public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<Goo
             throw new DomainException("AI_SUBSCRIPTION_INVALID", "Giao dịch Google Play không chứa gói hợp lệ.", 400);
         DateTime? expiry = null;
         var matched = false;
+        string? orderId = null;
         foreach (var item in lineItems.EnumerateArray())
         {
             if (ReadString(item, "productId") != config.ProductId) continue;
@@ -50,13 +51,31 @@ public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<Goo
                 throw new DomainException("AI_SUBSCRIPTION_WRONG_PLAN_TYPE",
                     "Gói AI Plus phải là gói trả trước, không tự gia hạn.", 400);
             matched = true;
+            orderId = ReadString(item, "latestSuccessfulOrderId") ?? orderId;
             if (DateTime.TryParse(ReadString(item, "expiryTime"),
                     System.Globalization.CultureInfo.InvariantCulture,
                     System.Globalization.DateTimeStyles.AdjustToUniversal, out var parsed) &&
                 (!expiry.HasValue || parsed > expiry.Value)) expiry = parsed.ToUniversalTime();
         }
         if (!matched) throw new DomainException("AI_SUBSCRIPTION_WRONG_PRODUCT", "Giao dịch không thuộc gói AI Plus của Fitmate.", 400);
-        return new VerifiedGoogleSubscription(config.ProductId, config.BasePlanId, state, expiry, linked, acknowledged);
+        return new VerifiedGoogleSubscription(config.ProductId, config.BasePlanId, state, expiry, linked, acknowledged,
+            root.TryGetProperty("testPurchase", out var test) && test.ValueKind != JsonValueKind.Null,
+            orderId ?? ReadString(root, "latestOrderId"),
+            root.TryGetProperty("externalAccountIdentifiers", out var identifiers)
+                ? ReadString(identifiers, "obfuscatedExternalAccountId") : null);
+    }
+
+    public async Task<VerifiedPlayOrder> GetOrderAsync(string orderId, string purchaseToken, CancellationToken ct)
+    {
+        if (!settings.Value.Enabled) throw Unavailable();
+        var accessToken = await GetAccessTokenAsync(ct);
+        var uri = $"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{Uri.EscapeDataString(settings.Value.PackageName)}/orders/{Uri.EscapeDataString(orderId)}";
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await SendGoogleRequestAsync(request, ct);
+        if (!response.IsSuccessStatusCode) throw Unavailable();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        return GooglePlayOrderParser.Parse(document.RootElement, orderId, purchaseToken, settings.Value.ProductId, settings.Value.BasePlanId);
     }
 
     public async Task AcknowledgeAsync(string purchaseToken, CancellationToken ct)

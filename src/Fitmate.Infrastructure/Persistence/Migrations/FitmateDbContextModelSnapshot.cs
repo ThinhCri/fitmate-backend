@@ -18,10 +18,48 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.12")
+                .HasAnnotation("ProductVersion", "10.0.13")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("Fitmate.Domain.Ai.AiPlayOrder", b =>
+                {
+                    b.Property<string>("OrderId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<long?>("DeveloperRevenueVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("PurchasedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<Guid>("SubscriptionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("SyncedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<long?>("TaxVnd")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("TotalVnd")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("OrderId");
+
+                    b.HasIndex("PurchasedAtUtc");
+
+                    b.HasIndex("SubscriptionId");
+
+                    b.ToTable("ai_play_orders", (string)null);
+                });
 
             modelBuilder.Entity("Fitmate.Domain.Ai.AiSubscriptionRecord", b =>
                 {
@@ -38,6 +76,16 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<DateTime?>("ExpiresAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool?>("IsTestPurchase")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LatestOrderId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTime?>("OrderSyncAtUtc")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ProductId")
@@ -927,6 +975,9 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("DeletionRequestedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Email")
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
@@ -964,9 +1015,6 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
 
                     b.Property<bool>("PhoneNumberConfirmed")
                         .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("DeletionRequestedAt")
-                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SecurityStamp")
                         .HasColumnType("text");
@@ -4196,6 +4244,15 @@ namespace Fitmate.Infrastructure.Persistence.Migrations
                     b.HasKey("UserId", "LoginProvider", "Name");
 
                     b.ToTable("AspNetUserTokens", (string)null);
+                });
+
+            modelBuilder.Entity("Fitmate.Domain.Ai.AiPlayOrder", b =>
+                {
+                    b.HasOne("Fitmate.Domain.Ai.AiSubscriptionRecord", null)
+                        .WithMany()
+                        .HasForeignKey("SubscriptionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Fitmate.Domain.Booking.BookingRescheduleRequest", b =>

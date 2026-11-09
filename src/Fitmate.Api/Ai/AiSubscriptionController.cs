@@ -4,6 +4,7 @@ using Fitmate.Application.Ai;
 using Fitmate.Domain.Common;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Fitmate.Api.Ai;
 
@@ -13,11 +14,11 @@ public sealed record VerifyAiSubscriptionRequest(
 [ApiController]
 [Authorize]
 [Route("api/v1/me/ai-subscription")]
-public sealed class AiSubscriptionController(IAiSubscriptionService subscriptions) : ControllerBase
+public sealed class AiSubscriptionController(IAiSubscriptionService subscriptions, IOptions<GooglePlayBillingOptions> options) : ControllerBase
 {
     [HttpGet]
     public async Task<IActionResult> Get(CancellationToken ct) =>
-        Ok(await subscriptions.GetAsync(UserId(), ct));
+        Ok(ForClient(await subscriptions.GetAsync(UserId(), ct)));
 
     [HttpPost("verify")]
     public async Task<IActionResult> Verify([FromBody] VerifyAiSubscriptionRequest request,
@@ -25,8 +26,11 @@ public sealed class AiSubscriptionController(IAiSubscriptionService subscription
     {
         if (string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 128)
             throw new DomainException("IDEMPOTENCY_KEY_REQUIRED", "Thiếu Idempotency-Key hợp lệ.", 400);
-        return Ok(await subscriptions.VerifyAsync(UserId(), request.PurchaseToken, ct));
+        return Ok(ForClient(await subscriptions.VerifyAsync(UserId(), request.PurchaseToken, ct)));
     }
+
+    private AiSubscriptionView ForClient(AiSubscriptionView view) =>
+        AiPlusSalesPolicy.ForClient(view, Request.Headers["X-Fitmate-Android-Version-Code"].ToString(), options.Value.MinimumAndroidVersionCode);
 
     private Guid UserId()
     {

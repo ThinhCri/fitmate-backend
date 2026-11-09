@@ -12,4 +12,7 @@ public sealed class AiSubscriptionRecord
     public DateTime? ExpiresAtUtc { get; set; }
     public DateTime VerifiedAtUtc { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    public bool? IsTestPurchase { get; set; }
+    public string? LatestOrderId { get; set; }
+    public DateTime? OrderSyncAtUtc { get; set; }
 }

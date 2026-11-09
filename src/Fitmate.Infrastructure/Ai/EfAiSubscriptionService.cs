@@ -32,10 +32,7 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
     public async Task<AiSubscriptionView> GetAsync(Guid userId, CancellationToken ct)
     {
         if (userId == Guid.Empty) throw new ArgumentException("User is required.");
-        var current = await _db.AiSubscriptions.AsNoTracking()
-            .Where(x => x.UserId == userId)
-            .OrderByDescending(x => x.VerifiedAtUtc)
-            .FirstOrDefaultAsync(ct);
+        var current = await CurrentAsync(userId, ct);
         if (current is not null && _options.Enabled &&
             current.State is not ("SUBSCRIPTION_STATE_REVOKED" or "SUBSCRIPTION_STATE_REPLACED") &&
             (current.ExpiresAtUtc is null || current.ExpiresAtUtc.Value > DateTime.UtcNow.AddDays(-60)) &&
@@ -59,12 +56,21 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
                         .SetProperty(x => x.ExpiresAtUtc, (DateTime?)null)
                         .SetProperty(x => x.VerifiedAtUtc, DateTime.UtcNow), ct);
             }
-            current = await _db.AiSubscriptions.AsNoTracking()
-                .Where(x => x.UserId == userId)
-                .OrderByDescending(x => x.VerifiedAtUtc)
-                .FirstAsync(ct);
+            current = await CurrentAsync(userId, ct);
         }
-        return ToView(current);
+        return ToView(current, userId);
+    }
+
+    private Task<AiSubscriptionRecord?> CurrentAsync(Guid userId, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        // A background recheck of an older expired/replaced token must not hide
+        // a still-valid purchase on the same account. Ownership remains per token.
+        return _db.AiSubscriptions.AsNoTracking().Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.State == "SUBSCRIPTION_STATE_ACTIVE" && x.ExpiresAtUtc > now)
+            .ThenByDescending(x => x.ExpiresAtUtc)
+            .ThenByDescending(x => x.VerifiedAtUtc).ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<AiSubscriptionView> VerifyAsync(Guid userId, string purchaseToken, CancellationToken ct)
@@ -76,6 +82,10 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
             throw new DomainException("AI_SUBSCRIPTION_INVALID", "Mã giao dịch không hợp lệ.", 400);
         var hash = Hash(purchaseToken);
         var verified = await _google.VerifyAsync(purchaseToken, ct);
+        if (!string.IsNullOrEmpty(verified.ExternalAccountId) &&
+            !string.Equals(verified.ExternalAccountId, BillingAccountId(userId), StringComparison.Ordinal))
+            throw new DomainException("AI_SUBSCRIPTION_BOUND_TO_ACCOUNT",
+                "Giao dịch này được tạo cho tài khoản Fitmate khác. Hãy đăng nhập tài khoản đã mua.", 409);
 
         var strategy = _db.Database.CreateExecutionStrategy();
         return await strategy.ExecuteAsync(async () =>
@@ -116,20 +126,23 @@ public sealed class EfAiSubscriptionService : IAiSubscriptionService
             existing.State = verified.State;
             existing.ExpiresAtUtc = verified.ExpiresAtUtc;
             existing.VerifiedAtUtc = now;
+            existing.IsTestPurchase = verified.IsTestPurchase;
+            existing.LatestOrderId = verified.OrderId ?? existing.LatestOrderId;
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
-            return ToView(existing);
+            return ToView(existing, userId);
         });
     }
 
-    private AiSubscriptionView ToView(AiSubscriptionRecord? row)
+    private AiSubscriptionView ToView(AiSubscriptionRecord? row, Guid userId)
     {
         var entitled = row is not null && row.ExpiresAtUtc > DateTime.UtcNow &&
             row.State == "SUBSCRIPTION_STATE_ACTIVE";
         return new AiSubscriptionView(entitled ? "plus" : "free", _options.Enabled && _options.SalesEnabled,
             _options.Enabled,
-            _options.ProductId, _options.BasePlanId, row?.State ?? "none", row?.ExpiresAtUtc);
+            _options.ProductId, _options.BasePlanId, row?.State ?? "none", row?.ExpiresAtUtc, BillingAccountId(userId));
     }
 
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    private static string BillingAccountId(Guid userId) => Hash("fitmate-play:" + userId.ToString("N")).ToLowerInvariant();
 }

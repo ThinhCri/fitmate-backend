@@ -363,6 +363,11 @@ builder.Services.AddHttpClient<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionV
 builder.Services.AddScoped<Fitmate.Application.Ai.IGooglePlaySubscriptionVerifier>(sp =>
     sp.GetRequiredService<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>());
 builder.Services.AddScoped<Fitmate.Application.Ai.IAiSubscriptionService, Fitmate.Infrastructure.Ai.EfAiSubscriptionService>();
+builder.Services.AddScoped<Fitmate.Application.Ai.IGooglePlayOrderReader>(sp => sp.GetRequiredService<Fitmate.Infrastructure.Ai.GooglePlaySubscriptionVerifier>());
+builder.Services.AddScoped<Fitmate.Application.Ai.IAdminAiSalesStore, Fitmate.Infrastructure.Ai.EfAdminAiSalesStore>();
+builder.Services.AddScoped<Fitmate.Application.Ai.IAdminAiSalesService, Fitmate.Application.Ai.AdminAiSalesService>();
+builder.Services.AddScoped<Fitmate.Infrastructure.Ai.AiPlayOrderSync>();
+builder.Services.AddHostedService<Fitmate.Api.Ai.AiPlayOrderSyncWorker>();
 builder.Services.AddHostedService<Fitmate.Api.Ai.AiSubscriptionReconcileWorker>();
 
 // BE-210+BE-211: Moderation (admin list/resolve/dismiss reports + warn/lock/delete).
@@ -622,7 +627,9 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             OnMessageReceived = context =>
             {
                 var accessToken = context.Request.Query["access_token"];
-                if (!string.IsNullOrWhiteSpace(accessToken) && context.HttpContext.Request.Path.StartsWithSegments("/hubs/realtime"))
+                if (!string.IsNullOrWhiteSpace(accessToken) &&
+                    (context.HttpContext.Request.Path.StartsWithSegments("/hubs/realtime") ||
+                     context.HttpContext.Request.Path.StartsWithSegments("/api/v1/admin/finance/live")))
                     context.Token = accessToken;
                 return Task.CompletedTask;
             },
@@ -757,6 +764,7 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddSignalR();
+builder.Services.AddScoped<IOutboxHandler, Fitmate.Api.Realtime.AdminFinanceChangedHandler>();
 builder.Services.AddSingleton<Microsoft.AspNetCore.SignalR.IUserIdProvider, Fitmate.Api.Realtime.FitmateUserIdProvider>();
 builder.Services.AddSingleton<Fitmate.Application.Realtime.IRealtimeNotifier, Fitmate.Api.Realtime.SignalRRealtimeNotifier>();
 
@@ -1082,7 +1090,9 @@ app.MapGet("/", () => Results.Ok(new
 
 app.MapControllers();
 app.MapHub<Fitmate.Api.Realtime.FitmateRealtimeHub>("/hubs/realtime");
+app.MapHub<Fitmate.Api.Realtime.AdminFinanceHub>("/api/v1/admin/finance/live", options => options.CloseOnAuthenticationExpiration = true);
 
 app.Run();
 
 public partial class Program { }
+

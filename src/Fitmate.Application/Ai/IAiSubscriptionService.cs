@@ -9,10 +9,12 @@ public sealed record AiSubscriptionView(
     [property: JsonPropertyName("product_id")] string ProductId,
     [property: JsonPropertyName("base_plan_id")] string BasePlanId,
     [property: JsonPropertyName("state")] string State,
-    [property: JsonPropertyName("expires_at_utc")] DateTime? ExpiresAtUtc);
+    [property: JsonPropertyName("expires_at_utc")] DateTime? ExpiresAtUtc,
+    [property: JsonPropertyName("billing_account_id")] string? BillingAccountId = null);
 
 public sealed record VerifiedGoogleSubscription(string ProductId, string BasePlanId,
-    string State, DateTime? ExpiresAtUtc, string? LinkedPurchaseToken, bool Acknowledged);
+    string State, DateTime? ExpiresAtUtc, string? LinkedPurchaseToken, bool Acknowledged,
+    bool? IsTestPurchase = null, string? OrderId = null, string? ExternalAccountId = null);
 
 public interface IGooglePlaySubscriptionVerifier
 {
