@@ -9,6 +9,11 @@ public interface IGooglePlayOrderReader
 {
     Task<VerifiedPlayOrder> GetOrderAsync(string orderId, string purchaseToken, CancellationToken ct);
 }
+// Operator recovery only. Purchase tokens must never be returned to an admin browser or logged.
+public interface IGooglePlayOrderDiscovery
+{
+    Task<string> GetPurchaseTokenAsync(string orderId, CancellationToken ct);
+}
 public sealed record AiSalesQuery(string Range = "30d", string? State = null, string? OrderId = null,
     string Sort = "newest", int Page = 1, int PageSize = 25, string? Search = null, Guid? UserId = null);
 public sealed record AiSaleRow(string OrderId, Guid UserId, string ProductId, string BasePlanId,

@@ -11,7 +11,7 @@ namespace Fitmate.Infrastructure.Ai;
 public sealed class AiPlayOrderSync(FitmateDbContext db, IAiSubscriptionService subscriptions,
     IGooglePlayOrderReader google, IDataProtectionProvider protection)
 {
-    public async Task SyncAsync(Guid subscriptionId, CancellationToken ct)
+    public async Task SyncAsync(Guid subscriptionId, CancellationToken ct, string? historicalOrderId = null)
     {
         var row = await db.AiSubscriptions.SingleAsync(x => x.Id == subscriptionId, ct);
         var token = protection.CreateProtector("fitmate-google-play-purchase-token-v1").Unprotect(row.ProtectedPurchaseToken);
@@ -25,7 +25,7 @@ public sealed class AiPlayOrderSync(FitmateDbContext db, IAiSubscriptionService 
         }
         await db.Entry(row).ReloadAsync(ct);
         if (row.IsTestPurchase != false || string.IsNullOrWhiteSpace(row.LatestOrderId)) return;
-        var order = await google.GetOrderAsync(row.LatestOrderId, token, ct);
+        var order = await google.GetOrderAsync(historicalOrderId ?? row.LatestOrderId, token, ct);
         // PostgreSQL timestamp precision is microseconds; normalize before comparison
         // so sub-microsecond provider timestamps do not emit false change events.
         var purchasedAt = new DateTime(order.PurchasedAtUtc.Ticks - order.PurchasedAtUtc.Ticks % 10, DateTimeKind.Utc);

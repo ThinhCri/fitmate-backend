@@ -21,7 +21,9 @@ public sealed class GooglePlaySubscriptionVerifierTests
             if (request.RequestUri!.Host == "oauth2.googleapis.com")
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{\"access_token\":\"unit-test-token\"}") });
             request.Headers.Authorization!.Scheme.Should().Be("Bearer");
-            request.RequestUri.AbsolutePath.Should().Contain("vn.fitmate.app/purchases/subscriptionsv2/tokens/");
+            if (request.RequestUri.AbsolutePath.Contains("/orders/"))
+                request.RequestUri.AbsolutePath.Should().Contain("vn.fitmate.app/orders/GPA.");
+            else request.RequestUri.AbsolutePath.Should().Contain("vn.fitmate.app/purchases/subscriptionsv2/tokens/");
             return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(payload) });
         }
     }
@@ -73,4 +75,20 @@ public sealed class GooglePlaySubscriptionVerifierTests
         var action = () => Create("{}", HttpStatusCode.ServiceUnavailable).VerifyAsync("unit-test-purchase-token", default);
         (await action.Should().ThrowAsync<DomainException>()).Which.Code.Should().Be("AI_BILLING_UNAVAILABLE");
     }
+    [Theory]
+    [InlineData("fitmate_ai_plus", true)]
+    [InlineData("another_product", false)]
+    public async Task Order_discovery_checks_product_before_returning_internal_token(string product, bool accepted)
+    {
+        const string id = "GPA.1111-2222-3333-44444";
+        var payload = JsonSerializer.Serialize(new { orderId = id, purchaseToken = "test-only-purchase", state = "PROCESSED",
+            createTime = "2026-11-09T00:00:00Z", total = new { currencyCode = "VND", units = "29000" },
+            lineItems = new[] { new { productId = product, subscriptionDetails = new { basePlanId = "monthly" } } } });
+        var service = Create(payload);
+        if (accepted) (await service.GetPurchaseTokenAsync(id, default)).Should().Be("test-only-purchase");
+        else (await FluentActions.Invoking(() => service.GetPurchaseTokenAsync(id, default)).Should().ThrowAsync<DomainException>()).Which.Code.Should().Be("AI_ORDER_INVALID");
+    }
+    [Theory] [InlineData("../other")] [InlineData("GPA.incomplete")]
+    public async Task Order_discovery_rejects_invalid_identifiers(string id) =>
+        (await FluentActions.Invoking(() => Create("{}").GetPurchaseTokenAsync(id, default)).Should().ThrowAsync<DomainException>()).Which.HttpStatus.Should().Be(400);
 }

@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace Fitmate.Infrastructure.Ai;
 
 public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<GooglePlayBillingOptions> settings)
-    : IGooglePlaySubscriptionVerifier, IGooglePlayOrderReader
+    : IGooglePlaySubscriptionVerifier, IGooglePlayOrderReader, IGooglePlayOrderDiscovery
 {
     private const string Scope = "https://www.googleapis.com/auth/androidpublisher";
 
@@ -76,6 +76,24 @@ public sealed class GooglePlaySubscriptionVerifier(HttpClient http, IOptions<Goo
         if (!response.IsSuccessStatusCode) throw Unavailable();
         using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
         return GooglePlayOrderParser.Parse(document.RootElement, orderId, purchaseToken, settings.Value.ProductId, settings.Value.BasePlanId);
+    }
+
+    public async Task<string> GetPurchaseTokenAsync(string orderId, CancellationToken ct)
+    {
+        if (!settings.Value.Enabled || !System.Text.RegularExpressions.Regex.IsMatch(orderId,
+                @"\AGPA\.[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{5}(?:\.\.[0-9]+)?\z"))
+            throw new DomainException("VALIDATION_ERROR", "Mã đơn Google Play không hợp lệ.", 400);
+        var accessToken = await GetAccessTokenAsync(ct);
+        using var request = new HttpRequestMessage(HttpMethod.Get,
+            $"https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{Uri.EscapeDataString(settings.Value.PackageName)}/orders/{Uri.EscapeDataString(orderId)}");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var response = await SendGoogleRequestAsync(request, ct);
+        if (!response.IsSuccessStatusCode) throw Unavailable();
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        var token = ReadString(document.RootElement, "purchaseToken");
+        if (string.IsNullOrWhiteSpace(token)) throw Unavailable();
+        _ = GooglePlayOrderParser.Parse(document.RootElement, orderId, token, settings.Value.ProductId, settings.Value.BasePlanId);
+        return token;
     }
 
     public async Task AcknowledgeAsync(string purchaseToken, CancellationToken ct)

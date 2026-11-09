@@ -57,6 +57,7 @@ if (args.Length > 0 && !args[0].StartsWith("--"))
         "seed-perf-data" => await SeedPerfDataCommand.RunAsync(args[1..], config),
         "seed-uat-data" => await SeedUatDataCommand.RunAsync(args[1..], config),
         "import-exercise-media" => await ImportExerciseCatalogMediaCommand.RunAsync(config),
+        "reconcile-ai-orders" => await ReconcileAiOrdersCommand.RunAsync(args[1..], config),
         _ => UnknownCommand(args[0])
     };
     Environment.Exit(exitCode);
