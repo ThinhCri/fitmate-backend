@@ -71,7 +71,13 @@ public sealed class AiOneTimePurchaseIntegrationTests(FitmateTestAppFactory fact
         (await status.GetAsync(a, default)).Plan.Should().Be("plus");
         (await status.GetAsync(b, default)).Plan.Should().Be("plus");
         (await status.GetAsync(a, default)).ExpiresAtUtc.Should().Be(expiry);
-        (await db.OutboxMessages.CountAsync(x => x.Type == "ai.purchase.complete" && (x.PayloadJson.Contains(rowA.Id.ToString()) || x.PayloadJson.Contains(rowB.Id.ToString())))).Should().Be(2);
+        // PayloadJson is jsonb, not SQL text. Read the test messages and compare
+        // exact decoded UUIDs instead of translating string.Contains into LIKE.
+        var payloads = await db.OutboxMessages.Where(x => x.Type == "ai.purchase.complete")
+            .Select(x => x.PayloadJson).ToListAsync();
+        var deliveries = payloads.Select(payload => System.Text.Json.JsonSerializer.Deserialize<Guid>(payload)).ToList();
+        deliveries.Count(id => id == rowA.Id).Should().Be(1);
+        deliveries.Count(id => id == rowB.Id).Should().Be(1);
     }
 
     [Theory] [InlineData("PENDING", false)] [InlineData("CANCELLED", false)] [InlineData("PURCHASED", true)]
