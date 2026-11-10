@@ -33,30 +33,34 @@ public class EfAdminUserStore : IAdminUserStore
 
         q = query.Sort switch
         {
-            "createdAt:asc" => q.OrderBy(u => u.CreatedAt),
-            "createdAt:desc" => q.OrderByDescending(u => u.CreatedAt),
-            "email:asc" => q.OrderBy(u => u.Email),
-            "email:desc" => q.OrderByDescending(u => u.Email),
-            _ => q.OrderByDescending(u => u.CreatedAt)
+            "createdAt:asc" => q.OrderBy(u => u.CreatedAt).ThenBy(u => u.Id),
+            "createdAt:desc" => q.OrderByDescending(u => u.CreatedAt).ThenBy(u => u.Id),
+            "email:asc" => q.OrderBy(u => u.Email).ThenBy(u => u.Id),
+            "email:desc" => q.OrderByDescending(u => u.Email).ThenBy(u => u.Id),
+            _ => q.OrderByDescending(u => u.CreatedAt).ThenBy(u => u.Id)
         };
 
-        // Role filter được resolve post-query vì EF không hỗ trợ JOIN UserRoles.
-        var totalAll = await q.CountAsync(ct);
-        var rawPage = await q.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync(ct);
-
-        var summaries = new List<AdminUserSummary>();
-        foreach (var u in rawPage)
+        // Resolve the primary role in SQL before counting or paging. Multi-role
+        // accounts keep the same Admin > PT > Member precedence as account details.
+        var withRoles = q.Select(u => new
         {
-            var role = await GetPrimaryRoleAsync(u.Id, ct);
-            if (!string.IsNullOrEmpty(query.Role) && !string.Equals(role, MapRoleInbound(query.Role), StringComparison.OrdinalIgnoreCase))
-                continue;
-            summaries.Add(ToSummary(u, role));
+            User = u,
+            Role = (from membership in _db.UserRoles
+                    join role in _db.Roles on membership.RoleId equals role.Id
+                    where membership.UserId == u.Id
+                    orderby role.Name == "Admin" ? 0 : role.Name == "PT" ? 1 : role.Name == "Member" ? 2 : 3, role.Name
+                    select role.Name).FirstOrDefault()
+        });
+        if (!string.IsNullOrEmpty(query.Role))
+        {
+            var requestedRole = MapRoleInbound(query.Role);
+            withRoles = withRoles.Where(x => x.Role == requestedRole);
         }
 
-        // Tổng khi có role filter: đếm users có role khớp.
-        // Để đơn giản và tránh N+1 nặng, trả `total = totalAll` (chấp nhận sai số nhẹ khi có role filter);
-        // chính xác sẽ đếm lại nếu cần bằng cách join ASP.NET Identity tables.
-        return (summaries, totalAll);
+        var total = await withRoles.CountAsync(ct);
+        var page = await withRoles.Skip((query.Page - 1) * query.PageSize)
+            .Take(query.PageSize).ToListAsync(ct);
+        return (page.Select(x => ToSummary(x.User, x.Role)).ToList(), total);
     }
 
     private static string MapRoleInbound(string inbound) => inbound.ToLowerInvariant() switch
