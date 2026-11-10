@@ -16,6 +16,7 @@ stage=$(mktemp -d "$release/source.XXXXXX")
 web=$(mktemp -d "$release/admin.XXXXXX")
 backup=$(mktemp -d "$release/before.XXXXXX")
 files=(src/Fitmate.Api/Admin/AdminAiSalesController.cs src/Fitmate.Application/Ai/IAdminAiSalesService.cs src/Fitmate.Infrastructure/Ai/EfAdminAiSalesStore.cs src/Fitmate.Application/Ai/IAiSubscriptionService.cs src/Fitmate.Infrastructure/Ai/EfAiSubscriptionService.cs src/Fitmate.Infrastructure/Ai/GooglePlaySubscriptionVerifier.cs src/Fitmate.Api/Program.cs src/Fitmate.Api/Ai/AiPlayOrderSyncWorker.cs src/Fitmate.Infrastructure/Ai/AiPlayOrderSync.cs src/Fitmate.Api/Realtime/AdminFinanceHub.cs src/Fitmate.Api/Realtime/AdminFinanceChangedHandler.cs src/Fitmate.Api/Cli/ReconcileAiOrdersCommand.cs src/Fitmate.Infrastructure/Ai/GooglePlayOrderRecovery.cs src/Fitmate.Api/Ai/AiSubscriptionController.cs src/Fitmate.Application/Ai/GooglePlayBillingOptions.cs src/Fitmate.Application/Ai/IAiOneTimePurchaseService.cs src/Fitmate.Infrastructure/Ai/GooglePlayProductVerifier.cs src/Fitmate.Infrastructure/Ai/EfAiOneTimePurchaseService.cs src/Fitmate.Infrastructure/Ai/GooglePlayOrderParser.cs)
+test_files=(tests/Fitmate.UnitTests/AiSalesReportingTests.cs tests/Fitmate.UnitTests/GooglePlaySubscriptionVerifierTests.cs tests/Fitmate.UnitTests/AdminFinanceRealtimeTests.cs tests/Fitmate.UnitTests/GooglePlayProductVerifierTests.cs tests/Fitmate.UnitTests/AiOneTimeApiTests.cs tests/Fitmate.IntegrationTests/AiSalesReportingIntegrationTests.cs tests/Fitmate.IntegrationTests/GooglePlayOrderRecoveryTests.cs tests/Fitmate.IntegrationTests/AiOneTimePurchaseIntegrationTests.cs tests/Fitmate.IntegrationTests/AiSubscriptionIntegrationTests.cs tests/Fitmate.IntegrationTests/Infrastructure/FitmateTestAppFactory.cs tests/Fitmate.IntegrationTests/Infrastructure/IntegrationTestAssembly.cs tests/Shared/StubPaymentProvider.cs)
 existing=()
 new=()
 for file in "${files[@]}"; do
@@ -34,7 +35,7 @@ done
 # Every runtime file installed below must come from this reviewed overlay,
 # never silently inherit an older copy from the deployed backend.
 tar -tzf overlay.tgz > "$stage/overlay-files.txt"
-for file in "${files[@]}"; do
+for file in "${files[@]}" "${test_files[@]}"; do
   grep -Fx -- "$file" "$stage/overlay-files.txt" >/dev/null || { echo "Missing reviewed runtime file: $file" >&2; false; }
 done
 tar -xzf overlay.tgz -C "$stage"
