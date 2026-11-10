@@ -15,7 +15,7 @@ for folder in "$backend" "$site"; do test -d "$folder" && test ! -L "$folder"; d
 stage=$(mktemp -d "$release/source.XXXXXX")
 web=$(mktemp -d "$release/admin.XXXXXX")
 backup=$(mktemp -d "$release/before.XXXXXX")
-files=(src/Fitmate.Api/Admin/AdminAiSalesController.cs src/Fitmate.Application/Ai/IAdminAiSalesService.cs src/Fitmate.Infrastructure/Ai/EfAdminAiSalesStore.cs src/Fitmate.Application/Ai/IAiSubscriptionService.cs src/Fitmate.Infrastructure/Ai/EfAiSubscriptionService.cs src/Fitmate.Infrastructure/Ai/GooglePlaySubscriptionVerifier.cs src/Fitmate.Api/Program.cs src/Fitmate.Api/Ai/AiPlayOrderSyncWorker.cs src/Fitmate.Infrastructure/Ai/AiPlayOrderSync.cs src/Fitmate.Api/Realtime/AdminFinanceHub.cs src/Fitmate.Api/Realtime/AdminFinanceChangedHandler.cs src/Fitmate.Api/Cli/ReconcileAiOrdersCommand.cs src/Fitmate.Infrastructure/Ai/GooglePlayOrderRecovery.cs src/Fitmate.Api/Ai/AiSubscriptionController.cs src/Fitmate.Application/Ai/GooglePlayBillingOptions.cs src/Fitmate.Application/Ai/IAiOneTimePurchaseService.cs src/Fitmate.Infrastructure/Ai/GooglePlayProductVerifier.cs src/Fitmate.Infrastructure/Ai/EfAiOneTimePurchaseService.cs)
+files=(src/Fitmate.Api/Admin/AdminAiSalesController.cs src/Fitmate.Application/Ai/IAdminAiSalesService.cs src/Fitmate.Infrastructure/Ai/EfAdminAiSalesStore.cs src/Fitmate.Application/Ai/IAiSubscriptionService.cs src/Fitmate.Infrastructure/Ai/EfAiSubscriptionService.cs src/Fitmate.Infrastructure/Ai/GooglePlaySubscriptionVerifier.cs src/Fitmate.Api/Program.cs src/Fitmate.Api/Ai/AiPlayOrderSyncWorker.cs src/Fitmate.Infrastructure/Ai/AiPlayOrderSync.cs src/Fitmate.Api/Realtime/AdminFinanceHub.cs src/Fitmate.Api/Realtime/AdminFinanceChangedHandler.cs src/Fitmate.Api/Cli/ReconcileAiOrdersCommand.cs src/Fitmate.Infrastructure/Ai/GooglePlayOrderRecovery.cs src/Fitmate.Api/Ai/AiSubscriptionController.cs src/Fitmate.Application/Ai/GooglePlayBillingOptions.cs src/Fitmate.Application/Ai/IAiOneTimePurchaseService.cs src/Fitmate.Infrastructure/Ai/GooglePlayProductVerifier.cs src/Fitmate.Infrastructure/Ai/EfAiOneTimePurchaseService.cs src/Fitmate.Infrastructure/Ai/GooglePlayOrderParser.cs)
 existing=()
 new=()
 for file in "${files[@]}"; do
@@ -30,6 +30,12 @@ for archive in overlay.tgz admin.tgz; do
   tar -tzf "$archive" | while IFS= read -r path; do
     case "$path" in /*|*../*) echo 'Unsafe artifact path.' >&2; exit 1;; esac
   done
+done
+# Every runtime file installed below must come from this reviewed overlay,
+# never silently inherit an older copy from the deployed backend.
+tar -tzf overlay.tgz > "$stage/overlay-files.txt"
+for file in "${files[@]}"; do
+  grep -Fx -- "$file" "$stage/overlay-files.txt" >/dev/null || { echo "Missing reviewed runtime file: $file" >&2; false; }
 done
 tar -xzf overlay.tgz -C "$stage"
 # The deployed repository contains historical test doubles from older interfaces.
@@ -65,7 +71,7 @@ rollback() {
     docker tag "$old_image" fitmate-api:vps
     (cd "$backend" && docker compose -f compose.vps.yml up -d --no-deps --force-recreate api) || true
   fi
-  echo "AI_ORDER_RECOVERY_DEPLOY_FAILED. Private backup: $backup" >&2
+  echo "AI_ONE_TIME_DEPLOY_FAILED. Private backup: $backup" >&2
   exit "$code"
 }
 trap cleanup EXIT
