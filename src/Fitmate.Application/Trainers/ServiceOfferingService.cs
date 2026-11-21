@@ -64,11 +64,6 @@ public class ServiceOfferingService : IServiceOfferingService
         try
         {
             var mode = details?.DeliveryMode ?? service.DeliveryMode;
-            if (isActive == true && mode == Domain.Trainers.ServiceDeliveryMode.Online &&
-                (_meet is null || !(await _meet.GetStatusAsync(ptUserId, ct)).Connected))
-                throw new ArgumentException("Connect Google Meet before publishing an online service.");
-            if (isActive == true && details is null && string.IsNullOrWhiteSpace(service.TargetAudience))
-                throw new ArgumentException("Service cannot be published until delivery details and Google Meet connection are ready.");
             if (details is not null)
             {
                 if (string.IsNullOrWhiteSpace(description ?? service.Description) || (description ?? service.Description)!.Trim().Length < 20)
