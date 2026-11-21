@@ -58,7 +58,7 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
             data.GetProperty("orderCode").GetInt64() != order.OrderCode ||
             data.GetProperty("amount").GetInt64() != request.AmountVnd ||
             data.GetProperty("currency").GetString() != "VND" ||
-            data.GetProperty("accountNumber").GetString() != _options.AccountNumber)
+            !string.Equals(data.GetProperty("accountNumber").GetString()?.Replace(" ", ""), _options.AccountNumber?.Replace(" ", ""), StringComparison.Ordinal))
             throw Unavailable();
         var checkout = data.GetProperty("checkoutUrl").GetString()!;
         if (!Uri.TryCreate(checkout, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||

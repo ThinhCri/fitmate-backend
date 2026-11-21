@@ -48,6 +48,18 @@ public class EfAppointmentStore : IAppointmentStore
         return candidates.Any(a => requestedStartUtc < a.SlotStartUtc.AddMinutes(a.DurationMinutes));
     }
 
+    public async Task<IReadOnlyList<Appointment>> FindActiveHeldByMemberAndSlotAsync(Guid memberId, Guid ptUserId, DateTime slotStartUtc, CancellationToken ct)
+    {
+        var nowUtc = DateTime.UtcNow;
+        return await _db.Appointments
+            .Where(a => a.MemberId == memberId &&
+                        a.PtUserId == ptUserId &&
+                        a.SlotStartUtc == slotStartUtc &&
+                        a.Status == AppointmentStatus.Held &&
+                        (a.HoldExpiresAtUtc == null || a.HoldExpiresAtUtc > nowUtc))
+            .ToListAsync(ct);
+    }
+
     public async Task<T> ExecuteWithScheduleLockAsync<T>(Guid ptUserId, Func<Task<T>> operation, CancellationToken ct)
     {
         if (!_db.Database.IsRelational())

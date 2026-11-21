@@ -77,6 +77,11 @@ public class BookingService : IBookingService
         // 2. Concurrency & Overlap: Lock theo PT và kiểm tra interval overlap [S1, E1) và [S2, E2).
         var created = await _appointments.ExecuteWithScheduleLockAsync(ptUserId, async () =>
         {
+            // Release/expire member's previous unpaid hold on this slot so they are not blocked by their own retry
+            var prevHolds = await _appointments.FindActiveHeldByMemberAndSlotAsync(memberId, ptUserId, slotStartUtc, ct);
+            foreach (var prev in prevHolds) prev.ExpireHold();
+            if (prevHolds.Count > 0) await _appointments.SaveChangesAsync(ct);
+
             if (await _appointments.HasOverlappingSlotAsync(ptUserId, slotStartUtc, svc.DurationMinutes, null, ct))
                 throw new ConflictException(ErrorCodes.Booking.SlotTaken,
                     $"Slot {slotStartUtc:O} of PT {ptUserId} is no longer available.");
