@@ -63,18 +63,28 @@ public class EfAvailabilitySlotStore : IAvailabilitySlotStore
     {
         if (_db.Database.IsRelational())
         {
-            await using var tx = await _db.Database.BeginTransactionAsync(ct);
-            await _db.AvailabilitySlots
-                .Where(s => s.PtUserId == ptUserId && s.Status == AvailabilityStatus.Open && s.SlotStartUtc >= fromUtc && s.SlotStartUtc < toUtc)
-                .ExecuteDeleteAsync(ct);
-
-            if (newSlots.Count > 0)
+            var strategy = _db.Database.CreateExecutionStrategy();
+            await strategy.ExecuteAsync(async () =>
             {
-                await _db.AvailabilitySlots.AddRangeAsync(newSlots, ct);
-                await _db.SaveChangesAsync(ct);
-            }
+                foreach (var slot in newSlots)
+                {
+                    var entry = _db.Entry(slot);
+                    if (entry.State != EntityState.Detached) entry.State = EntityState.Detached;
+                }
 
-            await tx.CommitAsync(ct);
+                await using var tx = await _db.Database.BeginTransactionAsync(ct);
+                await _db.AvailabilitySlots
+                    .Where(s => s.PtUserId == ptUserId && s.Status == AvailabilityStatus.Open && s.SlotStartUtc >= fromUtc && s.SlotStartUtc < toUtc)
+                    .ExecuteDeleteAsync(ct);
+
+                if (newSlots.Count > 0)
+                {
+                    await _db.AvailabilitySlots.AddRangeAsync(newSlots, ct);
+                    await _db.SaveChangesAsync(ct);
+                }
+
+                await tx.CommitAsync(ct);
+            });
         }
         else
         {
