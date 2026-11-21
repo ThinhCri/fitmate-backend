@@ -808,20 +808,29 @@ builder.Services.AddRateLimiter(options =>
             cancellationToken: token);
     };
 
-    // GlobalLimiter applies across all endpoints by default
+    // GlobalLimiter applies across all endpoints by default - TokenBucket for mobile burst resiliency
     options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
     {
         var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? httpContext.User.FindFirstValue("sub");
-        var partitionKey = httpContext.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(userId)
+        var isAuthenticated = httpContext.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(userId);
+        var partitionKey = isAuthenticated
             ? $"user:{userId}"
             : $"ip:{ip}";
-        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+
+        var tokenLimit = isAuthenticated ? Math.Max(rateLimitOpts.PerMinutePerIp * 2, 120) : rateLimitOpts.PerMinutePerIp;
+        var tokensPerPeriod = isAuthenticated ? 2 : 1;
+        var queueLimit = isAuthenticated ? 15 : 10;
+
+        return RateLimitPartition.GetTokenBucketLimiter(partitionKey, _ => new TokenBucketRateLimiterOptions
         {
-            PermitLimit = rateLimitOpts.PerMinutePerIp,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0
+            TokenLimit = tokenLimit,
+            QueueLimit = queueLimit,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+            TokensPerPeriod = tokensPerPeriod,
+            AutoReplenishment = true
         });
     });
 
@@ -830,36 +839,51 @@ builder.Services.AddRateLimiter(options =>
         var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var userId = httpContext.User.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? httpContext.User.FindFirstValue("sub");
-        var partitionKey = httpContext.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(userId)
+        var isAuthenticated = httpContext.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(userId);
+        var partitionKey = isAuthenticated
             ? $"user:{userId}"
             : $"ip:{ip}";
-        return RateLimitPartition.GetFixedWindowLimiter(partitionKey, _ => new FixedWindowRateLimiterOptions
+
+        var tokenLimit = isAuthenticated ? Math.Max(rateLimitOpts.PerMinutePerIp * 2, 120) : rateLimitOpts.PerMinutePerIp;
+        var tokensPerPeriod = isAuthenticated ? 2 : 1;
+        var queueLimit = isAuthenticated ? 15 : 10;
+
+        return RateLimitPartition.GetTokenBucketLimiter(partitionKey, _ => new TokenBucketRateLimiterOptions
         {
-            PermitLimit = rateLimitOpts.PerMinutePerIp,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0
+            TokenLimit = tokenLimit,
+            QueueLimit = queueLimit,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+            TokensPerPeriod = tokensPerPeriod,
+            AutoReplenishment = true
         });
     });
 
     options.AddPolicy("AuthLimiter", httpContext =>
     {
         var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        return RateLimitPartition.GetTokenBucketLimiter(ip, _ => new TokenBucketRateLimiterOptions
         {
-            PermitLimit = rateLimitOpts.AuthPerMinutePerIp,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0
+            TokenLimit = Math.Max(rateLimitOpts.AuthPerMinutePerIp * 3, 15),
+            QueueLimit = 3,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(4),
+            TokensPerPeriod = 1,
+            AutoReplenishment = true
         });
     });
 
     options.AddPolicy("AuthRefreshLimiter", httpContext =>
     {
         var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+        return RateLimitPartition.GetTokenBucketLimiter(ip, _ => new TokenBucketRateLimiterOptions
         {
-            PermitLimit = rateLimitOpts.AuthRefreshPerMinutePerIp,
-            Window = TimeSpan.FromMinutes(1),
-            QueueLimit = 0
+            TokenLimit = Math.Max(rateLimitOpts.AuthRefreshPerMinutePerIp, 30),
+            QueueLimit = 5,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            ReplenishmentPeriod = TimeSpan.FromSeconds(2),
+            TokensPerPeriod = 1,
+            AutoReplenishment = true
         });
     });
 });
