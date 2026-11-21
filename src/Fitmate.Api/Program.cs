@@ -1047,6 +1047,23 @@ using (var scope = app.Services.CreateScope())
                         $"Unable to seed role '{roleName}': {string.Join("; ", result.Errors.Select(e => e.Description))}");
             }
         }
+
+        if (db.Database.IsRelational())
+        {
+            await db.Database.ExecuteSqlRawAsync(@"
+                DO $$
+                BEGIN
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'appointments' AND column_name = 'Status') THEN
+                        ALTER TABLE appointments ALTER COLUMN ""Status"" DROP NOT NULL;
+                        ALTER TABLE appointments ALTER COLUMN ""Status"" SET DEFAULT 0;
+                    END IF;
+                    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'appointments' AND column_name = 'status') THEN
+                        ALTER TABLE appointments ALTER COLUMN status DROP NOT NULL;
+                        ALTER TABLE appointments ALTER COLUMN status SET DEFAULT 0;
+                    END IF;
+                END $$;
+            ");
+        }
         await roleSeedTransaction.CommitAsync();
     });
 }
