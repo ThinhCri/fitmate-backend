@@ -38,28 +38,15 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
                 (p.SuspendedUntilUtc == null || p.SuspendedUntilUtc <= DateTime.UtcNow) &&
                 verifiedPtIds.Contains(p.UserId) &&
                 _db.Users.Any(u => u.Id == p.UserId && u.Status == UserStatus.Active &&
-                    u.EmailConfirmed && (u.PhoneNumberConfirmed ||
-                        _db.UserProfiles.Any(up => up.UserId == u.Id && up.Phone != null && up.Phone != ""))) &&
-                _db.Services.Any(s => s.PtUserId == p.UserId && s.IsActive &&
-                    s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
-                    ((s.DeliveryMode == ServiceDeliveryMode.InPerson && s.LocationName != null && s.LocationAddress != null) ||
-                     (onlineEnabled && s.DeliveryMode == ServiceDeliveryMode.Online &&
-                      _db.UserTokens.Any(t => t.UserId == p.UserId &&
-                          t.LoginProvider == GoogleMeetConnectionService.Provider &&
-                          t.Name == GoogleMeetConnectionService.ConnectionName)))))
+                    u.EmailConfirmed) &&
+                _db.Services.Any(s => s.PtUserId == p.UserId && s.IsActive))
             .OrderByDescending(p => p.Rating)
             .ThenBy(p => p.UserId)
             .ToListAsync(ct);
 
         var profileIds = profiles.Select(p => p.UserId).ToArray();
         var activePrices = (await _db.Services
-            .Where(s => profileIds.Contains(s.PtUserId) && s.IsActive &&
-                s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
-                ((s.DeliveryMode == ServiceDeliveryMode.InPerson && s.LocationName != null && s.LocationAddress != null) ||
-                 (onlineEnabled && s.DeliveryMode == ServiceDeliveryMode.Online &&
-                  _db.UserTokens.Any(t => t.UserId == s.PtUserId &&
-                      t.LoginProvider == GoogleMeetConnectionService.Provider &&
-                      t.Name == GoogleMeetConnectionService.ConnectionName))))
+            .Where(s => profileIds.Contains(s.PtUserId) && s.IsActive)
             .Select(s => new { s.PtUserId, s.PriceVnd })
             .ToListAsync(ct))
             .GroupBy(s => s.PtUserId)
@@ -127,18 +114,11 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
         if (profile is null || profile.VerificationStatus != PtVerificationStatus.Approved ||
             !profile.CanAcceptNewBookings(DateTime.UtcNow) ||
             !await _db.Users.AnyAsync(u => u.Id == ptUserId && u.Status == UserStatus.Active &&
-                u.EmailConfirmed && (u.PhoneNumberConfirmed ||
-                    _db.UserProfiles.Any(up => up.UserId == u.Id && up.Phone != null && up.Phone != "")), ct)) return null;
+                u.EmailConfirmed, ct)) return null;
 
         var onlineEnabled = _onlineEnabled;
         var services = await _db.Services
-            .Where(s => s.PtUserId == ptUserId && s.IsActive &&
-                s.TargetAudience != null && s.RequiredEquipment != null && s.Deliverable != null &&
-                ((s.DeliveryMode == ServiceDeliveryMode.InPerson && s.LocationName != null && s.LocationAddress != null) ||
-                 (onlineEnabled && s.DeliveryMode == ServiceDeliveryMode.Online &&
-                  _db.UserTokens.Any(t => t.UserId == ptUserId &&
-                      t.LoginProvider == GoogleMeetConnectionService.Provider &&
-                      t.Name == GoogleMeetConnectionService.ConnectionName))))
+            .Where(s => s.PtUserId == ptUserId && s.IsActive)
             .OrderBy(s => s.PriceVnd)
             .ToListAsync(ct);
         if (services.Count == 0) return null;
