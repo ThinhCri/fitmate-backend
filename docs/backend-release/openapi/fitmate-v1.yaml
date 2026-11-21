@@ -1288,6 +1288,45 @@ paths:
         '200': { description: Trang HTML kết nối thành công }
         '400': { $ref: '#/components/responses/ValidationError' }
 
+  /me/pt-profile:
+    get:
+      tags: [Services]
+      summary: Lấy hồ sơ chuyên môn của PT hiện tại
+      operationId: getMyPtProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PtProfileResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Services]
+      summary: Cập nhật hồ sơ chuyên môn của PT
+      operationId: updateMyPtProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePtProfileRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PtProfileResponse'
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   /me/services:
     get:
       tags: [Services]
@@ -6666,6 +6705,53 @@ components:
           type: integer
           minimum: 15
           maximum: 240
+
+    PtProfileResponse:
+      type: object
+      required: [id, user_id, rating, reviews_count, verification_status]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        specialty:
+          type: string
+          nullable: true
+        experience_years:
+          type: integer
+          nullable: true
+        price_per_session_vnd:
+          type: integer
+          format: int64
+          nullable: true
+        bio:
+          type: string
+          nullable: true
+        rating:
+          type: number
+          format: decimal
+        reviews_count:
+          type: integer
+        verification_status:
+          type: string
+    UpdatePtProfileRequest:
+      type: object
+      properties:
+        specialty:
+          type: string
+          nullable: true
+        experience_years:
+          type: integer
+          nullable: true
+        price_per_session_vnd:
+          type: integer
+          format: int64
+          nullable: true
+        bio:
+          type: string
+          nullable: true
 
     Certificate:
       type: object

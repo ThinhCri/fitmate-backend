@@ -35,7 +35,6 @@ public class PtProfileController : ControllerBase
     }
 
     [HttpPatch]
-    [HttpPut]
     public async Task<ActionResult<PtProfileResponse>> Update(
         [FromServices] ICurrentUserAccessor current,
         [FromBody] UpdatePtProfileRequest body,
