@@ -6,6 +6,7 @@ using Fitmate.Infrastructure.Trainers;
 using Fitmate.IntegrationTests.Infrastructure;
 using FluentAssertions;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Text.Json;
@@ -31,10 +32,8 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
         var localStart = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(2).AddHours(7), DateTimeKind.Unspecified);
         var slot = AvailabilitySlot.Create(ptId, localStart, "Asia/Ho_Chi_Minh", 90);
         var profile = PtProfile.CreateDraft(ptId, "Sức mạnh", 3, 300_000, "Huấn luyện cá nhân");
-        profile.Approve(adminId);
         var cert = Certificate.Submit(ptId, "PT Certificate", "Training Institute", "CERT-01",
             new DateOnly(2025, 1, 1), "test-certificate", ptId);
-        cert.Approve(adminId);
         var service = Service.Create(ptId, "Buổi tập cá nhân", "Hướng dẫn bài tập và sửa kỹ thuật trong một buổi.", 300_000, 60);
 
         using (var scope = _factory.Services.CreateScope())
@@ -44,8 +43,30 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
             await db.SaveChangesAsync();
         }
 
+        // 1. Profile and cert are unapproved drafts -> not discoverable and not bookable
         await AssertBookability(ptId, service.Id, slot.SlotStartUtc, expected: false);
 
+        // 2. Approve profile and cert, but phone is not yet confirmed
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var p = await db.PtProfiles.FindAsync(ptId);
+            p!.Approve(adminId);
+            var c = await db.Certificates.FirstAsync(x => x.PtUserId == ptId);
+            c.Approve(adminId);
+            await db.SaveChangesAsync();
+        }
+
+        // Market detail is discoverable under relaxed filter, but slot is not yet bookable without phone
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var marketplace = scope.ServiceProvider.GetRequiredService<ITrainerMarketplaceStore>();
+            var booking = scope.ServiceProvider.GetRequiredService<IServiceBookingLookup>();
+            (await marketplace.FindDetailAsync(ptId, default)).Should().NotBeNull();
+            (await booking.FindBookableAsync(service.Id, slot.SlotStartUtc, default)).Should().BeNull();
+        }
+
+        // 3. Confirm phone number, but service delivery details are not yet complete
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
@@ -55,8 +76,13 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
             await db.SaveChangesAsync();
         }
 
-        await AssertBookability(ptId, service.Id, slot.SlotStartUtc, expected: false);
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var booking = scope.ServiceProvider.GetRequiredService<IServiceBookingLookup>();
+            (await booking.FindBookableAsync(service.Id, slot.SlotStartUtc, default)).Should().BeNull();
+        }
 
+        // 4. Configure complete service delivery details -> fully bookable
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
@@ -86,11 +112,13 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
     }
 
     [Fact]
-    public async Task OnlineService_IsDiscoveredOnlyWithGoogleConnection()
+    public async Task OnlineService_IsDiscoverable_AndRequiresGoogleConnectionToBook()
     {
         var ptId = Guid.NewGuid();
         _factory.CreateAuthenticatedClient("PT", ptId).Dispose();
         var adminId = Guid.NewGuid();
+        var localStart = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(2).AddHours(7), DateTimeKind.Unspecified);
+        var slot = AvailabilitySlot.Create(ptId, localStart, "Asia/Ho_Chi_Minh", 90);
         var profile = PtProfile.CreateDraft(ptId, "Online coaching", 3, 250_000, "Online fitness guidance");
         profile.Approve(adminId);
         var cert = Certificate.Submit(ptId, "Certificate", "Institute", "ONLINE-01",
@@ -106,7 +134,7 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
         var user = await db.Users.FindAsync(ptId);
         user!.PhoneNumber = "+849" + Random.Shared.Next(10_000_000, 100_000_000);
         user.PhoneNumberConfirmed = true;
-        db.AddRange(profile, cert, service);
+        db.AddRange(profile, cert, service, slot);
         await db.SaveChangesAsync();
 
         var configured = Options.Create(new GoogleMeetOptions
@@ -115,7 +143,12 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
             RedirectUri = "https://example.test/api/v1/integrations/google-meet/callback"
         });
         var marketplace = new EfTrainerMarketplaceStore(db, configured);
-        (await marketplace.FindDetailAsync(ptId, default)).Should().BeNull();
+        var detail = await marketplace.FindDetailAsync(ptId, default);
+        detail.Should().NotBeNull();
+        detail!.Services.Should().ContainSingle(s => s.Id == service.Id && s.DeliveryMode == ServiceDeliveryMode.Online);
+
+        var booking = scope.ServiceProvider.GetRequiredService<IServiceBookingLookup>();
+        (await booking.FindBookableAsync(service.Id, slot.SlotStartUtc, default)).Should().BeNull();
 
         db.UserTokens.Add(new IdentityUserToken<Guid>
         {
@@ -123,9 +156,8 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
             Name = GoogleMeetConnectionService.ConnectionName, Value = "test-protected-token"
         });
         await db.SaveChangesAsync();
-        var detail = await marketplace.FindDetailAsync(ptId, default);
-        detail.Should().NotBeNull();
-        detail!.Services.Should().ContainSingle(s => s.Id == service.Id && s.DeliveryMode == ServiceDeliveryMode.Online);
+
+        (await booking.FindBookableAsync(service.Id, slot.SlotStartUtc, default)).Should().NotBeNull();
     }
 
     private async Task AssertBookability(Guid ptId, Guid serviceId, DateTime slotStartUtc, bool expected)
