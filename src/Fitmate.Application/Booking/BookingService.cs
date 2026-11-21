@@ -149,7 +149,7 @@ public class BookingService : IBookingService
             throw new ConflictException("PACKAGE_ACTION_REQUIRED",
                 "Buổi này thuộc một gói PT; không thể hủy riêng qua luồng lịch lẻ.");
 
-        if (appt.MemberId == actorUserId && DateTime.UtcNow > appt.SlotStartUtc.AddHours(-48))
+        if (appt.Status != AppointmentStatus.Held && appt.MemberId == actorUserId && DateTime.UtcNow > appt.SlotStartUtc.AddHours(-48))
             throw new ConflictException(
                 ErrorCodes.Booking.CannotTransition,
                 "Bạn chỉ có thể tự hủy lịch trước giờ bắt đầu ít nhất 48 giờ. Vui lòng liên hệ hỗ trợ nếu có tình huống khẩn cấp.");
@@ -158,6 +158,13 @@ public class BookingService : IBookingService
         {
             appt.Cancel(reason);
             await _appointments.SaveChangesAsync(ct);
+
+            var activeHold = await _holds.FindByIdAsync(appt.Id, ct);
+            if (activeHold != null && activeHold.Status == "active")
+            {
+                activeHold.Release();
+                await _holds.SaveChangesAsync(ct);
+            }
 
             if (_payments != null && appt.PaymentId.HasValue)
             {

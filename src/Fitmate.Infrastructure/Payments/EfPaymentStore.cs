@@ -20,8 +20,22 @@ public class EfPaymentStore : IPaymentStore
     public Task<Payment?> FindByAppointmentIdAsync(Guid appointmentId, CancellationToken ct)
         => _db.Payments.FirstOrDefaultAsync(p => p.AppointmentId == appointmentId, ct);
 
-    public Task<BookingHold?> FindHoldAsync(Guid holdId, CancellationToken ct)
-        => _db.BookingHolds.FirstOrDefaultAsync(h => h.Id == holdId, ct);
+    public async Task<BookingHold?> FindHoldAsync(Guid holdId, CancellationToken ct)
+    {
+        var hold = await _db.BookingHolds.FirstOrDefaultAsync(h => h.Id == holdId, ct);
+        if (hold != null) return hold;
+
+        var appt = await _db.Appointments.FirstOrDefaultAsync(a => a.Id == holdId, ct);
+        if (appt != null)
+        {
+            return await _db.BookingHolds
+                .Where(h => h.MemberId == appt.MemberId && h.PtUserId == appt.PtUserId && h.SlotStartUtc == appt.SlotStartUtc && h.Status == "active")
+                .OrderByDescending(h => h.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return null;
+    }
 
     public Task<bool> IsPackageHoldAsync(Guid holdId, CancellationToken ct)
         => _db.SessionPackageSessions.AnyAsync(s => s.HoldId == holdId, ct);

@@ -171,8 +171,22 @@ public class EfBookingHoldStore : IBookingHoldStore
         _db = db;
     }
 
-    public Task<BookingHold?> FindByIdAsync(Guid holdId, CancellationToken ct)
-        => _db.BookingHolds.FirstOrDefaultAsync(h => h.Id == holdId, ct);
+    public async Task<BookingHold?> FindByIdAsync(Guid holdId, CancellationToken ct)
+    {
+        var hold = await _db.BookingHolds.FirstOrDefaultAsync(h => h.Id == holdId, ct);
+        if (hold != null) return hold;
+
+        var appt = await _db.Appointments.FirstOrDefaultAsync(a => a.Id == holdId, ct);
+        if (appt != null)
+        {
+            return await _db.BookingHolds
+                .Where(h => h.MemberId == appt.MemberId && h.PtUserId == appt.PtUserId && h.SlotStartUtc == appt.SlotStartUtc && h.Status == "active")
+                .OrderByDescending(h => h.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return null;
+    }
 
     public async Task AddAsync(BookingHold hold, CancellationToken ct)
         => await _db.BookingHolds.AddAsync(hold, ct);
