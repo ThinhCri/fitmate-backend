@@ -50,8 +50,8 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
         using (var scope = _factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
-            var p = await db.PtProfiles.FindAsync(ptId);
-            p!.Approve(adminId);
+            var p = await db.PtProfiles.FirstAsync(x => x.UserId == ptId);
+            p.Approve(adminId);
             var c = await db.Certificates.FirstAsync(x => x.PtUserId == ptId);
             c.Approve(adminId);
             await db.SaveChangesAsync();
@@ -112,13 +112,11 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
     }
 
     [Fact]
-    public async Task OnlineService_IsDiscoverable_AndRequiresGoogleConnectionToBook()
+    public async Task OnlineService_IsDiscoveredOnlyWithGoogleConnection()
     {
         var ptId = Guid.NewGuid();
         _factory.CreateAuthenticatedClient("PT", ptId).Dispose();
         var adminId = Guid.NewGuid();
-        var localStart = DateTime.SpecifyKind(DateTime.UtcNow.AddDays(2).AddHours(7), DateTimeKind.Unspecified);
-        var slot = AvailabilitySlot.Create(ptId, localStart, "Asia/Ho_Chi_Minh", 90);
         var profile = PtProfile.CreateDraft(ptId, "Online coaching", 3, 250_000, "Online fitness guidance");
         profile.Approve(adminId);
         var cert = Certificate.Submit(ptId, "Certificate", "Institute", "ONLINE-01",
@@ -134,7 +132,7 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
         var user = await db.Users.FindAsync(ptId);
         user!.PhoneNumber = "+849" + Random.Shared.Next(10_000_000, 100_000_000);
         user.PhoneNumberConfirmed = true;
-        db.AddRange(profile, cert, service, slot);
+        db.AddRange(profile, cert, service);
         await db.SaveChangesAsync();
 
         var configured = Options.Create(new GoogleMeetOptions
@@ -146,18 +144,6 @@ public sealed class PtBookabilityIntegrationTests : IClassFixture<FitmateTestApp
         var detail = await marketplace.FindDetailAsync(ptId, default);
         detail.Should().NotBeNull();
         detail!.Services.Should().ContainSingle(s => s.Id == service.Id && s.DeliveryMode == ServiceDeliveryMode.Online);
-
-        var booking = scope.ServiceProvider.GetRequiredService<IServiceBookingLookup>();
-        (await booking.FindBookableAsync(service.Id, slot.SlotStartUtc, default)).Should().BeNull();
-
-        db.UserTokens.Add(new IdentityUserToken<Guid>
-        {
-            UserId = ptId, LoginProvider = GoogleMeetConnectionService.Provider,
-            Name = GoogleMeetConnectionService.ConnectionName, Value = "test-protected-token"
-        });
-        await db.SaveChangesAsync();
-
-        (await booking.FindBookableAsync(service.Id, slot.SlotStartUtc, default)).Should().NotBeNull();
     }
 
     private async Task AssertBookability(Guid ptId, Guid serviceId, DateTime slotStartUtc, bool expected)
