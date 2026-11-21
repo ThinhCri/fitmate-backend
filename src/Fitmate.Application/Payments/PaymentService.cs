@@ -94,14 +94,29 @@ public class PaymentService : IPaymentService
             return pending;
         }, ct);
         if (payment.RedirectUrl != null || payment.Status != PaymentStatus.Pending)
+        {
+            if (payment.Status == PaymentStatus.Pending)
+            {
+                try
+                {
+                    var existingResult = await _provider.CreatePaymentAsync(
+                        new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
+                    return ToView(payment, existingResult);
+                }
+                catch
+                {
+                    return ToView(payment);
+                }
+            }
             return ToView(payment);
+        }
 
         var result = await _provider.CreatePaymentAsync(
             new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
         payment.SetCheckoutUrl(result.RedirectUrl);
         await _store.SaveChangesAsync(ct);
 
-        return ToView(payment);
+        return ToView(payment, result);
     }
 
     public async Task<PaymentView?> GetByIdAsync(
@@ -414,9 +429,10 @@ public class PaymentService : IPaymentService
         }
     }
 
-    private static PaymentView ToView(Payment p) => new(
+    private static PaymentView ToView(Payment p, ProviderCreatePaymentResult? res = null) => new(
         p.Id, p.RequireAppointmentId(), p.Method, p.Status,
         p.AmountVnd, p.RefundedSoFarVnd,
         p.RedirectUrl, p.ProviderTxnRef,
-        p.CreatedAt, p.CompletedAt);
+        p.CreatedAt, p.CompletedAt,
+        res?.QrCode, res?.AccountNumber, res?.AccountName, res?.Bin, res?.Description, res?.OrderCode);
 }

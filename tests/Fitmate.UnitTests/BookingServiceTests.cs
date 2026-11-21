@@ -338,6 +338,7 @@ public class BookingServiceTests
         var member = Guid.NewGuid();
         var slot = DateTime.UtcNow.AddHours(47);
         var appt = Appointment.CreateHold(member, Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
         apptStore.Items[appt.Id] = appt;
         var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
 
@@ -345,7 +346,22 @@ public class BookingServiceTests
 
         await act.Should().ThrowAsync<ConflictException>()
             .Where(e => e.Code == ErrorCodes.Booking.CannotTransition);
-        appt.Status.Should().Be(AppointmentStatus.Held);
+        appt.Status.Should().Be(AppointmentStatus.Pending);
+    }
+
+    [Fact]
+    public async Task Cancel_ByMemberWithin48Hours_WhenUnpaid_IsAllowed()
+    {
+        var apptStore = new InMemoryAppointmentStore();
+        var member = Guid.NewGuid();
+        var slot = DateTime.UtcNow.AddHours(47);
+        var appt = Appointment.CreateHold(member, Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        apptStore.Items[appt.Id] = appt;
+        var svc = NewService(apptStore, new InMemoryHoldStore(), new StubServiceLookup(), new CapturingOutbox());
+
+        var cancelled = await svc.CancelAsync(member, appt.Id, "Chưa thanh toán hủy lại", CancellationToken.None);
+
+        cancelled.Status.Should().Be(AppointmentStatus.Cancelled);
     }
 
     [Fact]

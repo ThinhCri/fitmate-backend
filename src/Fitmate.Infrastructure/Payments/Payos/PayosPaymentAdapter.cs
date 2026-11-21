@@ -34,7 +34,6 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
         {
             orderCode = order.OrderCode, amount = request.AmountVnd, description,
             cancelUrl, returnUrl,
-            expiredAt = new DateTimeOffset(order.ExpiresAt).ToUnixTimeSeconds(),
             signature = PayosSignature.Sign(canonical, _options.ChecksumKey)
         });
         using var response = await SendAsync(message, ct);
@@ -51,7 +50,12 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
             var id = existing.GetProperty("id").GetString()!;
             if (!Guid.TryParseExact(id, "N", out _)) throw Unavailable();
             order.BindLink(id);
-            return new ProviderCreatePaymentResult(code, "https://pay.payos.vn/web/" + id);
+            string? qr = existing.TryGetProperty("qrCode", out var eqr) ? eqr.GetString() : null;
+            string? acc = existing.TryGetProperty("accountNumber", out var eacc) ? eacc.GetString() : _options.AccountNumber;
+            string? name = existing.TryGetProperty("accountName", out var ename) ? ename.GetString() : null;
+            string? binCode = existing.TryGetProperty("bin", out var ebin) ? ebin.GetString() : null;
+            string? d = existing.TryGetProperty("description", out var edesc) ? edesc.GetString() : description;
+            return new ProviderCreatePaymentResult(code, "https://pay.payos.vn/web/" + id, qr, acc, name, binCode, d, order.OrderCode);
         }
         var data = root.GetProperty("data");
         if (!PayosSignature.Verify(data, root.GetProperty("signature").GetString(), _options.ChecksumKey) ||
@@ -64,7 +68,14 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
         if (!Uri.TryCreate(checkout, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
             uri.Host != "pay.payos.vn" || !string.IsNullOrEmpty(uri.UserInfo)) throw Unavailable();
         order.BindLink(data.GetProperty("paymentLinkId").GetString()!);
-        return new ProviderCreatePaymentResult(code, checkout);
+
+        string? qrCode = data.TryGetProperty("qrCode", out var qrElem) ? qrElem.GetString() : null;
+        string? accountNumber = data.TryGetProperty("accountNumber", out var accElem) ? accElem.GetString() : _options.AccountNumber;
+        string? accountName = data.TryGetProperty("accountName", out var nameElem) ? nameElem.GetString() : null;
+        string? bin = data.TryGetProperty("bin", out var binElem) ? binElem.GetString() : null;
+        string? desc = data.TryGetProperty("description", out var descElem) ? descElem.GetString() : description;
+
+        return new ProviderCreatePaymentResult(code, checkout, qrCode, accountNumber, accountName, bin, desc, order.OrderCode);
     }
 
     public async Task<ProviderQueryResult> QueryTransactionAsync(ProviderQueryRequest request, CancellationToken ct)

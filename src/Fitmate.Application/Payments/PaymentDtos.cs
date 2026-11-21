@@ -15,7 +15,19 @@ public sealed record PaymentView(
     [property: JsonPropertyName("redirect_url")] string? RedirectUrl,
     [property: JsonPropertyName("provider_txn_ref")] string? ProviderTxnRef,
     [property: JsonPropertyName("created_at")] DateTime CreatedAt,
-    [property: JsonPropertyName("completed_at")] DateTime? CompletedAt);
+    [property: JsonPropertyName("completed_at")] DateTime? CompletedAt,
+    [property: JsonPropertyName("qr_code")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QrCode = null,
+    [property: JsonPropertyName("account_number")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AccountNumber = null,
+    [property: JsonPropertyName("account_name")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AccountName = null,
+    [property: JsonPropertyName("bin")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Bin = null,
+    [property: JsonPropertyName("description")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description = null,
+    [property: JsonPropertyName("order_code")]
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? OrderCode = null);
 
 public sealed record CreatePaymentRequest
 {
@@ -32,7 +44,15 @@ public sealed record ProviderCreatePaymentRequest(
     string Description,
     string? ClientIp = null);
 
-public sealed record ProviderCreatePaymentResult(string ProviderTxnRef, string RedirectUrl);
+public sealed record ProviderCreatePaymentResult(
+    string ProviderTxnRef,
+    string RedirectUrl,
+    string? QrCode = null,
+    string? AccountNumber = null,
+    string? AccountName = null,
+    string? Bin = null,
+    string? Description = null,
+    long? OrderCode = null);
 
 public sealed record ProviderQueryRequest(
     Guid PaymentId,
