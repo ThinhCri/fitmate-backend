@@ -48,8 +48,9 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
                 existing.GetProperty("orderCode").GetInt64() != order.OrderCode)
                 throw Unavailable();
             var id = existing.GetProperty("id").GetString()!;
-            if (!Guid.TryParseExact(id, "N", out _)) throw Unavailable();
-            order.BindLink(id);
+            var normalizedId = id.Replace("-", "");
+            if (!Guid.TryParse(id, out _) && !Guid.TryParseExact(normalizedId, "N", out _)) throw Unavailable();
+            order.BindLink(normalizedId);
             string? qr = existing.TryGetProperty("qrCode", out var eqr) ? eqr.GetString() : null;
             string? acc = existing.TryGetProperty("accountNumber", out var eacc) ? eacc.GetString() : _options.AccountNumber;
             string? name = existing.TryGetProperty("accountName", out var ename) ? ename.GetString() : null;
