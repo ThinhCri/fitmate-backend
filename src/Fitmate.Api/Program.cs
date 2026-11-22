@@ -310,6 +310,8 @@ builder.Services.AddScoped<IAdminTransactionsStore, Fitmate.Infrastructure.Admin
 builder.Services.AddScoped<AdminTransactionsService>();
 builder.Services.AddScoped<IAdminRevenueReportStore, Fitmate.Infrastructure.Admin.EfAdminRevenueReportStore>();
 builder.Services.AddScoped<AdminRevenueReportService>();
+builder.Services.AddScoped<IAdminCustomerAnalyticsStore, Fitmate.Infrastructure.Admin.EfAdminCustomerAnalyticsStore>();
+builder.Services.AddScoped<AdminCustomerAnalyticsService>();
 builder.Services.AddScoped<IAdminTrainerReviewsStore, Fitmate.Infrastructure.Admin.EfAdminTrainerReviewsStore>();
 builder.Services.AddScoped<AdminTrainerReviewsService>();
 builder.Services.AddOptions<Ga4Options>().Bind(builder.Configuration.GetSection(Ga4Options.SectionName));

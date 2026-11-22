@@ -5050,6 +5050,40 @@ paths:
         '401': {description: Authentication required}
         '403': {description: Administrator role required}
 
+  /admin/finance/customer-analytics:
+    get:
+      tags: [Admin]
+      summary: Customer paid breakdown and segmentation
+      operationId: adminFinanceCustomerAnalytics
+      parameters:
+        - in: query
+          name: range
+          schema: {type: string}
+        - in: query
+          name: search
+          schema: {type: string}
+        - in: query
+          name: segment
+          schema: {type: string}
+        - in: query
+          name: sort
+          schema: {type: string}
+        - in: query
+          name: page
+          schema: {type: integer, default: 1}
+        - in: query
+          name: pageSize
+          schema: {type: integer, default: 25}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerAnalyticsPage'
+        '401': {description: Authentication required}
+        '403': {description: Administrator role required}
+
   /admin/finance/overview:
     get:
       tags: [Admin]
@@ -7766,6 +7800,54 @@ components:
         refundedOrders: {type: integer, description: Count of partially or fully refunded orders; not a refund amount}
         developerRevenueVnd: {type: integer, format: int64, nullable: true}
         lastPurchasedAtUtc: {type: string, format: date-time}
+    CustomerAnalyticsPage:
+      type: object
+      properties:
+        summary:
+          $ref: '#/components/schemas/CustomerAnalyticsSummary'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomerPayingDetail'
+        total: {type: integer}
+        page: {type: integer}
+        pageSize: {type: integer}
+
+    CustomerAnalyticsSummary:
+      type: object
+      properties:
+        totalRegisteredUsers: {type: integer}
+        totalPayingUsers: {type: integer}
+        conversionRatePercent: {type: number}
+        aiBuyersCount: {type: integer}
+        ptClientsCount: {type: integer}
+        dualCustomersCount: {type: integer}
+        aiOnlyCount: {type: integer}
+        ptOnlyCount: {type: integer}
+        freeUsersCount: {type: integer}
+        totalAiRevenueVnd: {type: integer, format: int64}
+        totalPtRevenueVnd: {type: integer, format: int64}
+        totalCombinedRevenueVnd: {type: integer, format: int64}
+        averageRevenuePerPayingUserVnd: {type: integer, format: int64}
+        totalAiOrders: {type: integer}
+        totalPtBookings: {type: integer}
+
+    CustomerPayingDetail:
+      type: object
+      properties:
+        userId: {type: string, format: uuid}
+        fullName: {type: string}
+        email: {type: string}
+        phoneNumber: {type: string, nullable: true}
+        registeredAtUtc: {type: string, format: date-time}
+        ptBookingCount: {type: integer}
+        aiPurchaseCount: {type: integer}
+        totalPtSpentVnd: {type: integer, format: int64}
+        totalAiSpentVnd: {type: integer, format: int64}
+        totalSpentVnd: {type: integer, format: int64}
+        segment: {type: string}
+        lastTransactionAtUtc: {type: string, format: date-time, nullable: true}
+
     FinanceOverview:
       type: object
       properties:

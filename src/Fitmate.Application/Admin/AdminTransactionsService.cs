@@ -5,7 +5,8 @@ namespace Fitmate.Application.Admin;
 
 public sealed record AdminTransaction(
     Guid Id, string Type, string Status, long AmountVnd, DateTime OccurredAtUtc,
-    Guid? PaymentId, Guid? AppointmentId, Guid? PackageId, string? ProviderReference);
+    Guid? PaymentId, Guid? AppointmentId, Guid? PackageId, string? ProviderReference,
+    Guid? MemberId = null, Guid? PtUserId = null);
 
 public sealed record AdminTransactionPage(
     IReadOnlyList<AdminTransaction> Items, int Total, int Page, int PageSize);

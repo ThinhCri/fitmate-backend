@@ -28,6 +28,17 @@ public class AdminFinanceController : ControllerBase
         return Ok(await payments.QueryTransactionAsync(paymentId, ct));
     }
 
+    [HttpGet("customer-analytics")]
+    public async Task<IActionResult> CustomerAnalytics(
+        [FromServices] Fitmate.Application.Admin.AdminCustomerAnalyticsService analyticsService,
+        [FromQuery] Fitmate.Application.Admin.CustomerAnalyticsQuery query,
+        CancellationToken ct = default)
+    {
+        var adminId = GetUserId();
+        var result = await analyticsService.GetAsync(adminId, query, ct);
+        return Ok(result);
+    }
+
     [HttpGet("overview")]
     public async Task<IActionResult> Overview([FromQuery] string range = "30d", CancellationToken ct = default)
     {
