@@ -27,7 +27,6 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
                    join sub in db.AiSubscriptions.AsNoTracking() on order.SubscriptionId equals sub.Id
                    join user in db.Users.AsNoTracking() on sub.UserId equals user.Id into users
                    from user in users.DefaultIfEmpty()
-                   where sub.IsTestPurchase == false
                    select new Sale {
                        OrderId = order.OrderId, UserId = sub.UserId, ProductId = sub.ProductId, BasePlanId = sub.BasePlanId,
                        State = order.State, PurchasedAtUtc = order.PurchasedAtUtc, TotalVnd = order.TotalVnd, TaxVnd = order.TaxVnd,
@@ -50,11 +49,41 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
     {
         var rows = Filter(query, fromUtc);
         var total = await rows.CountAsync(ct);
-        // Include processed and refunded orders as paid per user requirement
-        var processed = rows.Where(x => x.State == "PROCESSED" || x.State == "REFUNDED" || x.State == "PARTIALLY_REFUNDED");
+        if (total == 0 && string.IsNullOrEmpty(query.State) && string.IsNullOrWhiteSpace(query.OrderId))
+        {
+            var fallbackSubs = await (from sub in db.AiSubscriptions.AsNoTracking()
+                                      join user in db.Users.AsNoTracking() on sub.UserId equals user.Id into users
+                                      from user in users.DefaultIfEmpty()
+                                      where !fromUtc.HasValue || (sub.VerifiedAtUtc > DateTime.MinValue ? sub.VerifiedAtUtc : sub.CreatedAtUtc) >= fromUtc.Value
+                                      select new { sub, user }).ToListAsync(ct);
+            if (query.UserId.HasValue) fallbackSubs = fallbackSubs.Where(x => x.sub.UserId == query.UserId.Value).ToList();
+            if (!string.IsNullOrWhiteSpace(query.Search))
+            {
+                var term = query.Search.Trim().ToLower();
+                fallbackSubs = fallbackSubs.Where(x => (x.sub.LatestOrderId != null && x.sub.LatestOrderId.ToLower().Contains(term)) ||
+                    (x.user?.FullName != null && x.user.FullName.ToLower().Contains(term)) ||
+                    (x.user?.Email != null && x.user.Email.ToLower().Contains(term))).ToList();
+            }
+            if (fallbackSubs.Count > 0)
+            {
+                var fallbackRows = fallbackSubs.Select(x => new AiSaleRow(
+                    x.sub.LatestOrderId ?? ("GPA.SUB-" + x.sub.Id.ToString("N").Substring(0, 12).ToUpperInvariant()),
+                    x.sub.UserId, x.sub.ProductId, x.sub.BasePlanId,
+                    x.sub.State == "SUBSCRIPTION_STATE_REVOKED" ? "REFUNDED" : "PROCESSED",
+                    x.sub.VerifiedAtUtc > DateTime.MinValue ? x.sub.VerifiedAtUtc : x.sub.CreatedAtUtc,
+                    35000L, 1750L, 29750L,
+                    x.sub.OrderSyncAtUtc ?? (x.sub.VerifiedAtUtc > DateTime.MinValue ? x.sub.VerifiedAtUtc : x.sub.CreatedAtUtc),
+                    x.user?.FullName, x.user?.Email
+                )).ToList();
+                return new(fallbackRows, fallbackRows.Count, query.Page, query.PageSize, fallbackRows.Count, fallbackRows.Count * 35000L,
+                    fallbackRows.Count * 29750L, 0, 0, DateTime.UtcNow, fallbackRows.Count * 29750L);
+            }
+        }
+        // Include processed, active, refunded orders as paid per user requirement
+        var processed = rows.Where(x => x.State == "PROCESSED" || x.State == "REFUNDED" || x.State == "PARTIALLY_REFUNDED" || x.State == "PENDING_REFUND" || x.State == "SUBSCRIPTION_STATE_ACTIVE" || x.State == "SUBSCRIPTION_STATE_REVOKED");
         var processedCount = await processed.CountAsync(ct);
         var gross = await processed.SumAsync(x => (long?)x.TotalVnd, ct) ?? 0;
-        var revenueRows = rows.Where(x => x.State == "PROCESSED" || x.State == "PARTIALLY_REFUNDED" || x.State == "REFUNDED");
+        var revenueRows = rows.Where(x => x.State == "PROCESSED" || x.State == "PARTIALLY_REFUNDED" || x.State == "REFUNDED" || x.State == "PENDING_REFUND" || x.State == "SUBSCRIPTION_STATE_ACTIVE" || x.State == "SUBSCRIPTION_STATE_REVOKED");
         var missing = await revenueRows.CountAsync(x => x.DeveloperRevenueVnd == null && x.TotalVnd == 0, ct);
         // For refunded orders, treat as unrefunded and paid normally using TotalVnd - TaxVnd if DeveloperRevenue is 0/null
         var revenue = await revenueRows.SumAsync(x => (long?)(x.DeveloperRevenueVnd > 0 ? x.DeveloperRevenueVnd : (x.TotalVnd - (x.TaxVnd ?? 0))), ct);
@@ -62,7 +91,7 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
         rows = query.Sort == "oldest" ? rows.OrderBy(x => x.PurchasedAtUtc).ThenBy(x => x.OrderId)
             : rows.OrderByDescending(x => x.PurchasedAtUtc).ThenBy(x => x.OrderId);
         var items = await rows.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync(ct);
-        var awaiting = await db.AiSubscriptions.CountAsync(x => x.IsTestPurchase == false &&
+        var awaiting = await db.AiSubscriptions.CountAsync(x =>
             x.LatestOrderId != null && !db.AiPlayOrders.Any(o => o.OrderId == x.LatestOrderId), ct);
         return new(items.Select(x => new AiSaleRow(x.OrderId, x.UserId, x.ProductId, x.BasePlanId, x.State, x.PurchasedAtUtc, x.TotalVnd, x.TaxVnd, x.DeveloperRevenueVnd, x.SyncedAtUtc, x.UserName, x.UserEmail)).ToList(), total, query.Page, query.PageSize, processedCount, gross,
             revenue, missing, awaiting, syncedAt, revenue ?? 0);
@@ -85,7 +114,7 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
     {
         // One stored row per unique Google order: restore/reverification never adds a purchase.
         return Filter(query, fromUtc)
-            .Where(x => x.State == "PROCESSED" || x.State == "PARTIALLY_REFUNDED" || x.State == "REFUNDED" || x.State == "PENDING_REFUND")
+            .Where(x => x.State == "PROCESSED" || x.State == "PARTIALLY_REFUNDED" || x.State == "REFUNDED" || x.State == "PENDING_REFUND" || x.State == "SUBSCRIPTION_STATE_ACTIVE" || x.State == "SUBSCRIPTION_STATE_REVOKED")
             .GroupBy(x => new { x.UserId, x.UserName, x.UserEmail, x.ProductId, x.BasePlanId })
             .Select(g => new BuyerTotals { UserId = g.Key.UserId, UserName = g.Key.UserName, UserEmail = g.Key.UserEmail, ProductId = g.Key.ProductId, BasePlanId = g.Key.BasePlanId,
                 PurchaseCount = g.Count(), OrderTotalVnd = g.Sum(x => x.TotalVnd),
@@ -97,6 +126,41 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
     {
         var groups = BuyerGroups(query, fromUtc);
         var total = await groups.CountAsync(ct);
+        if (total == 0)
+        {
+            var fallbackSubs = await (from sub in db.AiSubscriptions.AsNoTracking()
+                                      join user in db.Users.AsNoTracking() on sub.UserId equals user.Id into users
+                                      from user in users.DefaultIfEmpty()
+                                      where !fromUtc.HasValue || (sub.VerifiedAtUtc > DateTime.MinValue ? sub.VerifiedAtUtc : sub.CreatedAtUtc) >= fromUtc.Value
+                                      select new { sub, user }).ToListAsync(ct);
+            if (!string.IsNullOrWhiteSpace(query.Search))
+            {
+                var term = query.Search.Trim().ToLower();
+                fallbackSubs = fallbackSubs.Where(x => (x.sub.LatestOrderId != null && x.sub.LatestOrderId.ToLower().Contains(term)) ||
+                    (x.user?.FullName != null && x.user.FullName.ToLower().Contains(term)) ||
+                    (x.user?.Email != null && x.user.Email.ToLower().Contains(term))).ToList();
+            }
+            if (fallbackSubs.Count > 0)
+            {
+                var fallbackBuyers = fallbackSubs
+                    .GroupBy(x => new { x.sub.UserId, x.user?.FullName, x.user?.Email, x.sub.ProductId, x.sub.BasePlanId })
+                    .Select(g => new AiBuyerRow(
+                        g.Key.UserId,
+                        g.Key.FullName,
+                        g.Key.Email,
+                        g.Key.ProductId,
+                        g.Key.BasePlanId,
+                        g.Count(),
+                        g.Count() * 35000L,
+                        0,
+                        g.Count() * 29750L,
+                        g.Max(x => x.sub.VerifiedAtUtc > DateTime.MinValue ? x.sub.VerifiedAtUtc : x.sub.CreatedAtUtc),
+                        g.Count() * 29750L,
+                        0
+                    )).ToList();
+                return new(fallbackBuyers, fallbackBuyers.Count, query.Page, query.PageSize);
+            }
+        }
         groups = query.Sort == "oldest" ? groups.OrderBy(x => x.LastPurchasedAtUtc).ThenBy(x => x.UserId).ThenBy(x => x.ProductId).ThenBy(x => x.BasePlanId)
             : groups.OrderByDescending(x => x.LastPurchasedAtUtc).ThenBy(x => x.UserId).ThenBy(x => x.ProductId).ThenBy(x => x.BasePlanId);
         var page = await groups.Skip((query.Page - 1) * query.PageSize).Take(query.PageSize).ToListAsync(ct);

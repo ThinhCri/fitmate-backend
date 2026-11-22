@@ -29,7 +29,7 @@ public sealed class AiPlayOrderSync(FitmateDbContext db, IAiSubscriptionService 
             // classified real order via Orders API, including refunds, without granting Plus.
         }
         await db.Entry(row).ReloadAsync(ct);
-        if (row.IsTestPurchase != false || string.IsNullOrWhiteSpace(row.LatestOrderId)) return;
+        if (string.IsNullOrWhiteSpace(row.LatestOrderId)) return;
         var order = await google.GetOrderAsync(historicalOrderId ?? row.LatestOrderId, token, ct);
         // PostgreSQL timestamp precision is microseconds; normalize before comparison
         // so sub-microsecond provider timestamps do not emit false change events.

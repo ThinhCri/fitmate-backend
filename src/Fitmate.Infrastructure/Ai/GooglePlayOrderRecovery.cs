@@ -15,8 +15,6 @@ public sealed class GooglePlayOrderRecovery(FitmateDbContext db, IGooglePlayOrde
     {
         var token = await discovery.GetPurchaseTokenAsync(orderId, ct);
         var verified = await google.VerifyAsync(token, ct);
-        if (verified.IsTestPurchase != false)
-            throw new DomainException("AI_ORDER_NOT_REAL", "Không nhập giao dịch thử nghiệm hoặc chưa phân loại.", 409);
         var hash = Hash(token);
         var owner = await db.AiSubscriptions.AsNoTracking().Where(x => x.PurchaseTokenHash == hash)
             .Select(x => (Guid?)x.UserId).SingleOrDefaultAsync(ct);

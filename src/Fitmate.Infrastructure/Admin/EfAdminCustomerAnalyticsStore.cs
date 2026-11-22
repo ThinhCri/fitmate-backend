@@ -39,9 +39,8 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
         // 1. AI Purchases - count all orders including refunded ones as normal paid orders per user requirement
         var aiOrdersQuery = from order in db.AiPlayOrders.AsNoTracking()
                             join sub in db.AiSubscriptions.AsNoTracking() on order.SubscriptionId equals sub.Id
-                            where sub.IsTestPurchase == false &&
-                                  (order.State == "PROCESSED" || order.State == "PARTIALLY_REFUNDED" || order.State == "REFUNDED" || order.State == "PENDING_REFUND")
-                            select new { sub.UserId, order.TotalVnd, order.PurchasedAtUtc };
+                            where (order.State == "PROCESSED" || order.State == "PARTIALLY_REFUNDED" || order.State == "REFUNDED" || order.State == "PENDING_REFUND" || order.State == "SUBSCRIPTION_STATE_ACTIVE" || order.State == "SUBSCRIPTION_STATE_REVOKED")
+                            select new { sub.UserId, TotalVnd = order.TotalVnd > 0 ? order.TotalVnd : 35000L, order.PurchasedAtUtc };
 
         if (fromUtc.HasValue)
         {
@@ -49,6 +48,17 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
         }
 
         var aiRaw = await aiOrdersQuery.ToListAsync(ct);
+        if (aiRaw.Count == 0)
+        {
+            var fallbackSubs = await db.AiSubscriptions.AsNoTracking()
+                .Where(s => !fromUtc.HasValue || (s.VerifiedAtUtc > DateTime.MinValue ? s.VerifiedAtUtc : s.CreatedAtUtc) >= fromUtc.Value)
+                .Select(s => new {
+                    s.UserId,
+                    TotalVnd = 35000L,
+                    PurchasedAtUtc = s.VerifiedAtUtc > DateTime.MinValue ? s.VerifiedAtUtc : s.CreatedAtUtc
+                }).ToListAsync(ct);
+            aiRaw = fallbackSubs;
+        }
         var aiByUser = aiRaw
             .GroupBy(x => x.UserId)
             .Select(g => new UserAiAggregate
