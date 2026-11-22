@@ -15,8 +15,22 @@ public class EfAppointmentStore : IAppointmentStore
         _db = db;
     }
 
-    public Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct)
-        => _db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId, ct);
+    public async Task<Appointment?> FindByIdAsync(Guid appointmentId, CancellationToken ct)
+    {
+        var appt = await _db.Appointments.FirstOrDefaultAsync(a => a.Id == appointmentId, ct);
+        if (appt != null) return appt;
+
+        var hold = await _db.BookingHolds.FirstOrDefaultAsync(h => h.Id == appointmentId, ct);
+        if (hold != null)
+        {
+            return await _db.Appointments
+                .Where(a => a.MemberId == hold.MemberId && a.PtUserId == hold.PtUserId && a.SlotStartUtc == hold.SlotStartUtc)
+                .OrderByDescending(a => a.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        return null;
+    }
 
     public Task<bool> IsPackageAppointmentAsync(Guid appointmentId, CancellationToken ct)
         => _db.SessionPackageSessions.AnyAsync(s => s.AppointmentId == appointmentId, ct);
