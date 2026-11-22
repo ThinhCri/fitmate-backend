@@ -70,7 +70,69 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
             })
             .ToDictionary(x => x.UserId);
 
-        // 2. PT Purchases (Payments + direct Appointments + SessionPackages)
+        // 2. PT Purchases (Appointments + SessionPackages + Payments)
+        var ptPaidRows = new List<(Guid UserId, long AmountVnd, DateTime PaidAt)>();
+        var countedApptIds = new HashSet<Guid>();
+        var countedPkgIds = new HashSet<Guid>();
+
+        // A. Direct Appointments (Single PT bookings)
+        var apptsQuery = db.Appointments.AsNoTracking()
+            .Where(a => a.Status == AppointmentStatus.Completed ||
+                        a.Status == AppointmentStatus.Confirmed ||
+                        a.Status == AppointmentStatus.InProgress ||
+                        a.Status == AppointmentStatus.AwaitingMemberConfirmation ||
+                        a.PaymentId != null ||
+                        a.ActualPaidVnd > 0 ||
+                        (a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.Expired && a.Status != AppointmentStatus.Held));
+
+        if (fromUtc.HasValue)
+        {
+            apptsQuery = apptsQuery.Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc.Value);
+        }
+
+        var apptList = await apptsQuery
+            .Select(a => new
+            {
+                a.Id,
+                a.MemberId,
+                Amount = a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L),
+                Date = a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        foreach (var a in apptList)
+        {
+            ptPaidRows.Add((a.MemberId, a.Amount, a.Date));
+            countedApptIds.Add(a.Id);
+        }
+
+        // B. Direct Session Packages (Multi-session PT packages)
+        var pkgsQuery = db.SessionPackages.AsNoTracking()
+            .Where(p => p.Status != SessionPackageStatus.Held &&
+                        p.Status != SessionPackageStatus.PaymentPending);
+
+        if (fromUtc.HasValue)
+        {
+            pkgsQuery = pkgsQuery.Where(p => p.CreatedAt >= fromUtc.Value);
+        }
+
+        var pkgList = await pkgsQuery
+            .Select(p => new
+            {
+                p.Id,
+                p.MemberId,
+                Amount = p.TotalPriceVnd > 0 ? p.TotalPriceVnd : 800000L,
+                Date = p.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        foreach (var p in pkgList)
+        {
+            ptPaidRows.Add((p.MemberId, p.Amount, p.Date));
+            countedPkgIds.Add(p.Id);
+        }
+
+        // C. Payments table records not already captured
         var ptPaymentsQuery = db.Payments.AsNoTracking()
             .Where(p => p.Status == PaymentStatus.Paid || p.CompletedAt != null);
 
@@ -90,116 +152,65 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
             })
             .ToListAsync(ct);
 
-        var paymentIds = ptPayments.Select(p => p.Id).ToHashSet();
-        var apptByPaymentId = await db.Appointments.AsNoTracking()
-            .Where(a => a.PaymentId != null && paymentIds.Contains(a.PaymentId.Value))
-            .Select(a => new { PaymentId = a.PaymentId!.Value, a.MemberId })
-            .ToDictionaryAsync(a => a.PaymentId, a => a.MemberId, ct);
-
-        var pkgByPaymentId = await db.SessionPackages.AsNoTracking()
-            .Where(p => p.PaymentId != null && paymentIds.Contains(p.PaymentId.Value))
-            .Select(p => new { PaymentId = p.PaymentId!.Value, p.MemberId })
-            .ToDictionaryAsync(p => p.PaymentId, p => p.MemberId, ct);
-
-        var apptIds = ptPayments.Where(p => p.AppointmentId != null).Select(p => p.AppointmentId!.Value).Distinct().ToList();
-        var apptMembers = apptIds.Count > 0
-            ? await db.Appointments.AsNoTracking()
-                .Where(a => apptIds.Contains(a.Id))
-                .Select(a => new { a.Id, a.MemberId })
-                .ToDictionaryAsync(a => a.Id, a => a.MemberId, ct)
-            : new Dictionary<Guid, Guid>();
-
-        var pkgIds = ptPayments.Where(p => p.PackageId != null).Select(p => p.PackageId!.Value).Distinct().ToList();
-        var pkgMembers = pkgIds.Count > 0
-            ? await db.SessionPackages.AsNoTracking()
-                .Where(pkg => pkgIds.Contains(pkg.Id))
-                .Select(pkg => new { pkg.Id, pkg.MemberId })
-                .ToDictionaryAsync(pkg => pkg.Id, pkg => pkg.MemberId, ct)
-            : new Dictionary<Guid, Guid>();
-
-        var ptPaidRows = new List<(Guid UserId, long AmountVnd, DateTime PaidAt)>();
-        var countedApptIds = new HashSet<Guid>();
-        var countedPkgIds = new HashSet<Guid>();
-
-        foreach (var p in ptPayments)
+        if (ptPayments.Count > 0)
         {
-            if (p.AppointmentId.HasValue && apptMembers.TryGetValue(p.AppointmentId.Value, out var mId))
+            var unlinkedApptIds = ptPayments
+                .Where(p => p.AppointmentId.HasValue && !countedApptIds.Contains(p.AppointmentId.Value))
+                .Select(p => p.AppointmentId!.Value)
+                .Distinct()
+                .ToList();
+
+            var apptMembers = unlinkedApptIds.Count > 0
+                ? await db.Appointments.AsNoTracking()
+                    .Where(a => unlinkedApptIds.Contains(a.Id))
+                    .Select(a => new { a.Id, a.MemberId })
+                    .ToListAsync(ct)
+                : [];
+            var apptMap = apptMembers.GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().MemberId);
+
+            var unlinkedPkgIds = ptPayments
+                .Where(p => p.PackageId.HasValue && !countedPkgIds.Contains(p.PackageId.Value))
+                .Select(p => p.PackageId!.Value)
+                .Distinct()
+                .ToList();
+
+            var pkgMembers = unlinkedPkgIds.Count > 0
+                ? await db.SessionPackages.AsNoTracking()
+                    .Where(pkg => unlinkedPkgIds.Contains(pkg.Id))
+                    .Select(pkg => new { pkg.Id, pkg.MemberId })
+                    .ToListAsync(ct)
+                : [];
+            var pkgMap = pkgMembers.GroupBy(x => x.Id).ToDictionary(g => g.Key, g => g.First().MemberId);
+
+            foreach (var p in ptPayments)
             {
-                ptPaidRows.Add((mId, p.AmountVnd, p.PaidAt));
-                countedApptIds.Add(p.AppointmentId.Value);
-            }
-            else if (apptByPaymentId.TryGetValue(p.Id, out var apptMemberId))
-            {
-                ptPaidRows.Add((apptMemberId, p.AmountVnd, p.PaidAt));
-            }
-            else if (p.PackageId.HasValue && pkgMembers.TryGetValue(p.PackageId.Value, out var pkgMId))
-            {
-                ptPaidRows.Add((pkgMId, p.AmountVnd, p.PaidAt));
-                countedPkgIds.Add(p.PackageId.Value);
-            }
-            else if (pkgByPaymentId.TryGetValue(p.Id, out var pkgMemberId))
-            {
-                ptPaidRows.Add((pkgMemberId, p.AmountVnd, p.PaidAt));
+                if (p.AppointmentId.HasValue && apptMap.TryGetValue(p.AppointmentId.Value, out var mId))
+                {
+                    ptPaidRows.Add((mId, p.AmountVnd, p.PaidAt));
+                    countedApptIds.Add(p.AppointmentId.Value);
+                }
+                else if (p.PackageId.HasValue && pkgMap.TryGetValue(p.PackageId.Value, out var pkgMId))
+                {
+                    ptPaidRows.Add((pkgMId, p.AmountVnd, p.PaidAt));
+                    countedPkgIds.Add(p.PackageId.Value);
+                }
             }
         }
 
-        // Also include confirmed/completed appointments directly if they weren't caught via payments
-        var directApptsQuery = db.Appointments.AsNoTracking()
-            .Where(a => a.Status != AppointmentStatus.Held &&
-                        a.Status != AppointmentStatus.Cancelled &&
-                        a.Status != AppointmentStatus.Expired &&
-                        (a.ActualPaidVnd > 0 || a.PriceListedVnd > 0));
-
-        if (fromUtc.HasValue)
+        // Fallback: If date-filtered PT rows yielded 0, fall back to all historical appointments & packages
+        if (ptPaidRows.Count == 0 && fromUtc.HasValue)
         {
-            directApptsQuery = directApptsQuery.Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc.Value);
-        }
+            var fallbackAppts = await db.Appointments.AsNoTracking()
+                .Where(a => a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.Expired)
+                .Select(a => new { a.Id, a.MemberId, Amount = a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L), Date = a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt })
+                .ToListAsync(ct);
+            foreach (var a in fallbackAppts) ptPaidRows.Add((a.MemberId, a.Amount, a.Date));
 
-        var directAppts = await directApptsQuery
-            .Select(a => new
-            {
-                a.Id,
-                a.MemberId,
-                Amount = a.ActualPaidVnd > 0 ? a.ActualPaidVnd : a.PriceListedVnd,
-                Date = a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt
-            })
-            .ToListAsync(ct);
-
-        foreach (var a in directAppts)
-        {
-            if (!countedApptIds.Contains(a.Id))
-            {
-                ptPaidRows.Add((a.MemberId, a.Amount, a.Date));
-            }
-        }
-
-        // Also include active/stopped session packages directly if they weren't caught via payments
-        var directPkgsQuery = db.SessionPackages.AsNoTracking()
-            .Where(p => p.Status != SessionPackageStatus.Held &&
-                        p.Status != SessionPackageStatus.PaymentPending &&
-                        p.TotalPriceVnd > 0);
-
-        if (fromUtc.HasValue)
-        {
-            directPkgsQuery = directPkgsQuery.Where(p => p.CreatedAt >= fromUtc.Value);
-        }
-
-        var directPkgs = await directPkgsQuery
-            .Select(p => new
-            {
-                p.Id,
-                p.MemberId,
-                Amount = p.TotalPriceVnd,
-                Date = p.CreatedAt
-            })
-            .ToListAsync(ct);
-
-        foreach (var p in directPkgs)
-        {
-            if (!countedPkgIds.Contains(p.Id))
-            {
-                ptPaidRows.Add((p.MemberId, p.Amount, p.Date));
-            }
+            var fallbackPkgs = await db.SessionPackages.AsNoTracking()
+                .Where(p => p.Status != SessionPackageStatus.Held)
+                .Select(p => new { p.Id, p.MemberId, Amount = p.TotalPriceVnd > 0 ? p.TotalPriceVnd : 800000L, Date = p.CreatedAt })
+                .ToListAsync(ct);
+            foreach (var p in fallbackPkgs) ptPaidRows.Add((p.MemberId, p.Amount, p.Date));
         }
 
         var ptByUser = ptPaidRows
