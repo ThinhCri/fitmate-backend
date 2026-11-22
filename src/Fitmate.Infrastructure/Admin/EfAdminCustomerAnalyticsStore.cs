@@ -1,4 +1,5 @@
 using Fitmate.Application.Admin;
+using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -35,11 +36,11 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
             _ => null
         };
 
-        // 1. AI Purchases
+        // 1. AI Purchases - count all orders including refunded ones as normal paid orders per user requirement
         var aiOrdersQuery = from order in db.AiPlayOrders.AsNoTracking()
                             join sub in db.AiSubscriptions.AsNoTracking() on order.SubscriptionId equals sub.Id
                             where sub.IsTestPurchase == false &&
-                                  (order.State == "PROCESSED" || order.State == "PARTIALLY_REFUNDED")
+                                  (order.State == "PROCESSED" || order.State == "PARTIALLY_REFUNDED" || order.State == "REFUNDED" || order.State == "PENDING_REFUND")
                             select new { sub.UserId, order.TotalVnd, order.PurchasedAtUtc };
 
         if (fromUtc.HasValue)
@@ -59,9 +60,9 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
             })
             .ToDictionary(x => x.UserId);
 
-        // 2. PT Purchases (Appointments + Packages)
+        // 2. PT Purchases (Payments + direct Appointments + SessionPackages)
         var ptPaymentsQuery = db.Payments.AsNoTracking()
-            .Where(p => p.Status == PaymentStatus.Paid);
+            .Where(p => p.Status == PaymentStatus.Paid || p.CompletedAt != null);
 
         if (fromUtc.HasValue)
         {
@@ -78,6 +79,17 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
                 PaidAt = p.CompletedAt ?? p.CreatedAt
             })
             .ToListAsync(ct);
+
+        var paymentIds = ptPayments.Select(p => p.Id).ToHashSet();
+        var apptByPaymentId = await db.Appointments.AsNoTracking()
+            .Where(a => a.PaymentId != null && paymentIds.Contains(a.PaymentId.Value))
+            .Select(a => new { PaymentId = a.PaymentId!.Value, a.MemberId })
+            .ToDictionaryAsync(a => a.PaymentId, a => a.MemberId, ct);
+
+        var pkgByPaymentId = await db.SessionPackages.AsNoTracking()
+            .Where(p => p.PaymentId != null && paymentIds.Contains(p.PaymentId.Value))
+            .Select(p => new { PaymentId = p.PaymentId!.Value, p.MemberId })
+            .ToDictionaryAsync(p => p.PaymentId, p => p.MemberId, ct);
 
         var apptIds = ptPayments.Where(p => p.AppointmentId != null).Select(p => p.AppointmentId!.Value).Distinct().ToList();
         var apptMembers = apptIds.Count > 0
@@ -96,15 +108,87 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
             : new Dictionary<Guid, Guid>();
 
         var ptPaidRows = new List<(Guid UserId, long AmountVnd, DateTime PaidAt)>();
+        var countedApptIds = new HashSet<Guid>();
+        var countedPkgIds = new HashSet<Guid>();
+
         foreach (var p in ptPayments)
         {
             if (p.AppointmentId.HasValue && apptMembers.TryGetValue(p.AppointmentId.Value, out var mId))
             {
                 ptPaidRows.Add((mId, p.AmountVnd, p.PaidAt));
+                countedApptIds.Add(p.AppointmentId.Value);
+            }
+            else if (apptByPaymentId.TryGetValue(p.Id, out var apptMemberId))
+            {
+                ptPaidRows.Add((apptMemberId, p.AmountVnd, p.PaidAt));
             }
             else if (p.PackageId.HasValue && pkgMembers.TryGetValue(p.PackageId.Value, out var pkgMId))
             {
                 ptPaidRows.Add((pkgMId, p.AmountVnd, p.PaidAt));
+                countedPkgIds.Add(p.PackageId.Value);
+            }
+            else if (pkgByPaymentId.TryGetValue(p.Id, out var pkgMemberId))
+            {
+                ptPaidRows.Add((pkgMemberId, p.AmountVnd, p.PaidAt));
+            }
+        }
+
+        // Also include confirmed/completed appointments directly if they weren't caught via payments
+        var directApptsQuery = db.Appointments.AsNoTracking()
+            .Where(a => a.Status != AppointmentStatus.Held &&
+                        a.Status != AppointmentStatus.Cancelled &&
+                        a.Status != AppointmentStatus.Expired &&
+                        (a.ActualPaidVnd > 0 || a.PriceListedVnd > 0));
+
+        if (fromUtc.HasValue)
+        {
+            directApptsQuery = directApptsQuery.Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc.Value);
+        }
+
+        var directAppts = await directApptsQuery
+            .Select(a => new
+            {
+                a.Id,
+                a.MemberId,
+                Amount = a.ActualPaidVnd > 0 ? a.ActualPaidVnd : a.PriceListedVnd,
+                Date = a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        foreach (var a in directAppts)
+        {
+            if (!countedApptIds.Contains(a.Id))
+            {
+                ptPaidRows.Add((a.MemberId, a.Amount, a.Date));
+            }
+        }
+
+        // Also include active/stopped session packages directly if they weren't caught via payments
+        var directPkgsQuery = db.SessionPackages.AsNoTracking()
+            .Where(p => p.Status != SessionPackageStatus.Held &&
+                        p.Status != SessionPackageStatus.PaymentPending &&
+                        p.TotalPriceVnd > 0);
+
+        if (fromUtc.HasValue)
+        {
+            directPkgsQuery = directPkgsQuery.Where(p => p.CreatedAt >= fromUtc.Value);
+        }
+
+        var directPkgs = await directPkgsQuery
+            .Select(p => new
+            {
+                p.Id,
+                p.MemberId,
+                Amount = p.TotalPriceVnd,
+                Date = p.CreatedAt
+            })
+            .ToListAsync(ct);
+
+        foreach (var p in directPkgs)
+        {
+            if (!countedPkgIds.Contains(p.Id))
+            {
+                ptPaidRows.Add((p.MemberId, p.Amount, p.Date));
             }
         }
 

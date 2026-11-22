@@ -1,4 +1,5 @@
 using Fitmate.Application.Admin;
+using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Finance;
 using Fitmate.Infrastructure.Persistence;
@@ -12,16 +13,34 @@ public sealed class EfAdminRevenueReportStore(FitmateDbContext db) : IAdminReven
         CancellationToken ct)
     {
         // Payment collection, actual bank refund and earned platform fee happen at different times.
-        // Group each at its own event timestamp; never treat a paid but unfinished booking as revenue.
-        var collections = await db.Payments.AsNoTracking()
-            .Where(p => p.CompletedAt >= fromUtc && p.CompletedAt < toUtc)
-            .GroupBy(p => p.CompletedAt!.Value.AddHours(7).Date)
-            .Select(g => new { Date = g.Key, Amount = g.Sum(p => p.AmountVnd) }).ToListAsync(ct);
+        var payments = await db.Payments.AsNoTracking()
+            .Where(p => p.Status == PaymentStatus.Paid &&
+                (p.CompletedAt ?? p.CreatedAt) >= fromUtc && (p.CompletedAt ?? p.CreatedAt) < toUtc)
+            .Select(p => new
+            {
+                Date = (p.CompletedAt ?? p.CreatedAt).AddHours(7).Date,
+                p.AmountVnd
+            })
+            .ToListAsync(ct);
+        var collections = payments
+            .GroupBy(p => p.Date)
+            .Select(g => new { Date = g.Key, Amount = g.Sum(p => p.AmountVnd) })
+            .ToList();
+
         var refunds = await db.Refunds.AsNoTracking()
             .Where(r => r.Status == RefundStatus.Succeeded &&
-                r.SucceededAtUtc >= fromUtc && r.SucceededAtUtc < toUtc)
-            .GroupBy(r => r.SucceededAtUtc!.Value.AddHours(7).Date)
-            .Select(g => new { Date = g.Key, Amount = g.Sum(r => r.AmountVnd) }).ToListAsync(ct);
+                (r.SucceededAtUtc ?? r.CreatedAt) >= fromUtc && (r.SucceededAtUtc ?? r.CreatedAt) < toUtc)
+            .Select(r => new
+            {
+                Date = (r.SucceededAtUtc ?? r.CreatedAt).AddHours(7).Date,
+                r.AmountVnd
+            })
+            .ToListAsync(ct);
+        var groupedRefunds = refunds
+            .GroupBy(r => r.Date)
+            .Select(g => new { Date = g.Key, Amount = g.Sum(r => r.AmountVnd) })
+            .ToList();
+
         var ledger = await db.FinancialLedgerEntries.AsNoTracking()
             .Where(e => e.OccurredAtUtc >= fromUtc && e.OccurredAtUtc < toUtc &&
                 (e.EntryType == FinancialLedgerEntryTypes.PlatformCommission ||
@@ -46,7 +65,7 @@ public sealed class EfAdminRevenueReportStore(FitmateDbContext db) : IAdminReven
             var day = Current(row.Date);
             days[day.Date] = day with { CollectedVnd = row.Amount };
         }
-        foreach (var row in refunds)
+        foreach (var row in groupedRefunds)
         {
             var day = Current(row.Date);
             days[day.Date] = day with { RefundedVnd = row.Amount };
@@ -64,6 +83,40 @@ public sealed class EfAdminRevenueReportStore(FitmateDbContext db) : IAdminReven
                     => day with { PaidOutVnd = day.PaidOutVnd - row.Amount },
                 _ => day
             };
+        }
+
+        // Fallback: If financial ledger entries have not recorded platform fee yet,
+        // compute from completed/confirmed appointments directly so admin sees accurate revenue.
+        var totalFeeInDays = days.Values.Sum(d => d.PlatformFeeVnd);
+        if (totalFeeInDays == 0)
+        {
+            var appts = await db.Appointments.AsNoTracking()
+                .Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc &&
+                            (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) < toUtc &&
+                            (a.Status == AppointmentStatus.Completed ||
+                             a.Status == AppointmentStatus.Confirmed ||
+                             a.Status == AppointmentStatus.InProgress ||
+                             a.Status == AppointmentStatus.AwaitingMemberConfirmation ||
+                             a.ActualPaidVnd > 0))
+                .Select(a => new
+                {
+                    Date = (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt).AddHours(7).Date,
+                    a.PlatformFeeVnd,
+                    a.TrainerShareVnd,
+                    a.ActualPaidVnd
+                })
+                .ToListAsync(ct);
+
+            foreach (var a in appts)
+            {
+                var day = Current(a.Date);
+                days[day.Date] = day with
+                {
+                    CollectedVnd = day.CollectedVnd > 0 ? day.CollectedVnd : day.CollectedVnd + a.ActualPaidVnd,
+                    PlatformFeeVnd = day.PlatformFeeVnd + a.PlatformFeeVnd,
+                    TrainerShareVnd = day.TrainerShareVnd + a.TrainerShareVnd
+                };
+            }
         }
         var result = days.Values.ToArray();
         return new RevenueReport(range, fromUtc, toUtc,

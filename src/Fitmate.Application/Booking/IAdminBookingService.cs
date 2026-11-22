@@ -17,7 +17,13 @@ public record AdminBookingSummaryResponse(
     long ActualPaidVnd,
     string AppointmentStatus,
     string? PaymentStatus,
-    string? RefundStatus);
+    string? RefundStatus,
+    long PlatformFeeVnd = 0,
+    long TrainerShareVnd = 0)
+{
+    public Guid Id => AppointmentId;
+    public string Status => AppointmentStatus;
+}
 
 public record AdminBookingDetailResponse(
     Guid AppointmentId,
@@ -37,7 +43,16 @@ public record AdminBookingDetailResponse(
     string? CancellationReason,
     string? RescheduleReason,
     Guid? PaymentId,
-    IReadOnlyList<object>? Refunds);
+    IReadOnlyList<object>? Refunds,
+    long PlatformFeeVnd = 0,
+    long TrainerShareVnd = 0,
+    long DiscountVnd = 0,
+    decimal PlatformFeeRate = 0,
+    string? PolicyVersion = null)
+{
+    public Guid Id => AppointmentId;
+    public string Status => AppointmentStatus;
+}
 
 public interface IAdminBookingService
 {

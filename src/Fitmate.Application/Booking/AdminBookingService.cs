@@ -43,7 +43,9 @@ public class AdminBookingService : IAdminBookingService
             ActualPaidVnd: a.ActualPaidVnd,
             AppointmentStatus: a.Status.ToString(),
             PaymentStatus: a.PaymentId != null ? "Paid" : null,
-            RefundStatus: null
+            RefundStatus: null,
+            PlatformFeeVnd: a.PlatformFeeVnd,
+            TrainerShareVnd: a.TrainerShareVnd
         )).ToList();
 
         return (summaries, total);
@@ -82,7 +84,12 @@ public class AdminBookingService : IAdminBookingService
             CancellationReason: null,
             RescheduleReason: rescheduleReason,
             PaymentId: appt.PaymentId,
-            Refunds: null
+            Refunds: null,
+            PlatformFeeVnd: appt.PlatformFeeVnd,
+            TrainerShareVnd: appt.TrainerShareVnd,
+            DiscountVnd: appt.DiscountVnd,
+            PlatformFeeRate: appt.PlatformFeeRate,
+            PolicyVersion: appt.PolicyVersion
         );
     }
 }

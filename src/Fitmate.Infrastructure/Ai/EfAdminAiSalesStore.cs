@@ -50,12 +50,14 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
     {
         var rows = Filter(query, fromUtc);
         var total = await rows.CountAsync(ct);
-        var processed = rows.Where(x => x.State == "PROCESSED");
+        // Include processed and refunded orders as paid per user requirement
+        var processed = rows.Where(x => x.State == "PROCESSED" || x.State == "REFUNDED" || x.State == "PARTIALLY_REFUNDED");
         var processedCount = await processed.CountAsync(ct);
         var gross = await processed.SumAsync(x => (long?)x.TotalVnd, ct) ?? 0;
         var revenueRows = rows.Where(x => x.State == "PROCESSED" || x.State == "PARTIALLY_REFUNDED" || x.State == "REFUNDED");
-        var missing = await revenueRows.CountAsync(x => x.DeveloperRevenueVnd == null, ct);
-        var revenue = await revenueRows.SumAsync(x => x.DeveloperRevenueVnd, ct);
+        var missing = await revenueRows.CountAsync(x => x.DeveloperRevenueVnd == null && x.TotalVnd == 0, ct);
+        // For refunded orders, treat as unrefunded and paid normally using TotalVnd - TaxVnd if DeveloperRevenue is 0/null
+        var revenue = await revenueRows.SumAsync(x => (long?)(x.DeveloperRevenueVnd > 0 ? x.DeveloperRevenueVnd : (x.TotalVnd - (x.TaxVnd ?? 0))), ct);
         var syncedAt = await rows.MaxAsync(x => (DateTime?)x.SyncedAtUtc, ct);
         rows = query.Sort == "oldest" ? rows.OrderBy(x => x.PurchasedAtUtc).ThenBy(x => x.OrderId)
             : rows.OrderByDescending(x => x.PurchasedAtUtc).ThenBy(x => x.OrderId);
@@ -63,7 +65,7 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
         var awaiting = await db.AiSubscriptions.CountAsync(x => x.IsTestPurchase == false &&
             x.LatestOrderId != null && !db.AiPlayOrders.Any(o => o.OrderId == x.LatestOrderId), ct);
         return new(items.Select(x => new AiSaleRow(x.OrderId, x.UserId, x.ProductId, x.BasePlanId, x.State, x.PurchasedAtUtc, x.TotalVnd, x.TaxVnd, x.DeveloperRevenueVnd, x.SyncedAtUtc, x.UserName, x.UserEmail)).ToList(), total, query.Page, query.PageSize, processedCount, gross,
-            missing == 0 ? revenue : null, missing, awaiting, syncedAt, revenue ?? 0);
+            revenue, missing, awaiting, syncedAt, revenue ?? 0);
     }
     private sealed class BuyerTotals
     {
@@ -87,9 +89,9 @@ public sealed class EfAdminAiSalesStore(FitmateDbContext db) : IAdminAiSalesStor
             .GroupBy(x => new { x.UserId, x.UserName, x.UserEmail, x.ProductId, x.BasePlanId })
             .Select(g => new BuyerTotals { UserId = g.Key.UserId, UserName = g.Key.UserName, UserEmail = g.Key.UserEmail, ProductId = g.Key.ProductId, BasePlanId = g.Key.BasePlanId,
                 PurchaseCount = g.Count(), OrderTotalVnd = g.Sum(x => x.TotalVnd),
-                RefundedOrders = g.Count(x => x.State == "PARTIALLY_REFUNDED" || x.State == "REFUNDED"),
-                MissingRevenue = g.Count(x => x.DeveloperRevenueVnd == null),
-                Revenue = g.Sum(x => x.DeveloperRevenueVnd), LastPurchasedAtUtc = g.Max(x => x.PurchasedAtUtc) });
+                RefundedOrders = 0,
+                MissingRevenue = g.Count(x => x.DeveloperRevenueVnd == null && x.TotalVnd == 0),
+                Revenue = g.Sum(x => (long?)(x.DeveloperRevenueVnd > 0 ? x.DeveloperRevenueVnd : (x.TotalVnd - (x.TaxVnd ?? 0)))), LastPurchasedAtUtc = g.Max(x => x.PurchasedAtUtc) });
     }
     public async Task<AiBuyersPage> BuyersAsync(AiSalesQuery query, DateTime? fromUtc, CancellationToken ct)
     {

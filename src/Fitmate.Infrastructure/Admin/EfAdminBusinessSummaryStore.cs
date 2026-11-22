@@ -1,4 +1,5 @@
 using Fitmate.Application.Admin;
+using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Finance;
 using Fitmate.Domain.Trainers;
@@ -28,15 +29,16 @@ public sealed class EfAdminBusinessSummaryStore(FitmateDbContext db) : IAdminBus
             p.VerificationStatus == PtVerificationStatus.PendingReview, ct);
 
         var payments = db.Payments.AsNoTracking();
-        var paidTransactions = await payments.CountAsync(p => p.CompletedAt >= fromUtc &&
-            p.CompletedAt < toUtc, ct);
+        var paidTransactions = await payments.CountAsync(p => p.Status == PaymentStatus.Paid &&
+            (p.CompletedAt ?? p.CreatedAt) >= fromUtc && (p.CompletedAt ?? p.CreatedAt) < toUtc, ct);
         var failedTransactions = await payments.CountAsync(p => p.Status == PaymentStatus.Failed &&
             p.UpdatedAt >= fromUtc && p.UpdatedAt < toUtc, ct);
         var pendingTransactions = await payments.CountAsync(p => p.Status == PaymentStatus.Pending, ct);
-        var collected = await payments.Where(p => p.CompletedAt >= fromUtc &&
-            p.CompletedAt < toUtc).SumAsync(p => (long?)p.AmountVnd, ct) ?? 0L;
+        var collected = await payments.Where(p => p.Status == PaymentStatus.Paid &&
+            (p.CompletedAt ?? p.CreatedAt) >= fromUtc && (p.CompletedAt ?? p.CreatedAt) < toUtc)
+            .SumAsync(p => (long?)p.AmountVnd, ct) ?? 0L;
         var refunded = await db.Refunds.Where(r => r.Status == RefundStatus.Succeeded &&
-            r.SucceededAtUtc >= fromUtc && r.SucceededAtUtc < toUtc)
+            (r.SucceededAtUtc ?? r.CreatedAt) >= fromUtc && (r.SucceededAtUtc ?? r.CreatedAt) < toUtc)
             .SumAsync(r => (long?)r.AmountVnd, ct) ?? 0L;
 
         var ledger = db.FinancialLedgerEntries.AsNoTracking();
@@ -47,6 +49,39 @@ public sealed class EfAdminBusinessSummaryStore(FitmateDbContext db) : IAdminBus
         var share = await periodLedger.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayable ||
             e.EntryType == FinancialLedgerEntryTypes.RefundTrainerDeduction)
             .SumAsync(e => (long?)e.AmountVnd, ct) ?? 0L;
+
+        // Fallback: If ledger has no entries, calculate from appointments directly
+        if (fee == 0)
+        {
+            fee = await db.Appointments.AsNoTracking()
+                .Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc &&
+                            (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) < toUtc &&
+                            (a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.AwaitingMemberConfirmation || a.ActualPaidVnd > 0))
+                .SumAsync(a => (long?)a.PlatformFeeVnd, ct) ?? 0L;
+        }
+        if (share == 0)
+        {
+            share = await db.Appointments.AsNoTracking()
+                .Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc &&
+                            (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) < toUtc &&
+                            (a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.AwaitingMemberConfirmation || a.ActualPaidVnd > 0))
+                .SumAsync(a => (long?)a.TrainerShareVnd, ct) ?? 0L;
+        }
+        if (collected == 0)
+        {
+            collected = await db.Appointments.AsNoTracking()
+                .Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc &&
+                            (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) < toUtc &&
+                            (a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.AwaitingMemberConfirmation || a.ActualPaidVnd > 0))
+                .SumAsync(a => (long?)a.ActualPaidVnd, ct) ?? 0L;
+        }
+        if (paidTransactions == 0)
+        {
+            paidTransactions = await db.Appointments.AsNoTracking()
+                .CountAsync(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc &&
+                                 (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) < toUtc &&
+                                 (a.Status == AppointmentStatus.Completed || a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.AwaitingMemberConfirmation || a.ActualPaidVnd > 0), ct);
+        }
         var paidOut = -(await periodLedger.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayout)
             .SumAsync(e => (long?)e.AmountVnd, ct) ?? 0L);
         var allTimePayable = await ledger.Where(e => e.EntryType == FinancialLedgerEntryTypes.TrainerPayable ||

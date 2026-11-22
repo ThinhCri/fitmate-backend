@@ -43,6 +43,7 @@ public sealed class EfAdminTransactionsStore(FitmateDbContext db) : IAdminTransa
             "payout" => payouts,
             _ => payments.Concat(refunds).Concat(payouts)
         };
+
         if (status != null) rows = rows.Where(r => r.Status == status);
         if (referenceId.HasValue)
             rows = rows.Where(r => r.Id == referenceId || r.PaymentId == referenceId ||
