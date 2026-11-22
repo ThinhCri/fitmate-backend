@@ -131,6 +131,20 @@ public class PaymentService : IPaymentService
         var appt = await _store.FindAppointmentByHoldAsync(payment.RequireAppointmentId(), ct);
         if (appt is null || appt.MemberId != memberId) return null;
 
+        if (payment.Status == PaymentStatus.Pending && payment.Method == PaymentMethod.Payos)
+        {
+            try
+            {
+                var existingResult = await _provider.CreatePaymentAsync(
+                    new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
+                return ToView(payment, existingResult);
+            }
+            catch
+            {
+                return ToView(payment);
+            }
+        }
+
         return ToView(payment);
     }
 

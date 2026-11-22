@@ -47,7 +47,10 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
             if (existing.GetProperty("amount").GetInt64() != request.AmountVnd ||
                 existing.GetProperty("orderCode").GetInt64() != order.OrderCode)
                 throw Unavailable();
-            var id = existing.GetProperty("id").GetString()!;
+            string? id = existing.TryGetProperty("paymentLinkId", out var plElem)
+                ? plElem.GetString()
+                : (existing.TryGetProperty("id", out var idElem) ? idElem.GetString() : null);
+            if (string.IsNullOrWhiteSpace(id)) throw Unavailable();
             var normalizedId = id.Replace("-", "");
             if (!Guid.TryParse(id, out _) && !Guid.TryParseExact(normalizedId, "N", out _)) throw Unavailable();
             order.BindLink(normalizedId);
@@ -56,7 +59,10 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
             string? name = existing.TryGetProperty("accountName", out var ename) ? ename.GetString() : null;
             string? binCode = existing.TryGetProperty("bin", out var ebin) ? ebin.GetString() : null;
             string? d = existing.TryGetProperty("description", out var edesc) ? edesc.GetString() : description;
-            return new ProviderCreatePaymentResult(code, "https://pay.payos.vn/web/" + id, qr, acc, name, binCode, d, order.OrderCode);
+            string checkoutUrl = existing.TryGetProperty("checkoutUrl", out var coElem) && !string.IsNullOrWhiteSpace(coElem.GetString())
+                ? coElem.GetString()!
+                : "https://pay.payos.vn/web/" + id;
+            return new ProviderCreatePaymentResult(code, checkoutUrl, qr, acc, name, binCode, d, order.OrderCode);
         }
         var data = root.GetProperty("data");
         if (!PayosSignature.Verify(data, root.GetProperty("signature").GetString(), _options.ChecksumKey) ||
@@ -87,7 +93,8 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
         var expectedAmount = await db.Payments.Where(p => p.Id == request.PaymentId).Select(p => p.AmountVnd).SingleAsync(ct);
         if (data.GetProperty("amount").GetInt64() != expectedAmount) throw Unavailable();
         var status = data.GetProperty("status").GetString()!;
-        return new ProviderQueryResult(status == "PAID", "00", status, data.GetProperty("id").GetString(),
+        string? txnId = data.TryGetProperty("paymentLinkId", out var plId) ? plId.GetString() : (data.TryGetProperty("id", out var tid) ? tid.GetString() : null);
+        return new ProviderQueryResult(status == "PAID", "00", status, txnId,
             "Provider status only. Settlement requires a verified webhook.");
     }
 
