@@ -49,8 +49,36 @@ public class EfAvailabilitySlotStore : IAvailabilitySlotStore
             .ToListAsync(ct);
     }
 
-    public Task<IReadOnlyList<AvailabilitySlot>> ListOpenByPtAsync(Guid ptUserId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
-        => ListByPtAsync(ptUserId, new[] { AvailabilityStatus.Open }, fromUtc, toUtc, ct);
+    public async Task<IReadOnlyList<AvailabilitySlot>> ListOpenByPtAsync(Guid ptUserId, DateTime fromUtc, DateTime toUtc, CancellationToken ct)
+    {
+        var slots = await ListByPtAsync(ptUserId, new[] { AvailabilityStatus.Open }, fromUtc, toUtc, ct);
+        if (slots.Count == 0) return slots;
+
+        var nowUtc = DateTime.UtcNow;
+        var activeAppointments = await _db.Appointments
+            .Where(a => a.PtUserId == ptUserId &&
+                        a.SlotStartUtc < toUtc &&
+                        (
+                            (a.Status == Domain.Common.AppointmentStatus.Held && (a.HoldExpiresAtUtc == null || a.HoldExpiresAtUtc > nowUtc)) ||
+                            a.Status == Domain.Common.AppointmentStatus.Pending ||
+                            a.Status == Domain.Common.AppointmentStatus.Confirmed ||
+                            a.Status == Domain.Common.AppointmentStatus.InProgress
+                        ))
+            .Select(a => new { a.SlotStartUtc, a.DurationMinutes })
+            .ToListAsync(ct);
+
+        if (activeAppointments.Count == 0) return slots;
+
+        // Loại bỏ khung giờ đã bị trùng hoặc nằm trong ca đã giữ chỗ/đã đặt
+        return slots.Where(s =>
+        {
+            var slotEndUtc = s.SlotStartUtc.AddMinutes(s.DurationMinutes);
+            bool isOverlapping = activeAppointments.Any(a =>
+                s.SlotStartUtc < a.SlotStartUtc.AddMinutes(a.DurationMinutes) &&
+                slotEndUtc > a.SlotStartUtc);
+            return !isOverlapping;
+        }).ToList();
+    }
 
     public async Task DeleteByPtAndStatusAsync(Guid ptUserId, AvailabilityStatus status, CancellationToken ct)
     {

@@ -84,7 +84,7 @@ public class BookingService : IBookingService
 
             if (await _appointments.HasOverlappingSlotAsync(ptUserId, slotStartUtc, svc.DurationMinutes, null, ct))
                 throw new ConflictException(ErrorCodes.Booking.SlotTaken,
-                    $"Slot {slotStartUtc:O} of PT {ptUserId} is no longer available.");
+                    "Khung giờ này vừa có người đặt hoặc đang được giữ chỗ. Vui lòng chọn khung giờ khác.");
 
             // 3. Tạo hold + Appointment(Held).
             var hold = BookingHold.Create(memberId, ptUserId, serviceId, slotStartUtc, _holdTtl);
