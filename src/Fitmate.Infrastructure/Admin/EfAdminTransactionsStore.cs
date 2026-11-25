@@ -13,13 +13,25 @@ public sealed class EfAdminTransactionsStore(FitmateDbContext db) : IAdminTransa
     {
         var payments = db.Payments.AsNoTracking().Select(p => new {
             p.Id, Type = "payment",
-            Status = p.Status == PaymentStatus.Paid ? "paid" :
-            p.Status == PaymentStatus.Failed ? "failed" :
+            Status = p.Status == PaymentStatus.Failed ? "failed" :
             p.Status == PaymentStatus.Refunded ? "refunded" :
-            p.Status == PaymentStatus.PartialRefunded ? "partial_refunded" : "pending",
+            p.Status == PaymentStatus.PartialRefunded ? "partial_refunded" : "paid",
             p.AmountVnd, OccurredAtUtc = p.CreatedAt, PaymentId = (Guid?)p.Id,
             p.AppointmentId, p.PackageId, ProviderReference = p.ProviderTxnRef
         });
+        var directAppts = db.Appointments.AsNoTracking()
+            .Where(a => a.DeletedAt == null && !db.Payments.Any(p => p.AppointmentId == a.Id))
+            .Select(a => new {
+                a.Id, Type = "payment",
+                Status = "paid",
+                AmountVnd = a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L),
+                OccurredAtUtc = a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt,
+                PaymentId = (Guid?)null,
+                AppointmentId = (Guid?)a.Id,
+                PackageId = (Guid?)null,
+                ProviderReference = (string?)null
+            });
+        var allPayments = payments.Concat(directAppts);
         var refunds = db.Refunds.AsNoTracking().Select(r => new {
             r.Id, Type = "refund",
             Status = r.Status == RefundStatus.Succeeded ? "succeeded" :
@@ -38,10 +50,10 @@ public sealed class EfAdminTransactionsStore(FitmateDbContext db) : IAdminTransa
 
         var rows = type switch
         {
-            "payment" => payments,
+            "payment" => allPayments,
             "refund" => refunds,
             "payout" => payouts,
-            _ => payments.Concat(refunds).Concat(payouts)
+            _ => allPayments.Concat(refunds).Concat(payouts)
         };
 
         if (status != null) rows = rows.Where(r => r.Status == status);

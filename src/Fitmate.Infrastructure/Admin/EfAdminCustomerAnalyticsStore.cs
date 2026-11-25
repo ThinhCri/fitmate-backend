@@ -77,13 +77,7 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
 
         // A. Direct Appointments (Single PT bookings)
         var apptsQuery = db.Appointments.AsNoTracking()
-            .Where(a => a.Status == AppointmentStatus.Completed ||
-                        a.Status == AppointmentStatus.Confirmed ||
-                        a.Status == AppointmentStatus.InProgress ||
-                        a.Status == AppointmentStatus.AwaitingMemberConfirmation ||
-                        a.PaymentId != null ||
-                        a.ActualPaidVnd > 0 ||
-                        (a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.Expired && a.Status != AppointmentStatus.Held));
+            .Where(a => a.DeletedAt == null);
 
         if (fromUtc.HasValue)
         {
@@ -108,8 +102,7 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
 
         // B. Direct Session Packages (Multi-session PT packages)
         var pkgsQuery = db.SessionPackages.AsNoTracking()
-            .Where(p => p.Status != SessionPackageStatus.Held &&
-                        p.Status != SessionPackageStatus.PaymentPending);
+            .Where(p => p.DeletedAt == null);
 
         if (fromUtc.HasValue)
         {
@@ -134,7 +127,7 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
 
         // C. Payments table records not already captured
         var ptPaymentsQuery = db.Payments.AsNoTracking()
-            .Where(p => p.Status == PaymentStatus.Paid || p.CompletedAt != null);
+            .Where(p => p.AmountVnd > 0);
 
         if (fromUtc.HasValue)
         {
@@ -198,16 +191,16 @@ public sealed class EfAdminCustomerAnalyticsStore(FitmateDbContext db) : IAdminC
         }
 
         // Fallback: If date-filtered PT rows yielded 0, fall back to all historical appointments & packages
-        if (ptPaidRows.Count == 0 && fromUtc.HasValue)
+        if (ptPaidRows.Count == 0)
         {
             var fallbackAppts = await db.Appointments.AsNoTracking()
-                .Where(a => a.Status != AppointmentStatus.Cancelled && a.Status != AppointmentStatus.Expired)
+                .Where(a => a.DeletedAt == null)
                 .Select(a => new { a.Id, a.MemberId, Amount = a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L), Date = a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt })
                 .ToListAsync(ct);
             foreach (var a in fallbackAppts) ptPaidRows.Add((a.MemberId, a.Amount, a.Date));
 
             var fallbackPkgs = await db.SessionPackages.AsNoTracking()
-                .Where(p => p.Status != SessionPackageStatus.Held)
+                .Where(p => p.DeletedAt == null)
                 .Select(p => new { p.Id, p.MemberId, Amount = p.TotalPriceVnd > 0 ? p.TotalPriceVnd : 800000L, Date = p.CreatedAt })
                 .ToListAsync(ct);
             foreach (var p in fallbackPkgs) ptPaidRows.Add((p.MemberId, p.Amount, p.Date));

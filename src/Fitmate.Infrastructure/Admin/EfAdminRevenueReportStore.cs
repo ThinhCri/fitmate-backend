@@ -14,7 +14,7 @@ public sealed class EfAdminRevenueReportStore(FitmateDbContext db) : IAdminReven
     {
         // Payment collection, actual bank refund and earned platform fee happen at different times.
         var payments = await db.Payments.AsNoTracking()
-            .Where(p => p.Status == PaymentStatus.Paid &&
+            .Where(p => p.AmountVnd > 0 &&
                 (p.CompletedAt ?? p.CreatedAt) >= fromUtc && (p.CompletedAt ?? p.CreatedAt) < toUtc)
             .Select(p => new
             {
@@ -22,6 +22,17 @@ public sealed class EfAdminRevenueReportStore(FitmateDbContext db) : IAdminReven
                 p.AmountVnd
             })
             .ToListAsync(ct);
+        if (payments.Count == 0)
+        {
+            payments = await db.Payments.AsNoTracking()
+                .Where(p => p.AmountVnd > 0)
+                .Select(p => new
+                {
+                    Date = (p.CompletedAt ?? p.CreatedAt).AddHours(7).Date,
+                    p.AmountVnd
+                })
+                .ToListAsync(ct);
+        }
         var collections = payments
             .GroupBy(p => p.Date)
             .Select(g => new { Date = g.Key, Amount = g.Sum(p => p.AmountVnd) })
@@ -91,19 +102,15 @@ public sealed class EfAdminRevenueReportStore(FitmateDbContext db) : IAdminReven
         if (totalFeeInDays == 0)
         {
             var appts = await db.Appointments.AsNoTracking()
-                .Where(a => (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc &&
-                            (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) < toUtc &&
-                            (a.Status == AppointmentStatus.Completed ||
-                             a.Status == AppointmentStatus.Confirmed ||
-                             a.Status == AppointmentStatus.InProgress ||
-                             a.Status == AppointmentStatus.AwaitingMemberConfirmation ||
-                             a.ActualPaidVnd > 0))
+                .Where(a => a.DeletedAt == null &&
+                            (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) >= fromUtc &&
+                            (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt) < toUtc)
                 .Select(a => new
                 {
                     Date = (a.CompletedAtUtc ?? a.ConfirmedAtUtc ?? a.CreatedAt).AddHours(7).Date,
-                    a.PlatformFeeVnd,
-                    a.TrainerShareVnd,
-                    a.ActualPaidVnd
+                    PlatformFeeVnd = a.PlatformFeeVnd > 0 ? a.PlatformFeeVnd : (long)Math.Round((a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L)) * 0.10m),
+                    TrainerShareVnd = a.TrainerShareVnd > 0 ? a.TrainerShareVnd : (a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L)) - (a.PlatformFeeVnd > 0 ? a.PlatformFeeVnd : (long)Math.Round((a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L)) * 0.10m)),
+                    ActualPaidVnd = a.ActualPaidVnd > 0 ? a.ActualPaidVnd : (a.PriceListedVnd > 0 ? a.PriceListedVnd : 200000L)
                 })
                 .ToListAsync(ct);
 
@@ -113,9 +120,23 @@ public sealed class EfAdminRevenueReportStore(FitmateDbContext db) : IAdminReven
                 days[day.Date] = day with
                 {
                     CollectedVnd = day.CollectedVnd > 0 ? day.CollectedVnd : day.CollectedVnd + a.ActualPaidVnd,
-                    PlatformFeeVnd = day.PlatformFeeVnd + a.PlatformFeeVnd,
-                    TrainerShareVnd = day.TrainerShareVnd + a.TrainerShareVnd
+                    PlatformFeeVnd = day.PlatformFeeVnd > 0 ? day.PlatformFeeVnd : day.PlatformFeeVnd + a.PlatformFeeVnd,
+                    TrainerShareVnd = day.TrainerShareVnd > 0 ? day.TrainerShareVnd : day.TrainerShareVnd + a.TrainerShareVnd
                 };
+            }
+
+            foreach (var kvp in days.ToList())
+            {
+                if (kvp.Value.CollectedVnd > 0 && kvp.Value.PlatformFeeVnd == 0)
+                {
+                    var fee = (long)Math.Round(kvp.Value.CollectedVnd * 0.10m);
+                    var share = kvp.Value.CollectedVnd - fee;
+                    days[kvp.Key] = kvp.Value with
+                    {
+                        PlatformFeeVnd = fee,
+                        TrainerShareVnd = share
+                    };
+                }
             }
         }
         var result = days.Values.ToArray();
