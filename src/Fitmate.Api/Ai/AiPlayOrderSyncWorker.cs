@@ -41,7 +41,7 @@ public sealed class AiPlayOrderSyncWorker(IServiceScopeFactory scopes, IOptions<
         var retry = now.AddMinutes(-1);
         var routine = now.AddMinutes(-15);
         return (from sub in db.AiSubscriptions.AsNoTracking()
-                let urgent = sub.LatestOrderId != null &&
+                let urgent = sub.IsTestPurchase == false && sub.LatestOrderId != null &&
                     (!db.AiPlayOrders.Any(o => o.OrderId == sub.LatestOrderId) ||
                      db.AiPlayOrders.Any(o => o.OrderId == sub.LatestOrderId && o.DeveloperRevenueVnd == null))
                 where sub.OrderSyncAtUtc == null || sub.OrderSyncAtUtc < routine || urgent && sub.OrderSyncAtUtc < retry
