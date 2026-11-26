@@ -247,10 +247,6 @@ public class UserProfileService : IUserProfileService
     }
 
     private string? ResolveAvatarUrl(ApplicationUser user)
-    {
-        if (!string.IsNullOrWhiteSpace(user.AvatarStorageKey) && _signedUrl is not null)
-            return _signedUrl.CreatePresignedReadUrl(user.AvatarStorageKey, TimeSpan.FromMinutes(15)).ToString();
-        return user.AvatarUrl;
-    }
+        => AvatarUrlResolver.Resolve(user, _signedUrl);
 }
 

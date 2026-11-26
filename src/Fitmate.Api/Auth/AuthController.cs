@@ -3,6 +3,8 @@ using Fitmate.Api.Errors;
 using Fitmate.Application.Auth;
 using Fitmate.Application.Auth.Contracts;
 using Fitmate.Application.Common;
+using Fitmate.Application.Identity;
+using Fitmate.Application.Storage;
 using Fitmate.Domain.Identity;
 using Fitmate.Domain.Trainers;
 using Fitmate.Infrastructure.Persistence;
@@ -32,6 +34,7 @@ public class AuthController : ControllerBase
     private readonly IValidator<RegisterRequest> _registerValidator;
     private readonly IValidator<LoginRequest> _loginValidator;
     private readonly IValidator<RefreshRequest> _refreshValidator;
+    private readonly ISignedUrlService? _signedUrl;
 
     public AuthController(
         UserManager<ApplicationUser> users,
@@ -41,7 +44,8 @@ public class AuthController : ControllerBase
         IRefreshTokenService refresh,
         IValidator<RegisterRequest> registerValidator,
         IValidator<LoginRequest> loginValidator,
-        IValidator<RefreshRequest> refreshValidator)
+        IValidator<RefreshRequest> refreshValidator,
+        ISignedUrlService? signedUrl = null)
     {
         _users = users;
         _roles = roles;
@@ -51,6 +55,7 @@ public class AuthController : ControllerBase
         _registerValidator = registerValidator;
         _loginValidator = loginValidator;
         _refreshValidator = refreshValidator;
+        _signedUrl = signedUrl;
     }
 
     [HttpPost("register")]
@@ -495,8 +500,14 @@ public class AuthController : ControllerBase
         });
     }
 
-    private static UserSummaryDto ToUserSummary(ApplicationUser user, string role, string? ptVerificationStatus = null) =>
-        new(user.Id, user.Email ?? "", user.AvatarUrl, user.FullName, role, ptVerificationStatus);
+    private UserSummaryDto ToUserSummary(ApplicationUser user, string role, string? ptVerificationStatus = null) =>
+        new(
+            user.Id,
+            user.Email ?? "",
+            AvatarUrlResolver.Resolve(user, _signedUrl ?? HttpContext?.RequestServices.GetService<ISignedUrlService>()),
+            user.FullName,
+            role,
+            ptVerificationStatus);
 
     private async Task<string?> GetPtVerificationStatusAsync(Guid userId, string role, CancellationToken ct)
     {

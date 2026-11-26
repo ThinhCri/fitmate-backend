@@ -1,5 +1,6 @@
 using Fitmate.Application.Auth;
 using Fitmate.Application.Outbox;
+using Fitmate.Application.Storage;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
 
@@ -12,6 +13,7 @@ public class AccountDeletionService : IAccountDeletionService
     private readonly IOutboxDispatcher _outbox;
     private readonly IDeletionTokenProtector _tokenProtector;
     private readonly IAccountDeletionOtpGateway _otp;
+    private readonly ISignedUrlService? _signedUrl;
 
     private const int RetentionDays = 30;
 
@@ -20,13 +22,15 @@ public class AccountDeletionService : IAccountDeletionService
         IRefreshTokenStore refreshTokenStore,
         IOutboxDispatcher outbox,
         IDeletionTokenProtector tokenProtector,
-        IAccountDeletionOtpGateway otp)
+        IAccountDeletionOtpGateway otp,
+        ISignedUrlService? signedUrl = null)
     {
         _store = store;
         _refreshTokenStore = refreshTokenStore;
         _outbox = outbox;
         _tokenProtector = tokenProtector;
         _otp = otp;
+        _signedUrl = signedUrl;
     }
 
     public Task<DeletionOtpStartResult> SendDeletionOtpAsync(Guid userId, CancellationToken ct) => _otp.StartAsync(userId, ct);
@@ -207,7 +211,7 @@ public class AccountDeletionService : IAccountDeletionService
                 Id: user.Id,
                 Email: user.Email ?? "",
                 FullName: user.FullName,
-                AvatarUrl: user.AvatarUrl,
+                AvatarUrl: AvatarUrlResolver.Resolve(user, _signedUrl),
                 Phone: profile.Phone,
                 Gender: profile.Gender?.ToString().ToLowerInvariant(),
                 Birthday: profile.Birthday,

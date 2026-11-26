@@ -1,5 +1,7 @@
 using Fitmate.Application.Moderation;
+using Fitmate.Application.Identity;
 using Fitmate.Application.Social;
+using Fitmate.Application.Storage;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Social;
 using Fitmate.Domain.Trainers;
@@ -21,11 +23,13 @@ public class EfSocialStore : ISocialStore
 {
     private readonly FitmateDbContext _db;
     private readonly UserManager<ApplicationUser> _users;
+    private readonly ISignedUrlService? _signedUrl;
 
-    public EfSocialStore(FitmateDbContext db, UserManager<ApplicationUser> users)
+    public EfSocialStore(FitmateDbContext db, UserManager<ApplicationUser> users, ISignedUrlService? signedUrl = null)
     {
         _db = db;
         _users = users;
+        _signedUrl = signedUrl;
     }
 
     public async Task<(IReadOnlyList<SocialPostRow> Items, string? NextCursor)> ListPostsAsync(
@@ -377,10 +381,10 @@ public class EfSocialStore : ISocialStore
 
     public async Task<SocialAuthorRow?> GetAuthorAsync(Guid userId, CancellationToken ct)
     {
-        var u = await _users.Users.FirstOrDefaultAsync(x => x.Id == userId, ct);
+        var u = await _users.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId, ct);
         if (u is null) return null;
         // AvatarUrl: chưa có trong ApplicationUser hiện tại (sẽ thêm ở BE-NNN nếu cần).
-        return new SocialAuthorRow(u.Id, u.FullName ?? u.Email ?? "Unknown", null);
+        return new SocialAuthorRow(u.Id, u.FullName ?? u.Email ?? "Unknown", AvatarUrlResolver.Resolve(u, _signedUrl));
     }
 
     private static SocialPostRow ToRow(Post p) => new(

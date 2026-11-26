@@ -262,6 +262,23 @@ public class UserProfileServiceTests
 
         await act.Should().ThrowAsync<ValidationException>();
     }
+
+    [Fact]
+    public void AvatarUrlResolver_PrefersSignedStorageKeyOverLegacyUrl()
+    {
+        var user = new ApplicationUser
+        {
+            Id = Guid.NewGuid(),
+            AvatarStorageKey = "avatars/pt_new.jpg",
+            AvatarUrl = "https://legacy.example/old.jpg"
+        };
+
+        var resolved = AvatarUrlResolver.Resolve(user, new FakeSignedUrlService());
+        resolved.Should().Be("https://media.test/avatars/pt_new.jpg?signed=1");
+
+        var fallback = AvatarUrlResolver.Resolve(user, signedUrl: null);
+        fallback.Should().Be("https://legacy.example/old.jpg");
+    }
 }
 
 internal sealed class FakeSignedUrlService : ISignedUrlService

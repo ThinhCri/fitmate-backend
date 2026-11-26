@@ -1,4 +1,7 @@
 using System.Net;
+using System.Net.Http.Json;
+using Fitmate.Domain.Identity;
+using Microsoft.AspNetCore.Identity;
 using System.Text.Json;
 using Fitmate.Domain.Booking;
 using Fitmate.Domain.Common;
@@ -161,6 +164,86 @@ public sealed class MobileWireContractIntegrationTests : IClassFixture<FitmateTe
 
         using var anonymous = await _factory.CreateClient().GetAsync($"/api/v1/me/bookings/{appointmentId}");
         anonymous.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task PtAvatarAttachment_UpdatesPublicMarketplaceAuthLoginAndSocialResponses()
+    {
+        var ptId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        _factory.CreateAuthenticatedClient("PT", ptId).Dispose();
+        var uniqueSpecialty = $"AvatarSpec{ptId:N}"[..18];
+        var ptEmail = $"pt_{ptId:N}@fitmate.vn";
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await users.FindByIdAsync(ptId.ToString());
+            user.Should().NotBeNull();
+            (await users.AddPasswordAsync(user!, "PtPass!12345")).Succeeded.Should().BeTrue();
+
+            var profile = PtProfile.CreateDraft(ptId, uniqueSpecialty, 4, 350_000, "Avatar test PT");
+            profile.Approve(adminId);
+            var cert = Certificate.Submit(ptId, "CPT", "NASM", $"CODE-{ptId:N}"[..12],
+                new DateOnly(2025, 1, 1), "certs/test-cert.jpg", ptId);
+            cert.Approve(adminId);
+            var service = Service.Create(ptId, "PT Avatar Session", "Session description", 350_000, 60);
+            db.AddRange(profile, cert, service);
+            await db.SaveChangesAsync();
+        }
+
+        using var ptClient = _factory.CreateAuthenticatedClient("PT", ptId);
+
+        var firstKey = $"avatars/{ptId:N}_avatar1.jpg";
+        var secondKey = $"avatars/{ptId:N}_avatar2.jpg";
+
+        using (var attach1 = await ptClient.PutAsJsonAsync("/api/v1/users/me/avatar", new { storage_key = firstKey }))
+        {
+            attach1.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using var anon = _factory.CreateClient();
+        using (var listRes = await anon.GetAsync($"/api/v1/trainers?specialty={Uri.EscapeDataString(uniqueSpecialty)}"))
+        {
+            listRes.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var doc = JsonDocument.Parse(await listRes.Content.ReadAsStringAsync());
+            var item = doc.RootElement.GetProperty("items").EnumerateArray().Single(x => x.GetProperty("id").GetGuid() == ptId);
+            item.GetProperty("avatar_url").GetString().Should().Contain(firstKey);
+        }
+
+        using (var detailRes = await anon.GetAsync($"/api/v1/trainers/{ptId}"))
+        {
+            detailRes.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var doc = JsonDocument.Parse(await detailRes.Content.ReadAsStringAsync());
+            doc.RootElement.GetProperty("avatar_url").GetString().Should().Contain(firstKey);
+        }
+
+        using (var loginRes = await anon.PostAsJsonAsync("/api/v1/auth/login", new { email = ptEmail, password = "PtPass!12345" }))
+        {
+            loginRes.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var doc = JsonDocument.Parse(await loginRes.Content.ReadAsStringAsync());
+            doc.RootElement.GetProperty("user").GetProperty("avatar_url").GetString().Should().Contain(firstKey);
+        }
+
+        using (var postRes = await ptClient.PostAsJsonAsync("/api/v1/social/posts", new { content = $"Avatar post {ptId:N}", visibility = "public" }))
+        {
+            postRes.StatusCode.Should().Be(HttpStatusCode.Created);
+            using var doc = JsonDocument.Parse(await postRes.Content.ReadAsStringAsync());
+            doc.RootElement.GetProperty("author").GetProperty("avatar_url").GetString().Should().Contain(firstKey);
+        }
+
+        using (var attach2 = await ptClient.PutAsJsonAsync("/api/v1/users/me/avatar", new { storage_key = secondKey }))
+        {
+            attach2.StatusCode.Should().Be(HttpStatusCode.OK);
+        }
+
+        using (var detailRes2 = await anon.GetAsync($"/api/v1/trainers/{ptId}"))
+        {
+            detailRes2.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var doc = JsonDocument.Parse(await detailRes2.Content.ReadAsStringAsync());
+            doc.RootElement.GetProperty("avatar_url").GetString().Should().Contain(secondKey);
+        }
     }
 
     private static async Task AssertObjectKeys(HttpClient client, string path, params string[] expectedKeys)

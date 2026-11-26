@@ -1,3 +1,5 @@
+using Fitmate.Application.Identity;
+using Fitmate.Application.Storage;
 using Fitmate.Application.Trainers;
 using Fitmate.Domain.Common;
 using Fitmate.Domain.Identity;
@@ -17,10 +19,16 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
 {
     private readonly FitmateDbContext _db;
     private readonly bool _onlineEnabled;
-    public EfTrainerMarketplaceStore(FitmateDbContext db, IOptions<GoogleMeetOptions>? meetOptions = null)
+    private readonly ISignedUrlService? _signedUrl;
+
+    public EfTrainerMarketplaceStore(
+        FitmateDbContext db,
+        IOptions<GoogleMeetOptions>? meetOptions = null,
+        ISignedUrlService? signedUrl = null)
     {
         _db = db;
         _onlineEnabled = meetOptions?.Value.IsConfigured() ?? false;
+        _signedUrl = signedUrl;
     }
 
     public async Task<(IReadOnlyList<TrainerMarketplaceSummary> Items, string? NextCursor)> ListVerifiedAsync(TrainerMarketplaceQuery q, CancellationToken ct)
@@ -82,7 +90,7 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
         var verifiedSet = approvedCerts.ToHashSet();
         var userDetails = await _db.Users
             .Where(u => ptIds.Contains(u.Id))
-            .Select(u => new { u.Id, u.FullName, u.AvatarUrl })
+            .Select(u => new { u.Id, u.FullName, u.AvatarUrl, u.AvatarStorageKey })
             .ToDictionaryAsync(u => u.Id, ct);
 
         var items = page
@@ -91,7 +99,10 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
                 Id: p.Id,
                 UserId: p.UserId,
                 FullName: userDetails[p.UserId].FullName,
-                AvatarUrl: userDetails[p.UserId].AvatarUrl,
+                AvatarUrl: AvatarUrlResolver.Resolve(
+                    userDetails[p.UserId].AvatarStorageKey,
+                    userDetails[p.UserId].AvatarUrl,
+                    _signedUrl),
                 Specialty: p.Specialty,
                 ExperienceYears: p.ExperienceYears,
                 PricePerSessionVnd: activePrices.GetValueOrDefault(p.UserId),
@@ -124,12 +135,12 @@ public class EfTrainerMarketplaceStore : ITrainerMarketplaceStore
         if (services.Count == 0) return null;
 
         var user = await _db.Users.Where(u => u.Id == ptUserId)
-            .Select(u => new { u.FullName, u.AvatarUrl }).SingleAsync(ct);
+            .Select(u => new { u.FullName, u.AvatarUrl, u.AvatarStorageKey }).SingleAsync(ct);
         var summary = new TrainerMarketplaceSummary(
             Id: profile.Id,
             UserId: profile.UserId,
             FullName: user.FullName,
-            AvatarUrl: user.AvatarUrl,
+            AvatarUrl: AvatarUrlResolver.Resolve(user.AvatarStorageKey, user.AvatarUrl, _signedUrl),
             Specialty: profile.Specialty,
             ExperienceYears: profile.ExperienceYears,
             PricePerSessionVnd: services.Min(s => s.PriceVnd),
