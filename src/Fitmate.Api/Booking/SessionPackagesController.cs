@@ -62,8 +62,19 @@ public sealed class SessionPackagesController(
         packages.ListAssignedPtAsync(current.GetUserIdOrThrow(), page, pageSize, ct);
 
     [HttpGet("{id:guid}")]
-    public Task<SessionPackageView> Get(Guid id, CancellationToken ct) =>
-        packages.GetForParticipantAsync(current.GetUserIdOrThrow(), id, ct);
+    public async Task<SessionPackageView> Get(Guid id, [FromServices] IPayosOrderReconciler? reconciler, CancellationToken ct)
+    {
+        var userId = current.GetUserIdOrThrow();
+        var view = await packages.GetForParticipantAsync(userId, id, ct);
+        if (reconciler != null &&
+            string.Equals(view.Status, nameof(SessionPackageStatus.PaymentPending), StringComparison.Ordinal) &&
+            view.PaymentId.HasValue)
+        {
+            await reconciler.ReconcileIfPaidAsync(view.PaymentId.Value, ct);
+            view = await packages.GetForParticipantAsync(userId, id, ct);
+        }
+        return view;
+    }
 
     [HttpGet("{id:guid}/stop-preview")]
     public Task<SessionPackageStopPreviewView> PreviewStop(Guid id, CancellationToken ct) =>

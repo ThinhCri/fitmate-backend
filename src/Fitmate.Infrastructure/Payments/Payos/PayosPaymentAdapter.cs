@@ -54,11 +54,13 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
             var normalizedId = id.Replace("-", "");
             if (!Guid.TryParse(id, out _) && !Guid.TryParseExact(normalizedId, "N", out _)) throw Unavailable();
             order.BindLink(normalizedId);
-            string? qr = existing.TryGetProperty("qrCode", out var eqr) ? eqr.GetString() : null;
-            string? acc = existing.TryGetProperty("accountNumber", out var eacc) ? eacc.GetString() : _options.AccountNumber;
-            string? name = existing.TryGetProperty("accountName", out var ename) ? ename.GetString() : null;
-            string? binCode = existing.TryGetProperty("bin", out var ebin) ? ebin.GetString() : null;
-            string? d = existing.TryGetProperty("description", out var edesc) ? edesc.GetString() : description;
+            string? qr = existing.TryGetProperty("qrCode", out var eqr) && !string.IsNullOrWhiteSpace(eqr.GetString()) ? eqr.GetString() : order.QrCode;
+            string? acc = existing.TryGetProperty("accountNumber", out var eacc) && !string.IsNullOrWhiteSpace(eacc.GetString()) ? eacc.GetString() : (order.AccountNumber ?? PayosAccountNumber.Normalize(_options.AccountNumber));
+            string? name = existing.TryGetProperty("accountName", out var ename) && !string.IsNullOrWhiteSpace(ename.GetString()) ? ename.GetString() : order.AccountName;
+            string? binCode = existing.TryGetProperty("bin", out var ebin) && !string.IsNullOrWhiteSpace(ebin.GetString()) ? ebin.GetString() : order.Bin;
+            string? d = existing.TryGetProperty("description", out var edesc) && !string.IsNullOrWhiteSpace(edesc.GetString()) ? edesc.GetString() : (order.Description ?? description);
+            order.BindDetails(qr, acc, name, binCode, d);
+            await db.SaveChangesAsync(ct);
             string checkoutUrl = existing.TryGetProperty("checkoutUrl", out var coElem) && !string.IsNullOrWhiteSpace(coElem.GetString())
                 ? coElem.GetString()!
                 : "https://pay.payos.vn/web/" + id;
@@ -69,7 +71,7 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
             data.GetProperty("orderCode").GetInt64() != order.OrderCode ||
             data.GetProperty("amount").GetInt64() != request.AmountVnd ||
             data.GetProperty("currency").GetString() != "VND" ||
-            !string.Equals(data.GetProperty("accountNumber").GetString()?.Replace(" ", ""), _options.AccountNumber?.Replace(" ", ""), StringComparison.Ordinal))
+            !PayosAccountNumber.Matches(data.GetProperty("accountNumber").GetString(), _options.AccountNumber))
             throw Unavailable();
         var checkout = data.GetProperty("checkoutUrl").GetString()!;
         if (!Uri.TryCreate(checkout, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
@@ -81,8 +83,41 @@ public sealed class PayosPaymentAdapter(HttpClient http, FitmateDbContext db, IO
         string? accountName = data.TryGetProperty("accountName", out var nameElem) ? nameElem.GetString() : null;
         string? bin = data.TryGetProperty("bin", out var binElem) ? binElem.GetString() : null;
         string? desc = data.TryGetProperty("description", out var descElem) ? descElem.GetString() : description;
+        order.BindDetails(qrCode, accountNumber, accountName, bin, desc);
+        await db.SaveChangesAsync(ct);
 
         return new ProviderCreatePaymentResult(code, checkout, qrCode, accountNumber, accountName, bin, desc, order.OrderCode);
+    }
+
+    public sealed record PayosQueriedPaidOrder(bool IsPaid, string? PaymentLinkId, string Reference, long AmountVnd);
+
+    public async Task<PayosQueriedPaidOrder> TryQueryPaidOrderAsync(PayosOrder order, long expectedAmountVnd, CancellationToken ct)
+    {
+        EnsureEnabled();
+        var data = await QueryOrderAsync(order, ct);
+        var amount = data.GetProperty("amount").GetInt64();
+        if (amount != expectedAmountVnd)
+            return new PayosQueriedPaidOrder(false, null, string.Empty, amount);
+        var status = data.GetProperty("status").GetString();
+        var amountPaid = data.TryGetProperty("amountPaid", out var paidElem) && paidElem.ValueKind == JsonValueKind.Number
+            ? paidElem.GetInt64()
+            : (status == "PAID" ? amount : 0L);
+        if (!string.Equals(status, "PAID", StringComparison.Ordinal) || amountPaid < expectedAmountVnd)
+            return new PayosQueriedPaidOrder(false, null, string.Empty, amount);
+        string? linkId = data.TryGetProperty("paymentLinkId", out var plId) ? plId.GetString()
+            : (data.TryGetProperty("id", out var tid) ? tid.GetString() : order.PaymentLinkId);
+        linkId = linkId?.Replace("-", "");
+        string? reference = null;
+        if (data.TryGetProperty("transactions", out var txns) && txns.ValueKind == JsonValueKind.Array && txns.GetArrayLength() > 0)
+        {
+            var first = txns[0];
+            if (first.TryGetProperty("reference", out var refElem) && refElem.ValueKind == JsonValueKind.String)
+                reference = refElem.GetString();
+        }
+        reference = !string.IsNullOrWhiteSpace(reference)
+            ? reference
+            : (!string.IsNullOrWhiteSpace(linkId) ? linkId : $"payos:{order.OrderCode}");
+        return new PayosQueriedPaidOrder(true, linkId, reference, amount);
     }
 
     public async Task<ProviderQueryResult> QueryTransactionAsync(ProviderQueryRequest request, CancellationToken ct)

@@ -1001,6 +1001,96 @@ public class PayosPostgresIntegrationTests : IClassFixture<FitmateTestAppFactory
         (await db.Set<PayosOrder>().CountAsync(o => o.PaymentId == seed.PaymentId)).Should().Be(1);
     }
 
+    [Fact]
+    public async Task Payos_virtual_account_qr_persists_on_retry_and_polling_reconciler_confirms_booking()
+    {
+        var seed = await SeedAsync();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+        var spacedOptions = new PayosOptions
+        {
+            Enabled = true, MerchantApproved = true, ClientId = _options.ClientId, ApiKey = _options.ApiKey,
+            ChecksumKey = _options.ChecksumKey, AccountNumber = "6802 0476 39",
+            ReturnUrl = _options.ReturnUrl, CancelUrl = _options.CancelUrl
+        };
+        var linkId = "abcdef1234567890abcdef1234567890";
+        var step = 0;
+        var handler = new FakeHttp(_ =>
+        {
+            step++;
+            if (step == 1)
+            {
+                var payload = new
+                {
+                    orderCode = seed.OrderCode,
+                    amount = 100000L,
+                    currency = "VND",
+                    accountNumber = "V3CAS6802047639",
+                    accountName = "VO TAN PHAT",
+                    bin = "970418",
+                    description = "FITMATE",
+                    qrCode = "00020101021238570010A000000727012700069704180113V3CAS6802047639",
+                    checkoutUrl = "https://pay.payos.vn/web/" + linkId,
+                    paymentLinkId = linkId
+                };
+                var canonical = $"accountName={payload.accountName}&accountNumber={payload.accountNumber}&amount={payload.amount}&bin={payload.bin}&checkoutUrl={payload.checkoutUrl}&currency={payload.currency}&description={payload.description}&orderCode={payload.orderCode}&paymentLinkId={payload.paymentLinkId}&qrCode={payload.qrCode}";
+                var sig = PayosSignature.Sign(canonical, spacedOptions.ChecksumKey);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(new { code = "00", data = payload, signature = sig }))
+                });
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    code = "00",
+                    data = new
+                    {
+                        id = linkId,
+                        orderCode = seed.OrderCode,
+                        amount = 100000L,
+                        amountPaid = 100000L,
+                        status = "PAID",
+                        transactions = new[] { new { reference = "FT263301234567" } }
+                    }
+                }))
+            });
+        });
+
+        using var client = new HttpClient(handler);
+        var adapter = new PayosPaymentAdapter(client, db, Options.Create(spacedOptions));
+        var created = await adapter.CreatePaymentAsync(new(seed.PaymentId, 100000, "FITMATE"), default);
+        created.QrCode.Should().StartWith("000201");
+        created.Bin.Should().Be("970418");
+        created.AccountNumber.Should().Be("V3CAS6802047639");
+
+        var paymentRow = await db.Payments.SingleAsync(p => p.Id == seed.PaymentId);
+        paymentRow.SetCheckoutUrl(created.RedirectUrl);
+        await db.SaveChangesAsync();
+
+        var reconciler = new PayosOrderReconciler(
+            db,
+            scope.ServiceProvider.GetRequiredService<IPaymentStore>(),
+            scope.ServiceProvider.GetRequiredService<IAppointmentStore>(),
+            scope.ServiceProvider.GetRequiredService<IOutboxDispatcher>(),
+            Options.Create(spacedOptions),
+            adapter,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<PayosOrderReconciler>.Instance);
+
+        var storedDetails = await reconciler.GetStoredPaymentDetailsAsync(seed.PaymentId, default);
+        storedDetails.Should().NotBeNull();
+        storedDetails!.QrCode.Should().Be(created.QrCode);
+
+        await reconciler.ReconcileIfPaidAsync(seed.PaymentId, default);
+
+        var settledPayment = await db.Payments.AsNoTracking().SingleAsync(p => p.Id == seed.PaymentId);
+        settledPayment.Status.Should().Be(PaymentStatus.Paid);
+        settledPayment.ProviderTxnRef.Should().Be("FT263301234567");
+        var appt = await db.Appointments.AsNoTracking().SingleAsync(a => a.PaymentId == seed.PaymentId);
+        appt.Status.Should().Be(AppointmentStatus.Confirmed);
+    }
+
     private sealed class FakeHttp(Func<HttpRequestMessage, Task<HttpResponseMessage>> response) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => response(request);

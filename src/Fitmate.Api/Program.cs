@@ -504,6 +504,7 @@ builder.Services.Configure<PayosOptions>(builder.Configuration.GetSection(PayosO
 builder.Services.AddHttpClient<Fitmate.Infrastructure.Payments.Payos.PayosPaymentAdapter>(client => client.Timeout = TimeSpan.FromSeconds(20))
     .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
 builder.Services.AddScoped<IPayosWebhookHandler, Fitmate.Infrastructure.Payments.Payos.PayosWebhookHandler>();
+builder.Services.AddScoped<IPayosOrderReconciler, Fitmate.Infrastructure.Payments.Payos.PayosOrderReconciler>();
 if (paymentOptions.AllowMockProvider)
     throw new InvalidOperationException("Runtime mock payments are removed. Configure a real provider; test doubles belong only in test DI.");
 if (payosConfig.Enabled && (!payosConfig.IsValid() || paymentOptions.Provider != "payos"))

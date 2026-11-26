@@ -16,11 +16,12 @@ public class PaymentService : IPaymentService
     private readonly IVnpaySecurity? _vnpaySecurity;
     private readonly IOutboxDispatcher? _outbox;
     private readonly ILogger<PaymentService> _logger;
+    private readonly IPayosOrderReconciler? _payosReconciler;
 
     public PaymentService(
         IPaymentStore store,
         IPaymentProvider provider)
-        : this(store, provider, Microsoft.Extensions.Options.Options.Create(new VnpayOptions()), null, null, NullLogger<PaymentService>.Instance)
+        : this(store, provider, Microsoft.Extensions.Options.Options.Create(new VnpayOptions()), null, null, NullLogger<PaymentService>.Instance, null)
     {
     }
 
@@ -30,7 +31,8 @@ public class PaymentService : IPaymentService
         IOptions<VnpayOptions>? vnpayOptions,
         IVnpaySecurity? vnpaySecurity = null,
         IOutboxDispatcher? outbox = null,
-        ILogger<PaymentService>? logger = null)
+        ILogger<PaymentService>? logger = null,
+        IPayosOrderReconciler? payosReconciler = null)
     {
         _store = store;
         _provider = provider;
@@ -38,6 +40,7 @@ public class PaymentService : IPaymentService
         _vnpaySecurity = vnpaySecurity;
         _outbox = outbox;
         _logger = logger ?? NullLogger<PaymentService>.Instance;
+        _payosReconciler = payosReconciler;
     }
 
     public async Task<PaymentView> CreateAsync(
@@ -99,6 +102,12 @@ public class PaymentService : IPaymentService
             {
                 try
                 {
+                    if (_payosReconciler != null && payment.Method == PaymentMethod.Payos)
+                    {
+                        var stored = await _payosReconciler.GetStoredPaymentDetailsAsync(payment.Id, ct);
+                        if (stored is { QrCode: not null })
+                            return ToView(payment, stored);
+                    }
                     var existingResult = await _provider.CreatePaymentAsync(
                         new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
                     return ToView(payment, existingResult);
@@ -128,20 +137,51 @@ public class PaymentService : IPaymentService
         var payment = await _store.FindByIdAsync(paymentId, ct);
         if (payment is null) return null;
 
-        var appt = await _store.FindAppointmentByHoldAsync(payment.RequireAppointmentId(), ct);
-        if (appt is null || appt.MemberId != memberId) return null;
+        if (payment.AppointmentId.HasValue)
+        {
+            var appt = await _store.FindAppointmentByHoldAsync(payment.AppointmentId.Value, ct);
+            if (appt is null || appt.MemberId != memberId) return null;
+        }
+        else if (payment.PackageId.HasValue)
+        {
+            if (_payosReconciler is null ||
+                !await _payosReconciler.IsPackagePaymentOwnedByMemberAsync(payment.PackageId.Value, memberId, ct))
+                return null;
+        }
+        else
+        {
+            return null;
+        }
 
         if (payment.Status == PaymentStatus.Pending && payment.Method == PaymentMethod.Payos)
         {
-            try
+            if (_payosReconciler != null)
             {
-                var existingResult = await _provider.CreatePaymentAsync(
-                    new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
-                return ToView(payment, existingResult);
+                await _payosReconciler.ReconcileIfPaidAsync(payment.Id, ct);
+                payment = await _store.FindByIdAsync(paymentId, ct) ?? payment;
+                if (payment.Status == PaymentStatus.Pending)
+                {
+                    var stored = await _payosReconciler.GetStoredPaymentDetailsAsync(payment.Id, ct);
+                    if (stored != null)
+                        return ToView(payment, stored);
+                }
+                else
+                {
+                    return ToView(payment);
+                }
             }
-            catch
+            else
             {
-                return ToView(payment);
+                try
+                {
+                    var existingResult = await _provider.CreatePaymentAsync(
+                        new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
+                    return ToView(payment, existingResult);
+                }
+                catch
+                {
+                    return ToView(payment);
+                }
             }
         }
 
@@ -444,7 +484,7 @@ public class PaymentService : IPaymentService
     }
 
     private static PaymentView ToView(Payment p, ProviderCreatePaymentResult? res = null) => new(
-        p.Id, p.RequireAppointmentId(), p.Method, p.Status,
+        p.Id, p.AppointmentId ?? p.PackageId ?? Guid.Empty, p.Method, p.Status,
         p.AmountVnd, p.RefundedSoFarVnd,
         p.RedirectUrl, p.ProviderTxnRef,
         p.CreatedAt, p.CompletedAt,

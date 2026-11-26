@@ -63,6 +63,11 @@ public sealed class PayosOrderConfiguration : IEntityTypeConfiguration<PayosOrde
         e.Property(x => x.OrderCode).UseIdentityByDefaultColumn();
         e.HasIndex(x => x.PaymentId).IsUnique();
         e.Property(x => x.PaymentLinkId).HasMaxLength(64);
+        e.Property(x => x.QrCode).HasMaxLength(1024);
+        e.Property(x => x.AccountNumber).HasMaxLength(64);
+        e.Property(x => x.AccountName).HasMaxLength(160);
+        e.Property(x => x.Bin).HasMaxLength(16);
+        e.Property(x => x.Description).HasMaxLength(128);
         e.HasOne<Payment>().WithMany().HasForeignKey(x => x.PaymentId).OnDelete(DeleteBehavior.Restrict);
     }
 }

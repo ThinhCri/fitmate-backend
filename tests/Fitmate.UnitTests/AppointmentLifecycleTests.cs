@@ -225,4 +225,46 @@ public class AppointmentLifecycleTests
     {
         Appointment.MapLegacyToAppointmentStatus(legacy).Should().Be(expected);
     }
+
+    [Fact]
+    public void CompleteByPt_Allows_Confirmed_Booking_After_Slot_End()
+    {
+        var slot = DateTime.UtcNow.AddMinutes(-90);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.Confirmed);
+
+        appt.CompleteByPt();
+
+        appt.Status.Should().Be(AppointmentStatus.AwaitingMemberConfirmation);
+        appt.CompletionSubmittedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void ConfirmCompletionByMember_Allows_Confirmed_Booking_After_Slot_End_Even_Without_Pt_Start()
+    {
+        var slot = DateTime.UtcNow.AddHours(-3);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.Confirmed);
+
+        appt.ConfirmCompletionByMember();
+
+        appt.Status.Should().Be(AppointmentStatus.Completed);
+        appt.CompletedAtUtc.Should().NotBeNull();
+        appt.CompletionSubmittedAtUtc.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void ConfirmCompletionByMember_Throws_For_Confirmed_Booking_Before_Slot_End()
+    {
+        var slot = DateTime.UtcNow.AddHours(2);
+        var appt = Appointment.CreateHold(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), slot, slot, 60, 100_000);
+        appt.AttachPayment(Guid.NewGuid(), 100_000, 0, 0.10m, 10_000, 90_000, "v1");
+        appt.ForceStatusForTesting(AppointmentStatus.Confirmed);
+
+        var act = () => appt.ConfirmCompletionByMember();
+
+        act.Should().Throw<ConflictException>().Where(e => e.Code == ErrorCodes.Booking.CannotTransition);
+    }
 }

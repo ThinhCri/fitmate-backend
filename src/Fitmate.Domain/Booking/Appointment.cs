@@ -103,7 +103,7 @@ public class Appointment : AuditableEntity
 
     public void CompleteByPt(DateTime? completedAtUtc = null)
     {
-        if (Status != AppointmentStatus.InProgress)
+        if (Status is not (AppointmentStatus.InProgress or AppointmentStatus.Confirmed))
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot complete booking in status {Status}.");
         if (DateTime.UtcNow < SlotStartUtc.AddMinutes(DurationMinutes))
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, "Cannot complete appointment before slot end.");
@@ -116,10 +116,19 @@ public class Appointment : AuditableEntity
 
     public void ConfirmCompletionByMember(DateTime? confirmedAtUtc = null)
     {
-        if (Status != AppointmentStatus.AwaitingMemberConfirmation)
+        var now = confirmedAtUtc ?? DateTime.UtcNow;
+        if (Status is AppointmentStatus.Confirmed or AppointmentStatus.InProgress)
+        {
+            if (DateTime.UtcNow < SlotStartUtc.AddMinutes(DurationMinutes))
+                throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot confirm completion before slot end in status {Status}.");
+            CompletionSubmittedAtUtc ??= now;
+        }
+        else if (Status != AppointmentStatus.AwaitingMemberConfirmation)
+        {
             throw new ConflictException(ErrorCodes.Booking.CannotTransition, $"Cannot confirm completion in status {Status}.");
+        }
         Status = AppointmentStatus.Completed;
-        CompletedAtUtc = confirmedAtUtc ?? DateTime.UtcNow;
+        CompletedAtUtc = now;
         LegacyCompletionTimeUnknown = false;
         Touch();
     }

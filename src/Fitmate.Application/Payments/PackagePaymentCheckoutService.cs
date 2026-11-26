@@ -11,7 +11,13 @@ public sealed record PackageCheckoutView(
     [property: JsonPropertyName("payment_id")] Guid PaymentId,
     [property: JsonPropertyName("amount_vnd")] long AmountVnd,
     [property: JsonPropertyName("status")] PaymentStatus Status,
-    [property: JsonPropertyName("redirect_url")] string? RedirectUrl);
+    [property: JsonPropertyName("redirect_url")] string? RedirectUrl,
+    [property: JsonPropertyName("qr_code")] [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? QrCode = null,
+    [property: JsonPropertyName("account_number")] [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AccountNumber = null,
+    [property: JsonPropertyName("account_name")] [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? AccountName = null,
+    [property: JsonPropertyName("bin")] [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Bin = null,
+    [property: JsonPropertyName("description")] [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Description = null,
+    [property: JsonPropertyName("order_code")] [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? OrderCode = null);
 
 /// <summary>
 /// One-order checkout preparation for a package. All financial consumers
@@ -21,7 +27,8 @@ public sealed class PackagePaymentCheckoutService(
     IPackagePaymentStore packages,
     IPaymentStore payments,
     IAppointmentStore appointments,
-    IPaymentProvider provider)
+    IPaymentProvider provider,
+    IPayosOrderReconciler? reconciler = null)
 {
     public async Task<PackageCheckoutView> CreateAsync(Guid memberId, Guid packageId,
         CancellationToken ct, bool acknowledgeShortNotice = false)
@@ -74,16 +81,22 @@ public sealed class PackagePaymentCheckoutService(
             return pending;
         }, ct);
 
+        ProviderCreatePaymentResult? result = null;
         if (payment.RedirectUrl is null)
         {
             // External HTTP is deliberately outside the PT schedule transaction.
-            var result = await provider.CreatePaymentAsync(
+            result = await provider.CreatePaymentAsync(
                 new ProviderCreatePaymentRequest(payment.Id, payment.AmountVnd, "FITMATE"), ct);
             payment.SetCheckoutUrl(result.RedirectUrl);
             await payments.SaveChangesAsync(ct);
         }
+        else if (reconciler != null)
+        {
+            result = await reconciler.GetStoredPaymentDetailsAsync(payment.Id, ct);
+        }
 
         return new PackageCheckoutView(packageId, payment.Id, payment.AmountVnd,
-            payment.Status, payment.RedirectUrl);
+            payment.Status, payment.RedirectUrl,
+            result?.QrCode, result?.AccountNumber, result?.AccountName, result?.Bin, result?.Description, result?.OrderCode);
     }
 }
