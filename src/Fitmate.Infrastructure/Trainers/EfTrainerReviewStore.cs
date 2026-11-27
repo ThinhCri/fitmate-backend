@@ -50,7 +50,7 @@ public class EfTrainerReviewStore : ITrainerReviewStore
             select new
             {
                 Review = r,
-                ReviewerName = u != null ? u.FullName : "Anonymous"
+                ReviewerName = u != null && !string.IsNullOrWhiteSpace(u.FullName) ? u.FullName : "Học viên Fitmate"
             }
         ).Take(limit).ToListAsync(ct);
 

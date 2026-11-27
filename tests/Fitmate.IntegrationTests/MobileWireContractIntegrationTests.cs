@@ -246,6 +246,75 @@ public sealed class MobileWireContractIntegrationTests : IClassFixture<FitmateTe
         }
     }
 
+    [Fact]
+    public async Task PublicTrainerDetail_IncludesSubmittedReviews_ForOtherUsers()
+    {
+        var ptId = Guid.NewGuid();
+        var reviewerId = Guid.NewGuid();
+        var otherUserId = Guid.NewGuid();
+        var adminId = Guid.NewGuid();
+        var reviewerClient = _factory.CreateAuthenticatedClient("Member", reviewerId);
+        var otherMemberClient = _factory.CreateAuthenticatedClient("Member", otherUserId);
+        _factory.CreateAuthenticatedClient("PT", ptId).Dispose();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FitmateDbContext>();
+            var reviewer = await db.Users.FindAsync(reviewerId);
+            reviewer.Should().NotBeNull();
+            reviewer!.FullName = "Học viên Minh Anh";
+
+            var profile = PtProfile.CreateDraft(ptId, "Tăng cơ", 5, 300_000, "HLV review test");
+            profile.Approve(adminId);
+            var cert = Certificate.Submit(ptId, "CPT", "ACE", $"REV-{ptId:N}"[..12],
+                new DateOnly(2025, 1, 1), "certs/rev-cert.jpg", ptId);
+            cert.Approve(adminId);
+            var service = Service.Create(ptId, "Buổi tập review", "Test session", 300_000, 60);
+
+            var startUtc = DateTime.UtcNow.AddDays(-1);
+            var appt = Appointment.CreateHold(
+                reviewerId,
+                ptId,
+                service.Id,
+                startUtc,
+                DateTime.SpecifyKind(startUtc.AddHours(7), DateTimeKind.Unspecified),
+                60,
+                300_000);
+            appt.ForceStatusForTesting(AppointmentStatus.Completed);
+
+            db.AddRange(profile, cert, service, appt);
+            await db.SaveChangesAsync();
+        }
+
+        using (var submitRes = await reviewerClient.PostAsJsonAsync(
+                   $"/api/v1/trainers/{ptId}/reviews",
+                   new { rating = 5, text = "HLV hướng dẫn rất chi tiết và nhiệt tình!" }))
+        {
+            submitRes.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+
+        using (var otherDetailRes = await otherMemberClient.GetAsync($"/api/v1/trainers/{ptId}"))
+        {
+            otherDetailRes.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var doc = JsonDocument.Parse(await otherDetailRes.Content.ReadAsStringAsync());
+            doc.RootElement.GetProperty("reviews_count").GetInt32().Should().Be(1);
+            doc.RootElement.GetProperty("rating").GetDecimal().Should().Be(5m);
+            var reviews = doc.RootElement.GetProperty("reviews").EnumerateArray().ToList();
+            reviews.Should().ContainSingle();
+            reviews[0].GetProperty("reviewer_name").GetString().Should().Be("Học viên Minh Anh");
+            reviews[0].GetProperty("rating").GetInt32().Should().Be(5);
+            reviews[0].GetProperty("text").GetString().Should().Be("HLV hướng dẫn rất chi tiết và nhiệt tình!");
+        }
+
+        using (var otherReviewsRes = await _factory.CreateClient().GetAsync($"/api/v1/trainers/{ptId}/reviews"))
+        {
+            otherReviewsRes.StatusCode.Should().Be(HttpStatusCode.OK);
+            using var doc = JsonDocument.Parse(await otherReviewsRes.Content.ReadAsStringAsync());
+            doc.RootElement.GetProperty("total_reviews").GetInt32().Should().Be(1);
+            doc.RootElement.GetProperty("reviews").EnumerateArray().Should().ContainSingle();
+        }
+    }
+
     private static async Task AssertObjectKeys(HttpClient client, string path, params string[] expectedKeys)
     {
         using var response = await client.GetAsync(path);

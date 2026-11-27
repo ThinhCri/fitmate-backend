@@ -37,9 +37,15 @@ public class TrainersPublicController : ControllerBase
     }
 
     [HttpGet("{ptUserId:guid}")]
-    public async Task<IActionResult> Get(Guid ptUserId, CancellationToken ct)
+    public async Task<IActionResult> Get(
+        Guid ptUserId,
+        [FromServices] ITrainerReviewService? reviewService = null,
+        CancellationToken ct = default)
     {
         var detail = await _svc.GetDetailAsync(ptUserId, ct);
+        var reviews = reviewService is not null
+            ? (await reviewService.GetReviewsAsync(ptUserId, 20, ct)).Reviews
+            : Array.Empty<ReviewDto>();
         return Ok(new
         {
             id = detail.Profile.UserId,
@@ -52,7 +58,8 @@ public class TrainersPublicController : ControllerBase
             reviews_count = detail.Profile.ReviewsCount,
             certificate_status = "verified",
             bio = detail.Bio,
-            services = detail.Services.Select(ServicesController.ToResponse).ToList()
+            services = detail.Services.Select(ServicesController.ToResponse).ToList(),
+            reviews
         });
     }
 
